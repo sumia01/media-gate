@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
@@ -9,14 +9,23 @@ type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
 
 const route = useRoute()
-const { triggerSync, hasActiveJob } = useJobQueue()
+const { jobs, triggerSync, hasActiveJob, onSyncDone } = useJobQueue()
 
 const library = ref<Library | null>(null)
 const items = ref<MediaItem[]>([])
 const total = ref(0)
 const loading = ref(false)
-const syncing = ref(false)
 const error = ref('')
+
+const isSyncingThisLibrary = computed(() =>
+  library.value
+    ? jobs.value.some(
+        (j) =>
+          j.libraryId === library.value!.id &&
+          (j.status === 'pending' || j.status === 'running'),
+      )
+    : false,
+)
 
 async function fetchLibrary(id: number) {
   const { data } = await client.GET('/libraries/{id}', {
@@ -42,9 +51,7 @@ async function fetchMedia(id: number) {
 
 async function handleSync() {
   if (!library.value) return
-  syncing.value = true
   await triggerSync(library.value.id)
-  syncing.value = false
 }
 
 async function loadAll() {
@@ -53,13 +60,15 @@ async function loadAll() {
   await fetchMedia(id)
 }
 
-watch(hasActiveJob, (active, wasActive) => {
-  if (!active && wasActive && library.value) {
+// Reload media items when this library's sync finishes
+const removeSyncDoneListener = onSyncDone((libraryId) => {
+  if (library.value && library.value.id === libraryId) {
     fetchMedia(library.value.id)
   }
 })
 
 onMounted(loadAll)
+onUnmounted(removeSyncDoneListener)
 watch(() => route.params.id, loadAll)
 </script>
 
@@ -82,11 +91,11 @@ watch(() => route.params.id, loadAll)
         <span v-if="library" class="text-xs text-gray-500 font-mono">{{ library.path }}</span>
         <button
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="syncing"
+          :disabled="isSyncingThisLibrary"
           @click="handleSync"
         >
-          <span class="text-base leading-none" :class="syncing ? 'animate-spin' : ''">&#x21bb;</span>
-          {{ syncing ? 'Syncing...' : 'Sync' }}
+          <span class="text-base leading-none" :class="isSyncingThisLibrary ? 'animate-spin' : ''">&#x21bb;</span>
+          {{ isSyncingThisLibrary ? 'Syncing...' : 'Sync' }}
         </button>
       </div>
     </div>
