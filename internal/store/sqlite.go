@@ -23,7 +23,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&Library{}); err != nil {
+	if err := db.AutoMigrate(&Library{}, &MediaItem{}); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
@@ -89,4 +89,35 @@ func (s *SQLiteStore) DeleteLibrary(id uint) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *SQLiteStore) CreateMediaItem(item *MediaItem) error {
+	return s.db.Create(item).Error
+}
+
+func (s *SQLiteStore) ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
+	var items []MediaItem
+	if err := s.db.Where("library_id = ?", libraryID).Order("title ASC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) DeleteMediaItemsByLibrary(libraryID uint) error {
+	return s.db.Where("library_id = ?", libraryID).Delete(&MediaItem{}).Error
+}
+
+func (s *SQLiteStore) DeleteMediaItemsByPaths(libraryID uint, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	return s.db.Where("library_id = ? AND path IN ?", libraryID, paths).Delete(&MediaItem{}).Error
+}
+
+func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
+	var count int64
+	if err := s.db.Model(&MediaItem{}).Where("library_id = ?", libraryID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

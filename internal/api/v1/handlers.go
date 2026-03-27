@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -13,11 +14,13 @@ import (
 var _ StrictServerInterface = (*Handlers)(nil)
 
 type Handlers struct {
-	lib *library.Service
+	lib   *library.Service
+	store store.Store
+	queue *jobqueue.Queue
 }
 
-func NewHandlers(lib *library.Service) *Handlers {
-	return &Handlers{lib: lib}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q}
 }
 
 func (h *Handlers) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
@@ -93,7 +96,13 @@ func (h *Handlers) UpdateLibrary(_ context.Context, req UpdateLibraryRequestObje
 }
 
 func (h *Handlers) DeleteLibrary(_ context.Context, req DeleteLibraryRequestObject) (DeleteLibraryResponseObject, error) {
-	if err := h.lib.Delete(uint(req.Id)); err != nil {
+	id := uint(req.Id)
+
+	if err := h.store.DeleteMediaItemsByLibrary(id); err != nil {
+		return nil, err
+	}
+
+	if err := h.lib.Delete(id); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteLibrary404JSONResponse{
 				Code:    http.StatusNotFound,
@@ -171,6 +180,66 @@ func (h *Handlers) BrowseFolder(_ context.Context, req BrowseFolderRequestObject
 	}, nil
 }
 
+func (h *Handlers) ListMediaItems(_ context.Context, req ListMediaItemsRequestObject) (ListMediaItemsResponseObject, error) {
+	_, err := h.lib.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ListMediaItems404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "library not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	items, err := h.store.ListMediaItemsByLibrary(uint(req.Id))
+	if err != nil {
+		return nil, err
+	}
+
+	apiItems := make([]MediaItem, len(items))
+	for i, item := range items {
+		apiItems[i] = mediaItemToAPI(&item)
+	}
+
+	return ListMediaItems200JSONResponse{
+		Items: apiItems,
+		Total: len(apiItems),
+	}, nil
+}
+
+func (h *Handlers) TriggerSync(_ context.Context, req TriggerSyncRequestObject) (TriggerSyncResponseObject, error) {
+	lib, err := h.lib.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return TriggerSync404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "library not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	job, err := h.queue.Enqueue(jobqueue.JobTypeSyncLibrary, lib.ID, lib.Name)
+	if err != nil {
+		return TriggerSync409JSONResponse{
+			Code:    http.StatusConflict,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return TriggerSync202JSONResponse(jobToAPI(job)), nil
+}
+
+func (h *Handlers) ListJobs(_ context.Context, _ ListJobsRequestObject) (ListJobsResponseObject, error) {
+	jobs := h.queue.ListJobs()
+	apiJobs := make([]Job, len(jobs))
+	for i, j := range jobs {
+		apiJobs[i] = jobToAPI(j)
+	}
+	return ListJobs200JSONResponse{Jobs: apiJobs}, nil
+}
+
 func libraryToAPI(lib *store.Library) Library {
 	return Library{
 		Id:        int64(lib.ID),
@@ -180,4 +249,52 @@ func libraryToAPI(lib *store.Library) Library {
 		CreatedAt: lib.CreatedAt,
 		UpdatedAt: lib.UpdatedAt,
 	}
+}
+
+func mediaItemToAPI(item *store.MediaItem) MediaItem {
+	return MediaItem{
+		Id:         int64(item.ID),
+		LibraryId:  int64(item.LibraryID),
+		Title:      item.Title,
+		FolderName: item.FolderName,
+		Path:       item.Path,
+		MediaType:  MediaItemMediaType(item.MediaType),
+		Status:     MediaItemStatus(item.Status),
+		Year:       item.Year,
+		CreatedAt:  item.CreatedAt,
+		UpdatedAt:  item.UpdatedAt,
+	}
+}
+
+func jobToAPI(j *jobqueue.Job) Job {
+	apiJob := Job{
+		Id:          j.ID,
+		Type:        JobType(j.Type),
+		Status:      JobStatus(j.Status),
+		CreatedAt:   j.CreatedAt,
+		StartedAt:   j.StartedAt,
+		CompletedAt: j.CompletedAt,
+	}
+	if j.LibraryID != 0 {
+		libID := int64(j.LibraryID)
+		apiJob.LibraryId = &libID
+	}
+	if j.LibraryName != "" {
+		apiJob.LibraryName = &j.LibraryName
+	}
+	if j.Error != "" {
+		apiJob.Error = &j.Error
+	}
+	if j.Progress != nil {
+		apiJob.Progress = &struct {
+			Current *int    `json:"current,omitempty"`
+			Message *string `json:"message,omitempty"`
+			Total   *int    `json:"total,omitempty"`
+		}{
+			Current: &j.Progress.Current,
+			Message: &j.Progress.Message,
+			Total:   &j.Progress.Total,
+		}
+	}
+	return apiJob
 }
