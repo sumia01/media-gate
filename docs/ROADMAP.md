@@ -7,9 +7,20 @@
 - [x] oapi-codegen setup (strict server generation)
 - [x] Frontend API client generation from OpenAPI spec
 - [x] Go server serving the embedded Vue SPA
-- [x] Makefile for full build pipeline
+- [x] Makefile for full build pipeline (`build`, `generate`, `dev`, `tools`, `clean`)
 - [x] GORM setup with Store interface + SQLite driver
 - [x] Basic slog configuration
+- [x] API versioning (`/api/v1` routes, `internal/api/v1/` package)
+- [x] Nested config structure (api/db/log groups)
+- [x] Dev workflow: Air (Go hot-reload) + Vite (frontend HMR)
+
+## Phase 0.5: Frontend Layout ✅
+- [x] App shell layout — sidebar + topbar + content area
+- [x] Modular component architecture (layout/ + media/ separation)
+- [x] Collapsible sidebar navigation
+- [x] Search bar in topbar
+- [x] Responsive media card grid with poster images
+- [x] Dummy data with real TMDB posters for visual prototyping
 
 ## Phase 1: Core Media Management ⬜
 - [ ] TMDB/TVDB integration — search and fetch media metadata

@@ -18,15 +18,22 @@ Self-hosted, single-binary media management app replacing the Sonarr + Radarr + 
 media-gate/
 ├── cmd/server/          # Go entrypoint (main.go)
 ├── internal/
-│   ├── api/             # Generated oapi-codegen server + handlers
+│   ├── api/v1/          # Generated oapi-codegen server + handlers (package apiv1)
 │   ├── config/          # koanf configuration loading
 │   ├── store/           # Store interface + GORM implementations
 │   ├── integration/     # External service clients (qBittorrent, TMDB, etc.)
 │   └── logging/         # slog setup
 ├── frontend/            # Vue 3 + TypeScript SPA
-│   └── src/api/         # Generated TypeScript API client
+│   └── src/
+│       ├── api/         # Generated TypeScript API client
+│       ├── components/
+│       │   ├── layout/  # App shell: sidebar, topbar, page layout
+│       │   └── media/   # Media-related components + shared types
+│       ├── views/       # Route-level page components
+│       └── router/      # Vue Router config
 ├── api/                 # OpenAPI spec + oapi-codegen config
 ├── docs/                # Architecture, decisions, roadmap
+├── .air.toml            # Air hot-reload config for Go dev
 ├── .env.example         # Documented configuration keys
 ├── Makefile             # Build pipeline
 └── go.mod
@@ -41,8 +48,11 @@ make build
 # Run the compiled binary
 ./media-gate
 
-# Development — run Go server directly
+# Development — Air (Go hot-reload) + Vite (frontend HMR) in parallel
 make dev
+
+# Install dev tools (air, oapi-codegen)
+make tools
 
 # Code generation only (Go + TypeScript from OpenAPI spec)
 make generate
@@ -68,10 +78,12 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 ## Key Architecture Decisions
 
 - **Store interface pattern**: All data access goes through a Go `Store` interface with GORM implementations. Business logic never touches the database directly.
-- **OpenAPI-first**: Change the spec in `api/openapi.yaml`, then run `make generate`. Never hand-edit generated code (`internal/api/gen.go`, `frontend/src/api/schema.d.ts`).
+- **OpenAPI-first**: Change the spec in `api/openapi.yaml`, then run `make generate`. Never hand-edit generated code (`internal/api/v1/gen.go`, `frontend/src/api/schema.d.ts`).
+- **Versioned API**: Routes under `/api/v1`, Go code in `internal/api/v1/` (package `apiv1`). Future versions get their own package.
 - **Single binary**: The Vue SPA builds into `frontend/dist/`, gets embedded into the Go binary via `frontend/embed.go`. No separate web server needed.
 - **go:generate**: `go generate ./...` runs oapi-codegen to regenerate Go server code.
+- **Modular frontend**: Components organized by concern — `layout/` for shell pieces, `media/` for domain components, `views/` for route-level pages.
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding) and **Phase 0.5** (frontend layout). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
