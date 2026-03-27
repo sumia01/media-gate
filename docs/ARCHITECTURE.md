@@ -47,25 +47,34 @@ More integrations will be defined incrementally as development progresses.
 media-gate/
 ├── cmd/server/          # Go entrypoint (main.go)
 ├── internal/
-│   ├── api/             # Generated oapi-codegen server + handlers
-│   ├── config/          # koanf configuration loading
+│   ├── api/v1/          # Generated oapi-codegen server + handlers (versioned)
+│   ├── config/          # koanf configuration loading (nested struct groups)
 │   ├── store/           # Store interface + GORM implementations
 │   ├── integration/     # External service clients (qBittorrent, TMDB, etc.)
 │   └── logging/         # slog setup, handler config
 ├── frontend/            # Vue 3 + TypeScript SPA
-│   └── src/api/         # Generated TypeScript API client
+│   └── src/
+│       ├── api/         # Generated TypeScript API client
+│       ├── components/
+│       │   ├── layout/  # App shell: sidebar, topbar, page layout
+│       │   └── media/   # Media-related components + shared types
+│       ├── views/       # Route-level page components
+│       └── router/      # Vue Router config
 ├── api/                 # OpenAPI spec files (SSOT) + oapi-codegen config
 ├── docs/                # Project documentation
+├── .air.toml            # Air hot-reload config for Go dev
 ├── .env.example         # Documented configuration keys
 ├── go.mod
 ├── go.sum
-└── Makefile             # Build pipeline: generate → frontend build → go build
+└── Makefile             # Build pipeline: tools, generate, frontend, build, dev, clean
 ```
 
 ## Key Design Principles
 
 1. **OpenAPI as Single Source of Truth** — both Go server interfaces and TypeScript client are generated from the same spec
-2. **Swappable storage** — database engine can be changed without touching business logic
-3. **Single binary deployment** — minimal operational overhead
-4. **Pluggable logging** — ready for future observability integrations
-5. **Incremental development** — start small, integrate services one by one
+2. **Versioned API** — API routes live under `/api/v1`, Go code in `internal/api/v1/` (package `apiv1`), ready for future versions side-by-side
+3. **Swappable storage** — database engine can be changed without touching business logic
+4. **Single binary deployment** — minimal operational overhead
+5. **Modular frontend** — components split into layout (shell, sidebar, topbar) and domain (media cards, etc.) for reusability
+6. **Pluggable logging** — ready for future observability integrations
+7. **Incremental development** — start small, integrate services one by one

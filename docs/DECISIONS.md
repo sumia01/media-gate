@@ -97,3 +97,30 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: Use [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) to generate TypeScript types from the spec, and [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch) as the runtime HTTP client.
 
 **Rationale**: Lightweight, type-safe at compile time (no runtime bloat), actively maintained, and pairs naturally with the OpenAPI-first workflow already established with oapi-codegen on the backend.
+
+---
+
+## ADR-009: Versioned API routes and packages
+**Date**: 2026-03-27
+**Status**: Accepted
+
+**Context**: As the API evolves, breaking changes may be needed. Need a strategy that allows introducing new API versions without disrupting existing clients.
+
+**Decision**: API routes are versioned under `/api/v1`. On the Go side, generated code and handlers live in `internal/api/v1/` (package `apiv1`). Future versions get their own package (`internal/api/v2/`, package `apiv2`) and are mounted side-by-side on the mux.
+
+**Rationale**: Clean separation at both the URL and code level. Multiple versions can coexist during migration periods.
+
+---
+
+## ADR-010: Modular frontend component architecture
+**Date**: 2026-03-27
+**Status**: Accepted
+
+**Context**: The frontend will grow significantly as features are added. Early decisions about component organization pay off later.
+
+**Decision**: Frontend components are organized by concern:
+- `components/layout/` — app shell pieces (sidebar, topbar, page layout)
+- `components/media/` — domain-specific components (media cards, shared types/data)
+- `views/` — route-level page components that compose layout + domain components
+
+**Rationale**: Keeps components small and focused. Layout components are reusable across pages. Domain components can be composed freely without coupling to a specific layout.
