@@ -20,12 +20,16 @@ media-gate/
 ├── internal/
 │   ├── api/v1/          # Generated oapi-codegen server + handlers (package apiv1)
 │   ├── config/          # koanf configuration loading
-│   ├── store/           # Store interface + GORM implementations
+│   ├── library/         # Library service (CRUD, path validation, folder browsing)
+│   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
+│   ├── jobqueue/        # In-memory job queue (single worker goroutine)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem)
 │   ├── integration/     # External service clients (qBittorrent, TMDB, etc.)
 │   └── logging/         # slog setup
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
 │       ├── api/         # Generated TypeScript API client
+│       ├── composables/ # Shared reactive state (useJobQueue)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
 │       │   └── media/   # Media-related components + shared types
@@ -87,4 +91,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding) and **Phase 0.5** (frontend layout). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), and **Phase 0.75** (libraries & catalog sync). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
