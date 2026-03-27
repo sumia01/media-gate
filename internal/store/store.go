@@ -20,4 +20,10 @@ type Store interface {
 	GetLibrary(id uint) (*Library, error)
 	UpdateLibrary(lib *Library) error
 	DeleteLibrary(id uint) error
+
+	CreateMediaItem(item *MediaItem) error
+	ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
+	DeleteMediaItemsByLibrary(libraryID uint) error
+	DeleteMediaItemsByPaths(libraryID uint, paths []string) error
+	CountMediaItemsByLibrary(libraryID uint) (int64, error)
 }
