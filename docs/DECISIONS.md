@@ -124,3 +124,39 @@ Architecture Decision Records: documenting key choices and their reasoning.
 - `views/` — route-level page components that compose layout + domain components
 
 **Rationale**: Keeps components small and focused. Layout components are reusable across pages. Domain components can be composed freely without coupling to a specific layout.
+
+---
+
+## ADR-011: In-memory job queue for background tasks
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Library sync can take time (reading disk, diffing DB). It shouldn't block the API request. Need a way to enqueue background work and track progress.
+
+**Decision**: In-memory job queue (`internal/jobqueue/`) with a single worker goroutine, buffered channel, and mutex-guarded state. Jobs are not persisted to DB. The frontend polls `GET /jobs` to track status.
+
+**Rationale**: Simple and sufficient for a single-instance homelab app. No need for Redis, a message broker, or a persistent task table at this stage. If the server restarts, incomplete jobs are lost — acceptable since a re-sync is cheap and idempotent. Can be upgraded to persistent storage later if needed.
+
+---
+
+## ADR-012: Folder-name parsing for media item title and year
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Library directories follow common naming conventions like `Movie Title (2024)` or `Movie.Title.2024`. Need to extract a clean title and optional year from folder names.
+
+**Decision**: The sync service (`internal/sync/`) uses a regex-based `parseFolderName()` helper that extracts a trailing 4-digit year (with optional parens/brackets) and replaces dots with spaces.
+
+**Rationale**: Covers the two most common naming conventions in media libraries. Intentionally kept simple — TMDB matching (Phase 1) will handle fuzzy/ambiguous cases. Avoids pulling in a full media filename parser library for what is a best-effort extraction.
+
+---
+
+## ADR-013: Composable-based job polling with per-library callbacks
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: The frontend needs to know when a library sync finishes so it can reload the media list. Multiple components (topbar, library detail view) need access to job state.
+
+**Decision**: A shared `useJobQueue` composable manages global job state with adaptive polling (2s when active, 30s idle). It tracks which library IDs have active jobs and fires `onSyncDone(libraryId)` callbacks when a library's job transitions from active to completed/failed.
+
+**Rationale**: Avoids WebSocket complexity for a single-user app. The per-library callback pattern is more precise than watching a global `hasActiveJob` flag — it correctly handles fast syncs (job completes between polls) and multiple libraries syncing concurrently.

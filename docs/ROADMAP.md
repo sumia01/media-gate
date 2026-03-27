@@ -22,10 +22,24 @@
 - [x] Responsive media card grid with poster images
 - [x] Dummy data with real TMDB posters for visual prototyping
 
+## Phase 0.75: Libraries & Catalog Sync ✅
+- [x] Library CRUD — API endpoints, store layer, service with basePath guard
+- [x] Folder browser component for visual path selection
+- [x] Libraries admin page (add/edit/delete/scan)
+- [x] MediaItem model — tracks folders within a library (title, year, status)
+- [x] Sync service — reads library directory, creates/removes MediaItem records
+- [x] In-memory job queue with single worker goroutine and duplicate prevention
+- [x] API: `GET /libraries/{id}/media`, `POST /libraries/{id}/sync`, `GET /jobs`
+- [x] Library detail view with media item grid and sync button
+- [x] Dynamic sidebar — fetches libraries from API, shows per-library nav items
+- [x] Topbar sync status icon with jobs dropdown panel
+- [x] Auto-reload media items when library sync completes (per-library callback)
+- [x] Cascade delete media items when library is deleted
+
 ## Phase 1: Core Media Management ⬜
 - [ ] TMDB/TVDB integration — search and fetch media metadata
-- [ ] Media library data model (movies, TV shows, episodes)
-- [ ] Library browsing UI
+- [ ] Media matching — link MediaItems to TMDB entries (status: new → matched)
+- [ ] Rich media detail page (poster, overview, ratings, cast)
 - [ ] Add/remove media to watchlist
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
