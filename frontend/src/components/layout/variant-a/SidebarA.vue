@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { navItems } from '../../media/dummyData'
+import { RouterLink, useRoute } from 'vue-router'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
+const route = useRoute()
+
+const navItems = [
+  { icon: '◈', label: 'Discover', to: '/' },
+  { icon: '◻', label: 'Movies', to: '/' },
+  { icon: '▤', label: 'Series', to: '/' },
+  { icon: '↗', label: 'Requests', to: '/' },
+  { icon: '⛁', label: 'Libraries', to: '/libraries' },
+  { icon: '⚙', label: 'Settings', to: '/' },
+]
 </script>
 
 <template>
@@ -21,23 +31,18 @@ const collapsed = defineModel<boolean>('collapsed', { default: false })
 
     <!-- Nav -->
     <nav class="flex-1 px-2 mt-2 space-y-1">
-      <button
+      <RouterLink
         v-for="item in navItems"
         :key="item.label"
+        :to="item.to"
         class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
-        :class="item.active
+        :class="route.path === item.to
           ? 'bg-violet-600/20 text-violet-300'
           : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
       >
         <span class="text-base w-5 text-center flex-shrink-0">{{ item.icon }}</span>
         <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
-        <span
-          v-if="item.badge && !collapsed"
-          class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-600 text-white"
-        >
-          {{ item.badge }}
-        </span>
-      </button>
+      </RouterLink>
     </nav>
 
     <!-- Collapse toggle -->
@@ -46,7 +51,7 @@ const collapsed = defineModel<boolean>('collapsed', { default: false })
         class="w-full flex items-center justify-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
         @click="collapsed = !collapsed"
       >
-        <span class="text-base transition-transform duration-300" :class="collapsed ? 'rotate-180' : ''">«</span>
+        <span class="text-base transition-transform duration-300" :class="collapsed ? 'rotate-180' : ''">&#xAB;</span>
         <span v-if="!collapsed">Collapse</span>
       </button>
     </div>
