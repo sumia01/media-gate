@@ -11,9 +11,14 @@ import (
 )
 
 type Config struct {
-	API APIConfig `koanf:"api"`
-	DB  DBConfig  `koanf:"db"`
-	Log LogConfig `koanf:"log"`
+	API     APIConfig     `koanf:"api"`
+	DB      DBConfig      `koanf:"db"`
+	Log     LogConfig     `koanf:"log"`
+	Library LibraryConfig `koanf:"library"`
+}
+
+type LibraryConfig struct {
+	BasePath string `koanf:"basepath"`
 }
 
 type APIConfig struct {
@@ -51,9 +56,10 @@ func Load() (*Config, error) {
 	}
 
 	cfg := Config{
-		API: APIConfig{Port: 8080},
-		DB:  DBConfig{Path: "media-gate.db"},
-		Log: LogConfig{Level: "info", Format: "text"},
+		API:     APIConfig{Port: 8080},
+		DB:      DBConfig{Path: "media-gate.db"},
+		Log:     LogConfig{Level: "info", Format: "text"},
+		Library: LibraryConfig{BasePath: "/mnt"},
 	}
 
 	if err := k.Unmarshal("", &cfg); err != nil {

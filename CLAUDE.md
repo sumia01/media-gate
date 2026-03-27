@@ -66,7 +66,7 @@ make clean
 
 ## Configuration
 
-Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment variables. Config is organized into nested groups (api, db, log). Underscore in key names maps to nesting level.
+Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment variables. Config is organized into nested groups (api, db, log, library). Underscore in key names maps to nesting level.
 
 | .env key | Env var | Config field | Default | Description |
 |----------|---------|-------------|---------|-------------|
@@ -74,6 +74,7 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 | `DB_PATH` | `MEDIAGATE_DB_PATH` | `DB.Path` | `media-gate.db` | SQLite database path |
 | `LOG_LEVEL` | `MEDIAGATE_LOG_LEVEL` | `Log.Level` | `info` | Log level (debug/info/warn/error) |
 | `LOG_FORMAT` | `MEDIAGATE_LOG_FORMAT` | `Log.Format` | `text` | Log format (text/json) |
+| `LIBRARY_BASEPATH` | `MEDIAGATE_LIBRARY_BASEPATH` | `Library.BasePath` | `/mnt` | Base path for library directories (path traversal guard) |
 
 ## Key Architecture Decisions
 

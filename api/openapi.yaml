@@ -21,6 +21,159 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /libraries:
+    post:
+      operationId: createLibrary
+      summary: Create a library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryCreate"
+      responses:
+        "201":
+          description: Library created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Library"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listLibraries
+      summary: List all libraries
+      responses:
+        "200":
+          description: List of libraries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Library"
+
+  /libraries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getLibrary
+      summary: Get a library by ID
+      responses:
+        "200":
+          description: Library found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Library"
+        "404":
+          description: Library not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateLibrary
+      summary: Update a library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryCreate"
+      responses:
+        "200":
+          description: Library updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Library"
+        "404":
+          description: Library not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteLibrary
+      summary: Delete a library
+      responses:
+        "204":
+          description: Library deleted
+        "404":
+          description: Library not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /browse:
+    get:
+      operationId: browseFolder
+      summary: Browse directories within basePath
+      description: Lists subdirectories of the given path (or basePath if omitted) for folder selection
+      parameters:
+        - name: path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Absolute path to browse. Defaults to the configured basePath.
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowseResponse"
+        "400":
+          description: Invalid path or access error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /libraries/{id}/scan:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: scanLibrary
+      summary: Scan library directory contents
+      description: Lists the immediate children (files and directories) of the library path
+      responses:
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResponse"
+        "400":
+          description: Scan failed (e.g. path not accessible)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Library not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthResponse:
@@ -31,3 +184,107 @@ components:
         status:
           type: string
           example: ok
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+    Library:
+      type: object
+      required:
+        - id
+        - name
+        - path
+        - mediaType
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        path:
+          type: string
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LibraryCreate:
+      type: object
+      required:
+        - name
+        - path
+        - mediaType
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+
+    ScanEntry:
+      type: object
+      required:
+        - name
+        - path
+        - isDirectory
+        - size
+        - modifiedAt
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+          description: Relative path within the library
+        isDirectory:
+          type: boolean
+        size:
+          type: integer
+          format: int64
+        modifiedAt:
+          type: string
+          format: date-time
+
+    ScanResponse:
+      type: object
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanEntry"
+
+    BrowseResponse:
+      type: object
+      required:
+        - path
+        - entries
+      properties:
+        path:
+          type: string
+          description: The absolute path that was browsed
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanEntry"
