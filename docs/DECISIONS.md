@@ -208,3 +208,15 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: Completed and failed jobs are now persisted to a `job_records` table in SQLite. The queue reads the max existing ID on startup to continue the sequence. `ListJobs` returns active in-memory jobs plus recent records from DB. Old records are trimmed to keep the last 200.
 
 **Rationale**: Minimal complexity increase for significant UX improvement. Users can see job history across restarts. The 200-record cap prevents unbounded growth.
+
+---
+
+## ADR-018: Dedicated media detail page instead of side panel
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Clicking a media card in the library grid opened a `MatchPanel` side panel — useful for matching, but no room for rich metadata display (poster, overview, genres, ratings, runtime/seasons).
+
+**Decision**: Added a `GET /media/{id}` API endpoint and a dedicated `/media/:id` route (`MediaDetailView.vue`). Library grid cards now navigate to this page. The MatchPanel is rendered on the detail page (triggered by a "Re-match" button) instead of on the library grid.
+
+**Rationale**: A full page provides space for a hero poster, metadata stats grid, genre pills, match source info, and action buttons. The side panel was too constrained for a rich detail view. Moving match/unmatch actions to the detail page keeps the library grid simple (browse-only).
