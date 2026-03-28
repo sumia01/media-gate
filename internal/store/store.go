@@ -40,4 +40,9 @@ type Store interface {
 	SetSetting(setting *Setting) error
 	ListSettings() ([]Setting, error)
 	DeleteSetting(key string) error
+
+	CreateJobRecord(record *JobRecord) error
+	ListJobRecords(limit int) ([]JobRecord, error)
+	DeleteOldJobRecords(keep int) error
+	MaxJobRecordID() (uint, error)
 }

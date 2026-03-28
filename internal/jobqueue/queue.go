@@ -3,6 +3,8 @@ package jobqueue
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	gosync "sync"
 	"time"
 
@@ -49,7 +51,6 @@ type Job struct {
 type Queue struct {
 	mu       gosync.Mutex
 	jobs     map[string]*Job
-	recent   []*Job
 	pending  chan *Job
 	syncSvc  *sync.Service
 	matchSvc *matching.Service
@@ -59,7 +60,7 @@ type Queue struct {
 }
 
 func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSize int) *Queue {
-	return &Queue{
+	q := &Queue{
 		jobs:     make(map[string]*Job),
 		pending:  make(chan *Job, bufSize),
 		syncSvc:  syncSvc,
@@ -67,6 +68,15 @@ func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSi
 		store:    s,
 		done:     make(chan struct{}),
 	}
+
+	maxID, err := s.MaxJobRecordID()
+	if err != nil {
+		slog.Warn("failed to read max job record ID, starting from 0", "error", err)
+	} else {
+		q.seq = int(maxID)
+	}
+
+	return q
 }
 
 func (q *Queue) Start() {
@@ -115,8 +125,15 @@ func (q *Queue) ListJobs() []*Job {
 			result = append(result, j)
 		}
 	}
-	// Then recent completed/failed
-	result = append(result, q.recent...)
+	// Then completed/failed from DB
+	records, err := q.store.ListJobRecords(50)
+	if err != nil {
+		slog.Error("failed to list job records from DB", "error", err)
+		return result
+	}
+	for _, r := range records {
+		result = append(result, recordToJob(&r))
+	}
 	return result
 }
 
@@ -197,10 +214,51 @@ func (q *Queue) finishJob(job *Job, message string, err error) {
 		slog.Info("job completed", "job_id", job.ID, "result", message)
 	}
 
-	// Move to recent, delete from active map
-	delete(q.jobs, job.ID)
-	q.recent = append([]*Job{job}, q.recent...)
-	if len(q.recent) > 20 {
-		q.recent = q.recent[:20]
+	// Persist to DB
+	record := &store.JobRecord{
+		ID:            jobIDToUint(job.ID),
+		Type:          string(job.Type),
+		LibraryID:     job.LibraryID,
+		LibraryName:   job.LibraryName,
+		Status:        string(job.Status),
+		ResultMessage: message,
+		Error:         job.Error,
+		CreatedAt:     job.CreatedAt,
+		StartedAt:     job.StartedAt,
+		CompletedAt:   job.CompletedAt,
 	}
+	if dbErr := q.store.CreateJobRecord(record); dbErr != nil {
+		slog.Error("failed to persist job record", "job_id", job.ID, "error", dbErr)
+	} else {
+		if trimErr := q.store.DeleteOldJobRecords(200); trimErr != nil {
+			slog.Warn("failed to trim old job records", "error", trimErr)
+		}
+	}
+
+	// Remove from active map
+	delete(q.jobs, job.ID)
+}
+
+func recordToJob(r *store.JobRecord) *Job {
+	j := &Job{
+		ID:          fmt.Sprintf("job_%d", r.ID),
+		Type:        JobType(r.Type),
+		LibraryID:   r.LibraryID,
+		LibraryName: r.LibraryName,
+		Status:      JobStatus(r.Status),
+		Error:       r.Error,
+		CreatedAt:   r.CreatedAt,
+		StartedAt:   r.StartedAt,
+		CompletedAt: r.CompletedAt,
+	}
+	if r.ResultMessage != "" {
+		j.Progress = &JobProgress{Message: r.ResultMessage}
+	}
+	return j
+}
+
+func jobIDToUint(id string) uint {
+	s := strings.TrimPrefix(id, "job_")
+	n, _ := strconv.ParseUint(s, 10, 64)
+	return uint(n)
 }

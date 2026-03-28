@@ -51,3 +51,16 @@ type Setting struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+type JobRecord struct {
+	ID            uint   `gorm:"primarykey"`
+	Type          string `gorm:"not null"`
+	LibraryID     uint   `gorm:"not null;index"`
+	LibraryName   string `gorm:"not null"`
+	Status        string `gorm:"not null"`
+	ResultMessage string
+	Error         string
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	CompletedAt   *time.Time
+}
