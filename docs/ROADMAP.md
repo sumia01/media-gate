@@ -74,7 +74,7 @@
 - [x] SeasonMonitor model for per-season monitoring
 - [ ] Quality profile UI (list/create/edit)
 - [ ] Multi-copy handling (same media in different qualities)
-- [ ] Series episode tracking (which seasons/episodes are present/missing)
+- [x] Series episode tracking (which seasons/episodes are present/missing)
 - [ ] Season bundles vs standalone episodes vs complete series downloads
 - [ ] Request approval / auto-approve rules
 - [ ] User management (if multi-user)

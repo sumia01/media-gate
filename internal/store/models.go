@@ -82,6 +82,19 @@ type SeasonMonitor struct {
 	UpdatedAt    time.Time
 }
 
+type Episode struct {
+	ID            uint   `gorm:"primarykey"`
+	MediaItemID   uint   `gorm:"not null;index;uniqueIndex:idx_episode_unique"`
+	SeasonNumber  int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
+	EpisodeNumber int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
+	Title         string
+	Overview      string
+	AirDate       string
+	Runtime       *int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type Setting struct {
 	Key       string `gorm:"primarykey"`
 	Value     string `gorm:"not null"`

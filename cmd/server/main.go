@@ -50,7 +50,7 @@ func main() {
 	queue.Start()
 	defer queue.Stop()
 
-	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, posterDir)
+	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, syncSvc, posterDir)
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()

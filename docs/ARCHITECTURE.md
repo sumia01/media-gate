@@ -52,11 +52,12 @@ media-gate/
 │   ├── api/v1/          # Generated oapi-codegen server + handlers (versioned)
 │   ├── config/          # koanf configuration loading (nested struct groups)
 │   ├── library/         # Library service (CRUD, path validation, folder browsing)
-│   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
+│   ├── sync/            # Sync service (per-file scanning, folder grouping, resync)
 │   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Setting, JobRecord)
+│   ├── fileparse/       # Filename parser (resolution, source type, season/episode extraction)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, Episode, QualityProfile, SeasonMonitor, Setting, JobRecord)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client
 │   │   └── tvdb/        # TVDB API v4 client (JWT auth)
@@ -96,6 +97,7 @@ media-gate/
 | `Library` | `libraries` | A media library (name, path, mediaType: movie/series, optional quality profile) |
 | `MediaItem` | `media_items` | A logical media entry — either synced from disk (source: disk) or manually requested (source: request). Links to quality profile and tracks monitor-new-seasons preference. |
 | `MediaFile` | `media_files` | A physical file/folder on disk, linked to a MediaItem. Tracks path, fileName, size, resolution, sourceType, and optional season/episode numbers. |
+| `Episode` | `episodes` | Expected episode from TMDB/TVDB for a series MediaItem. Cross-referenced against MediaFiles to determine present/missing episodes. |
 | `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview, credits) |
 | `QualityProfile` | `quality_profiles` | Download quality preferences (resolutions, sources, exclude tags). Assignable to Library or MediaItem. |
 | `SeasonMonitor` | `season_monitors` | Per-season monitoring toggle for series MediaItems (unique per media item + season number) |
@@ -116,9 +118,9 @@ HTTP Request
 ```
 
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
-- **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB MediaFiles to add/remove entries. Creates a MediaItem + MediaFile per folder; cleans up orphaned MediaItems with zero files.
+- **sync.Service** — reads a library's directory, walks each media folder for video files (`.mkv`, `.mp4`, etc.), parses filenames for resolution/source/season/episode via the `fileparse` package. Supports three series layouts: season subfolders, flat mixed episodes, and split-season folders (grouped into one MediaItem). Creates MediaItem + MediaFile records per video file; detects removals; supports single-item resync.
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
-- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata
+- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
-- **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits (`append_to_response`), test connection
-- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get extended details with characters, test connection
+- **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits (`append_to_response`), get TV season episodes, test connection
+- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get extended details with characters, get series episodes by season, test connection

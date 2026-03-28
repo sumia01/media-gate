@@ -291,3 +291,44 @@ The sync service now creates a MediaFile alongside each MediaItem when scanning 
 **Decision**: Store credits as a JSON string field (`Credits`) on `MediaMetadata`, same pattern as `Genres`. A unified `CreditPerson` struct (name, role, type, image, order) normalizes both TMDB and TVDB data. TMDB credits are fetched via `append_to_response` (no extra API call). TVDB credits come from the `/series/{id}/extended` endpoint. Credits are capped at 10 cast + 5 key crew per item.
 
 **Rationale**: JSON-in-column avoids a separate credits table and join queries for what is display-only data. The unified struct hides source differences from the API and frontend. The cap keeps storage and UI reasonable — full filmographies aren't useful for a media manager. Using `append_to_response` (TMDB) and switching to the extended endpoint (TVDB) avoids additional API calls per item.
+
+---
+
+## ADR-024: Per-file scanning with filename parsing
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: The sync service previously created one MediaFile per top-level folder with no quality/resolution/source parsing and no season/episode extraction. Users need to see individual video files with their quality metadata, and series need episode-level tracking.
+
+**Decision**: A standalone `fileparse` package extracts resolution (2160p/1080p/720p/480p), source type (bluray/webdl/webrip/hdtv/dvdrip), and season/episode numbers from filenames using regex. The sync service now walks media folders for actual video files (`.mkv`, `.mp4`, `.avi`, `.ts`, `.wmv`, `.flv`), creating one MediaFile per video file instead of per folder.
+
+**Rationale**: Regex-based parsing is fast, dependency-free, and covers the most common naming conventions in media libraries (`S01E03`, `1x03`, `1080p`, `BluRay`, etc.). The `fileparse` package has no internal dependencies, making it easy to test and reuse.
+
+---
+
+## ADR-025: Three series folder layouts with split-season grouping
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Series libraries can have three different folder structures: (1) show folder with season subfolders, (2) show folder with flat mixed episodes from multiple seasons, and (3) multiple top-level folders per season (e.g., "Breaking Bad Season 1", "Breaking Bad Season 2"). All three need to produce correct MediaItems with properly tagged MediaFiles.
+
+**Decision**: The sync service detects and handles all three layouts:
+- **Standard**: Season subfolders (`Season 01/`, `S1/`) are detected via regex; files inside inherit the subfolder's season number as fallback if the filename lacks S##E## patterns.
+- **Flat**: Video files directly in the show folder; season/episode extracted purely from filenames.
+- **Split-season**: Top-level folders with season suffixes (e.g., "ShowName Season 2") are grouped by stripping the suffix to produce a canonical name. All folders in a group share one MediaItem.
+
+The grouping logic (`groupFolders`) only activates for series libraries. Movie libraries treat each folder independently.
+
+**Rationale**: All three layouts are common in real media libraries. Grouping split-season folders avoids duplicate MediaItems for the same series, which would break matching, episode tracking, and the user experience.
+
+---
+
+## ADR-026: Episode model as proper table (not JSON)
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Series need episode-level tracking to show which episodes are present on disk and which are missing. Episodes come from TMDB/TVDB and are cross-referenced against MediaFiles.
+
+**Decision**: Episodes are stored in a dedicated `episodes` table with a composite unique index on `(media_item_id, season_number, episode_number)`. The matching service fetches episode lists from TMDB (`GET /tv/{id}/season/{n}`) or TVDB (`GET /series/{id}/episodes/default?season={n}`) and creates Episode records. The `GET /media/{id}/episodes` endpoint groups episodes by season and annotates each with a `hasFile` flag computed by cross-referencing against MediaFiles.
+
+**Rationale**: A proper table (vs JSON-in-column like credits/genres) is necessary because episodes are cross-referenced against MediaFiles, queried per-season, potentially hundreds per series, and updated independently. The `hasFile` flag is computed at query time rather than stored, keeping it always in sync with the actual files on disk.
