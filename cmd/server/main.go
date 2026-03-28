@@ -14,6 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/logging"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/sync"
 )
@@ -44,7 +45,7 @@ func main() {
 	queue.Start()
 	defer queue.Stop()
 
-	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue)
+	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settings.NewService(db))
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()

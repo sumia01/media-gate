@@ -13,7 +13,7 @@ const staticTop = [
 
 const staticBottom = [
   { icon: '⛁', label: 'Libraries', to: '/libraries' },
-  { icon: '⚙', label: 'Settings', to: '/' },
+  { icon: '⚙', label: 'Settings', to: '/settings' },
 ]
 
 function mediaTypeIcon(type: string) {

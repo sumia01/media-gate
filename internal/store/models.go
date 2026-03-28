@@ -23,3 +23,11 @@ type MediaItem struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
+
+type Setting struct {
+	Key       string `gorm:"primarykey"`
+	Value     string `gorm:"not null"`
+	Sensitive bool   `gorm:"not null;default:false"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
