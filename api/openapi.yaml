@@ -271,6 +271,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /media/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getMediaItem
+      summary: Get a media item by ID
+      responses:
+        "200":
+          description: Media item found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+        "404":
+          description: Media item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /media/{id}/search:
     parameters:
       - name: id
