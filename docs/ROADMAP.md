@@ -36,12 +36,15 @@
 - [x] Auto-reload media items when library sync completes (per-library callback)
 - [x] Cascade delete media items when library is deleted
 
-## Phase 1: Core Media Management ⬜
+## Phase 1a: TMDB/TVDB Integration & Settings ✅
 - [x] TMDB client — API v3 integration (search movie/TV, get details, test connection)
 - [x] TVDB client — API v4 integration (JWT auth, search series, get details, test connection)
 - [x] Settings system — DB-backed settings with sensitive value masking, Settings UI
 - [x] Connection test — test API keys on-the-fly (unsaved) or from saved settings
-- [ ] Media matching — link MediaItems to TMDB entries (status: new → matched)
+- [x] Media matching — auto-match MediaItems to TMDB/TVDB entries, manual match UI
+- [x] Job history persistence — completed/failed jobs stored in SQLite (survives restarts)
+
+## Phase 1b: Core Media Management ⬜
 - [ ] Rich media detail page (poster, overview, ratings, cast)
 - [ ] Add/remove media to watchlist
 

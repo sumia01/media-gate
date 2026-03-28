@@ -22,9 +22,10 @@ media-gate/
 │   ├── config/          # koanf configuration loading
 │   ├── library/         # Library service (CRUD, path validation, folder browsing)
 │   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
-│   ├── jobqueue/        # In-memory job queue (single worker goroutine)
+│   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
+│   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting, JobRecord)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client (search, get, test)
 │   │   └── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
@@ -94,4 +95,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), and **Phase 1a** (TMDB/TVDB integration & settings UI). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), and **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.

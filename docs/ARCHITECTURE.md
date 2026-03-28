@@ -52,9 +52,10 @@ media-gate/
 │   ├── config/          # koanf configuration loading (nested struct groups)
 │   ├── library/         # Library service (CRUD, path validation, folder browsing)
 │   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
-│   ├── jobqueue/        # In-memory job queue (single worker goroutine)
+│   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
+│   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting, JobRecord)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client
 │   │   └── tvdb/        # TVDB API v4 client (JWT auth)
@@ -93,7 +94,9 @@ media-gate/
 |-------|-------|-------------|
 | `Library` | `libraries` | A media library (name, path, mediaType: movie/series) |
 | `MediaItem` | `media_items` | A folder within a library (title, year, status, FK to library) |
+| `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
+| `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
 
 ## Backend Service Layer
 
@@ -103,13 +106,15 @@ HTTP Request
     → library.Service (CRUD, path validation, folder browsing)
     → settings.Service (settings CRUD, masking, TMDB/TVDB connection tests)
     → store.Store (GORM → SQLite/Postgres)
-    → jobqueue.Queue (enqueue background work)
+    → jobqueue.Queue (enqueue background work, persist history to SQLite)
       → sync.Service (read disk, diff DB, create/remove MediaItems)
+      → matching.Service (auto-match MediaItems to TMDB/TVDB)
 ```
 
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
 - **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB to add/remove MediaItems
-- **jobqueue.Queue** — in-memory single-worker queue; prevents duplicate jobs per library; keeps 20 recent completed jobs for UI display
+- **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
+- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get details, test connection
