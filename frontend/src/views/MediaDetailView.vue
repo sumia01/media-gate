@@ -24,6 +24,7 @@ const loading = ref(false)
 const error = ref('')
 const showMatchPanel = ref(false)
 const resyncing = ref(false)
+const filesExpanded = ref(false)
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
@@ -453,51 +454,60 @@ watch(() => route.params.id, loadAll)
 
       <!-- Files section -->
       <div class="mt-8">
-        <div class="flex items-center gap-3 mb-4">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Files</h2>
+        <button
+          class="flex items-center gap-3 group cursor-pointer"
+          @click="filesExpanded = !filesExpanded"
+        >
+          <span
+            class="text-gray-500 text-xs transition-transform duration-200"
+            :class="{ 'rotate-90': filesExpanded }"
+          >&#9654;</span>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 group-hover:text-gray-400 transition-colors duration-200">Files</h2>
           <span
             v-if="files.length"
             class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
           >
             {{ files.length }}
           </span>
-        </div>
+        </button>
 
-        <div v-if="!files.length" class="text-sm text-gray-500">No files found.</div>
+        <div v-if="filesExpanded" class="mt-4">
+          <div v-if="!files.length" class="text-sm text-gray-500">No files found.</div>
 
-        <div v-else class="space-y-2">
-          <div
-            v-for="file in files"
-            :key="file.id"
-            class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20"
-          >
-            <div class="flex items-start justify-between gap-4">
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-gray-200 truncate">{{ file.fileName }}</p>
-                <p class="text-xs text-gray-500 font-mono truncate mt-0.5">{{ file.path }}</p>
-              </div>
-              <div class="flex items-center gap-2 flex-shrink-0">
-                <span
-                  v-if="file.seasonNumber != null"
-                  class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-fuchsia-600/20 text-fuchsia-300"
-                >
-                  S{{ String(file.seasonNumber).padStart(2, '0') }}E{{ String(file.episodeNumber ?? 0).padStart(2, '0') }}
-                </span>
-                <span
-                  v-if="file.resolution"
-                  class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
-                >
-                  {{ file.resolution }}
-                </span>
-                <span
-                  v-if="file.sourceType"
-                  class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-600/20 text-sky-300"
-                >
-                  {{ file.sourceType }}
-                </span>
-                <span v-if="file.size" class="text-xs text-gray-500">
-                  {{ formatSize(file.size) }}
-                </span>
+          <div v-else class="space-y-2">
+            <div
+              v-for="file in files"
+              :key="file.id"
+              class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-gray-200 truncate">{{ file.fileName }}</p>
+                  <p class="text-xs text-gray-500 font-mono truncate mt-0.5">{{ file.path }}</p>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <span
+                    v-if="file.seasonNumber != null"
+                    class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-fuchsia-600/20 text-fuchsia-300"
+                  >
+                    S{{ String(file.seasonNumber).padStart(2, '0') }}E{{ String(file.episodeNumber ?? 0).padStart(2, '0') }}
+                  </span>
+                  <span
+                    v-if="file.resolution"
+                    class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
+                  >
+                    {{ file.resolution }}
+                  </span>
+                  <span
+                    v-if="file.sourceType"
+                    class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-600/20 text-sky-300"
+                  >
+                    {{ file.sourceType }}
+                  </span>
+                  <span v-if="file.size" class="text-xs text-gray-500">
+                    {{ formatSize(file.size) }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
