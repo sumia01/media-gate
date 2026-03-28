@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
 import { useJobQueue } from '@/composables/useJobQueue'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import AddMediaSearch from '@/components/media/AddMediaSearch.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
@@ -11,12 +13,24 @@ type MediaItem = components['schemas']['MediaItem']
 const route = useRoute()
 const router = useRouter()
 const { jobs, triggerSync, triggerMatch, hasActiveJob, onJobDone } = useJobQueue()
+const { searchOpen, closeSearch } = useGlobalSearch()
 
 const library = ref<Library | null>(null)
 const items = ref<MediaItem[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
+const showAddSearch = ref(false)
+
+// Sync global search bar with local add-media panel
+watch(searchOpen, (open) => {
+  if (open) showAddSearch.value = true
+})
+
+function closeAddSearch() {
+  showAddSearch.value = false
+  closeSearch()
+}
 
 const isSyncingThisLibrary = computed(() =>
   library.value
@@ -98,6 +112,10 @@ function navigateToMedia(item: MediaItem) {
   router.push({ name: 'media-detail', params: { id: item.id } })
 }
 
+function handleMediaAdded() {
+  if (library.value) fetchMedia(library.value.id)
+}
+
 // Reload media items when this library's jobs finish
 const removeJobDoneListener = onJobDone((libraryId, jobType) => {
   if (library.value && library.value.id === libraryId) {
@@ -127,6 +145,13 @@ watch(() => route.params.id, loadAll)
       </div>
       <div class="flex items-center gap-3">
         <span v-if="library" class="text-xs text-gray-500 font-mono">{{ library.path }}</span>
+        <button
+          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
+          @click="showAddSearch = true"
+        >
+          <span class="text-base leading-none">+</span>
+          Add
+        </button>
         <button
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="isSyncingThisLibrary"
@@ -187,13 +212,13 @@ watch(() => route.params.id, loadAll)
           <!-- Poster -->
           <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
             <img
-              v-if="item.status === 'matched'"
+              v-if="item.status === 'matched' || item.status === 'requested'"
               :src="posterUrl(item.id)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span v-if="item.status !== 'matched'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
+            <span v-if="item.status !== 'matched' && item.status !== 'requested'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
           </div>
           <!-- Info -->
           <div class="p-3">
@@ -206,6 +231,7 @@ watch(() => route.params.id, loadAll)
                   'bg-emerald-600/20 text-emerald-300': item.status === 'matched',
                   'bg-yellow-600/20 text-yellow-300': item.status === 'new',
                   'bg-red-600/20 text-red-300': item.status === 'missing',
+                  'bg-sky-600/20 text-sky-300': item.status === 'requested',
                 }"
               >
                 {{ item.status }}
@@ -216,5 +242,15 @@ watch(() => route.params.id, loadAll)
       </div>
     </div>
 
+    <!-- Add Media Search -->
+    <Teleport to="body">
+      <AddMediaSearch
+        v-if="showAddSearch && library"
+        :library-id="library.id"
+        :media-type="library.mediaType"
+        @added="handleMediaAdded"
+        @close="closeAddSearch"
+      />
+    </Teleport>
   </div>
 </template>

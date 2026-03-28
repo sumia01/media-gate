@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useJobQueue } from '@/composables/useJobQueue'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
 const { jobs, hasActiveJob } = useJobQueue()
+const { openSearch } = useGlobalSearch()
 const showPanel = ref(false)
 
 function statusColor(status: string) {
@@ -30,13 +32,12 @@ function statusIcon(status: string) {
   <header class="h-16 flex items-center gap-4 px-6 flex-shrink-0 sticky top-0 z-10 bg-[#0c0f1a]/80 backdrop-blur-md border-b border-violet-900/20">
     <!-- Search -->
     <div class="flex-1 max-w-2xl">
-      <div class="relative flex items-center border rounded-lg bg-[#161b2e] border-violet-800/30 focus-within:border-violet-500/50 transition-colors duration-200">
+      <div
+        class="relative flex items-center border rounded-lg bg-[#161b2e] border-violet-800/30 hover:border-violet-500/50 transition-colors duration-200 cursor-pointer"
+        @click="openSearch"
+      >
         <span class="pl-3 text-gray-500 text-sm">&#x2315;</span>
-        <input
-          type="text"
-          placeholder="Search movies & TV..."
-          class="w-full bg-transparent py-2.5 px-3 text-sm text-gray-300 placeholder-gray-600 outline-none"
-        />
+        <span class="w-full py-2.5 px-3 text-sm text-gray-600 select-none">Search movies &amp; TV...</span>
       </div>
     </div>
 

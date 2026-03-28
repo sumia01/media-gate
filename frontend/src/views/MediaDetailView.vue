@@ -83,6 +83,16 @@ async function handleUnmatch() {
   }
 }
 
+async function handleDelete() {
+  if (!item.value) return
+  const { error: err } = await client.DELETE('/media/{id}', {
+    params: { path: { id: item.value.id } },
+  })
+  if (!err && library.value) {
+    router.replace({ name: 'library-detail', params: { id: library.value.id } })
+  }
+}
+
 function openMatchPanel() {
   showMatchPanel.value = true
 }
@@ -145,13 +155,13 @@ watch(() => route.params.id, loadAll)
         <div class="flex-shrink-0 w-[300px]">
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
-              v-if="item.status === 'matched'"
+              v-if="item.status === 'matched' || item.status === 'requested'"
               :src="posterUrl(item.id)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span v-if="item.status !== 'matched'" class="text-6xl text-gray-600">
+            <span v-if="item.status !== 'matched' && item.status !== 'requested'" class="text-6xl text-gray-600">
               {{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}
             </span>
           </div>
@@ -181,6 +191,7 @@ watch(() => route.params.id, loadAll)
                 'bg-emerald-600/20 text-emerald-300': item.status === 'matched',
                 'bg-yellow-600/20 text-yellow-300': item.status === 'new',
                 'bg-red-600/20 text-red-300': item.status === 'missing',
+                'bg-sky-600/20 text-sky-300': item.status === 'requested',
               }"
             >
               {{ item.status }}
@@ -260,6 +271,13 @@ watch(() => route.params.id, loadAll)
               @click="handleUnmatch"
             >
               Unmatch
+            </button>
+            <button
+              v-if="item.source === 'request'"
+              class="px-4 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors duration-200"
+              @click="handleDelete"
+            >
+              Delete
             </button>
           </div>
         </div>

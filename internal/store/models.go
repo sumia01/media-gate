@@ -12,13 +12,14 @@ type Library struct {
 }
 
 type MediaItem struct {
-	ID         uint   `gorm:"primarykey"`
-	LibraryID  uint   `gorm:"not null;index"`
-	Title      string `gorm:"not null"`
-	FolderName string `gorm:"not null"`
-	Path       string `gorm:"not null;uniqueIndex"`
-	MediaType  string `gorm:"not null"`
-	Status     string `gorm:"not null;default:new"`
+	ID         uint    `gorm:"primarykey"`
+	LibraryID  uint    `gorm:"not null;index"`
+	Title      string  `gorm:"not null"`
+	FolderName *string // nil for requested items
+	Path       *string `gorm:"uniqueIndex"` // nil for requested items
+	MediaType  string  `gorm:"not null"`
+	Status     string  `gorm:"not null;default:new"`
+	Source     string  `gorm:"not null;default:disk"`
 	Year       *int
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
