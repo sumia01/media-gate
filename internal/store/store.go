@@ -48,6 +48,7 @@ type Store interface {
 	// MediaFile CRUD
 	CreateMediaFile(file *MediaFile) error
 	GetMediaFile(id uint) (*MediaFile, error)
+	UpdateMediaFile(file *MediaFile) error
 	ListMediaFilesByMediaItem(mediaItemID uint) ([]MediaFile, error)
 	ListMediaFilesByLibrary(libraryID uint) ([]MediaFile, error)
 	DeleteMediaFile(id uint) error
@@ -60,6 +61,11 @@ type Store interface {
 	ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonMonitor, error)
 	UpdateSeasonMonitor(monitor *SeasonMonitor) error
 	DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error
+
+	// Episode CRUD
+	CreateEpisode(episode *Episode) error
+	ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, error)
+	DeleteEpisodesByMediaItem(mediaItemID uint) error
 
 	GetSetting(key string) (*Setting, error)
 	SetSetting(setting *Setting) error

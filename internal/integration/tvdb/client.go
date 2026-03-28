@@ -125,6 +125,33 @@ func (c *Client) GetSeries(id int) (*SeriesDetails, error) {
 	return &resp.Data, nil
 }
 
+func (c *Client) GetSeriesEpisodes(seriesID, seasonNumber int) ([]EpisodeEntry, error) {
+	c.mu.Lock()
+	if c.token == "" {
+		if err := c.authenticate(); err != nil {
+			c.mu.Unlock()
+			return nil, err
+		}
+	}
+	c.mu.Unlock()
+
+	params := url.Values{"season": {strconv.Itoa(seasonNumber)}}
+	body, err := c.get(fmt.Sprintf("/series/%d/episodes/default", seriesID), params)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Data struct {
+			Episodes []EpisodeEntry `json:"episodes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Data.Episodes, nil
+}
+
 func (c *Client) get(path string, params url.Values) ([]byte, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
@@ -197,4 +224,14 @@ type SeriesDetails struct {
 type Status struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+type EpisodeEntry struct {
+	ID           int    `json:"id"`
+	Number       int    `json:"number"`
+	SeasonNumber int    `json:"seasonNumber"`
+	Name         string `json:"name"`
+	Overview     string `json:"overview"`
+	Aired        string `json:"aired"`
+	Runtime      int    `json:"runtime"`
 }

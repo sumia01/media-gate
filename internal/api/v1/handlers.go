@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/sumia01/media-gate/internal/jobqueue"
@@ -15,6 +16,7 @@ import (
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
+	"github.com/sumia01/media-gate/internal/sync"
 )
 
 // Ensure Handlers implements the generated StrictServerInterface.
@@ -26,11 +28,12 @@ type Handlers struct {
 	queue     *jobqueue.Queue
 	settings  *settings.Service
 	matchSvc  *matching.Service
+	syncSvc   *sync.Service
 	posterDir string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, posterDir string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, posterDir: posterDir}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *sync.Service, posterDir string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, posterDir: posterDir}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {
@@ -144,6 +147,8 @@ func (h *Handlers) DeleteLibrary(_ context.Context, req DeleteLibraryRequestObje
 	}
 	for _, item := range items {
 		_ = h.store.DeleteMediaFilesByMediaItem(item.ID)
+		_ = h.store.DeleteEpisodesByMediaItem(item.ID)
+		_ = h.store.DeleteMediaMetadataByMediaItem(item.ID)
 	}
 
 	if err := h.store.DeleteMediaItemsByLibrary(id); err != nil {
@@ -389,9 +394,10 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 		}, nil
 	}
 
-	// Delete media files, metadata, and poster
+	// Delete media files, metadata, episodes, and poster
 	_ = h.store.DeleteMediaFilesByMediaItem(item.ID)
 	_ = h.store.DeleteMediaMetadataByMediaItem(item.ID)
+	_ = h.store.DeleteEpisodesByMediaItem(item.ID)
 
 	// Delete poster file
 	posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
@@ -598,6 +604,32 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
+// --- Resync handler ---
+
+func (h *Handlers) ResyncMediaItem(_ context.Context, req ResyncMediaItemRequestObject) (ResyncMediaItemResponseObject, error) {
+	_, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ResyncMediaItem404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	updated, added, removed, err := h.syncSvc.ResyncMediaItem(uint(req.Id))
+	if err != nil {
+		return nil, err
+	}
+
+	return ResyncMediaItem200JSONResponse{
+		Updated: updated,
+		Added:   added,
+		Removed: removed,
+	}, nil
+}
+
 // --- Media File handlers ---
 
 func (h *Handlers) ListMediaFiles(_ context.Context, req ListMediaFilesRequestObject) (ListMediaFilesResponseObject, error) {
@@ -622,7 +654,128 @@ func (h *Handlers) ListMediaFiles(_ context.Context, req ListMediaFilesRequestOb
 		apiFiles[i] = mediaFileToAPI(&files[i])
 	}
 
+	// Sort by season number, then episode number, then filename
+	sort.Slice(apiFiles, func(i, j int) bool {
+		si := derefInt(apiFiles[i].SeasonNumber)
+		sj := derefInt(apiFiles[j].SeasonNumber)
+		if si != sj {
+			return si < sj
+		}
+		ei := derefInt(apiFiles[i].EpisodeNumber)
+		ej := derefInt(apiFiles[j].EpisodeNumber)
+		if ei != ej {
+			return ei < ej
+		}
+		return apiFiles[i].FileName < apiFiles[j].FileName
+	})
+
 	return ListMediaFiles200JSONResponse{Files: apiFiles}, nil
+}
+
+// --- Episode handlers ---
+
+func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesRequestObject) (ListMediaEpisodesResponseObject, error) {
+	itemID := uint(req.Id)
+	_, err := h.store.GetMediaItem(itemID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ListMediaEpisodes404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	episodes, err := h.store.ListEpisodesByMediaItem(itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := h.store.ListMediaFilesByMediaItem(itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	monitors, err := h.store.ListSeasonMonitorsByMediaItem(itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build file presence lookup: "S{season}E{episode}" → true
+	fileLookup := make(map[string]bool)
+	for _, f := range files {
+		if f.SeasonNumber != nil && f.EpisodeNumber != nil {
+			key := fmt.Sprintf("S%dE%d", *f.SeasonNumber, *f.EpisodeNumber)
+			fileLookup[key] = true
+		}
+	}
+
+	// Build monitor lookup: seasonNumber → monitored
+	monitorLookup := make(map[int]bool)
+	for _, m := range monitors {
+		monitorLookup[m.SeasonNumber] = m.Monitored
+	}
+
+	// Group episodes by season
+	seasonMap := make(map[int][]Episode)
+	for _, ep := range episodes {
+		key := fmt.Sprintf("S%dE%d", ep.SeasonNumber, ep.EpisodeNumber)
+		hasFile := fileLookup[key]
+		apiEp := Episode{
+			Id:            int64(ep.ID),
+			MediaItemId:   int64(ep.MediaItemID),
+			SeasonNumber:  ep.SeasonNumber,
+			EpisodeNumber: ep.EpisodeNumber,
+			HasFile:       &hasFile,
+		}
+		if ep.Title != "" {
+			apiEp.Title = &ep.Title
+		}
+		if ep.Overview != "" {
+			apiEp.Overview = &ep.Overview
+		}
+		if ep.AirDate != "" {
+			apiEp.AirDate = &ep.AirDate
+		}
+		if ep.Runtime != nil {
+			apiEp.Runtime = ep.Runtime
+		}
+		seasonMap[ep.SeasonNumber] = append(seasonMap[ep.SeasonNumber], apiEp)
+	}
+
+	// Build sorted season summaries
+	var seasons []SeasonSummary
+	for sn, eps := range seasonMap {
+		available := 0
+		for _, ep := range eps {
+			if ep.HasFile != nil && *ep.HasFile {
+				available++
+			}
+		}
+		monitored, ok := monitorLookup[sn]
+		if !ok {
+			monitored = true // default to monitored
+		}
+		seasons = append(seasons, SeasonSummary{
+			SeasonNumber:      sn,
+			TotalEpisodes:     len(eps),
+			AvailableEpisodes: available,
+			Monitored:         monitored,
+			Episodes:          &eps,
+		})
+	}
+
+	// Sort by season number
+	for i := 0; i < len(seasons); i++ {
+		for j := i + 1; j < len(seasons); j++ {
+			if seasons[j].SeasonNumber < seasons[i].SeasonNumber {
+				seasons[i], seasons[j] = seasons[j], seasons[i]
+			}
+		}
+	}
+
+	return ListMediaEpisodes200JSONResponse{Seasons: seasons}, nil
 }
 
 // --- Media Profile handlers ---
@@ -941,4 +1094,11 @@ func candidateToAPI(c matching.Candidate) MatchCandidate {
 		mc.ExistingMediaId = &id
 	}
 	return mc
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

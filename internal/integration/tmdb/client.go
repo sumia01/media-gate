@@ -92,6 +92,18 @@ func (c *Client) GetTV(id int) (*TVDetails, error) {
 	return &details, nil
 }
 
+func (c *Client) GetTVSeason(seriesID, seasonNumber int) (*TVSeasonDetails, error) {
+	body, err := c.get(fmt.Sprintf("/tv/%d/season/%d", seriesID, seasonNumber))
+	if err != nil {
+		return nil, err
+	}
+	var details TVSeasonDetails
+	if err := json.Unmarshal(body, &details); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &details, nil
+}
+
 func (c *Client) get(path string) ([]byte, error) {
 	return c.getWithParams(path, nil)
 }
@@ -204,4 +216,20 @@ type TVDetails struct {
 	NumberOfSeasons int      `json:"number_of_seasons"`
 	Status          string   `json:"status"`
 	Credits         *Credits `json:"credits,omitempty"`
+}
+
+type TVEpisode struct {
+	ID            int    `json:"id"`
+	EpisodeNumber int    `json:"episode_number"`
+	SeasonNumber  int    `json:"season_number"`
+	Name          string `json:"name"`
+	Overview      string `json:"overview"`
+	AirDate       string `json:"air_date"`
+	Runtime       int    `json:"runtime"`
+}
+
+type TVSeasonDetails struct {
+	ID           int         `json:"id"`
+	SeasonNumber int         `json:"season_number"`
+	Episodes     []TVEpisode `json:"episodes"`
 }

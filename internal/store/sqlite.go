@@ -40,6 +40,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&MediaProfile{},
 		&MediaFile{},
 		&SeasonMonitor{},
+		&Episode{},
 		&Setting{},
 		&JobRecord{},
 	); err != nil {
@@ -306,6 +307,17 @@ func (s *SQLiteStore) GetMediaFile(id uint) (*MediaFile, error) {
 	return &file, nil
 }
 
+func (s *SQLiteStore) UpdateMediaFile(file *MediaFile) error {
+	result := s.db.Save(file)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) ListMediaFilesByMediaItem(mediaItemID uint) ([]MediaFile, error) {
 	var files []MediaFile
 	if err := s.db.Where("media_item_id = ?", mediaItemID).Find(&files).Error; err != nil {
@@ -380,6 +392,24 @@ func (s *SQLiteStore) UpdateSeasonMonitor(monitor *SeasonMonitor) error {
 
 func (s *SQLiteStore) DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error {
 	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&SeasonMonitor{}).Error
+}
+
+// --- Episode ---
+
+func (s *SQLiteStore) CreateEpisode(episode *Episode) error {
+	return s.db.Create(episode).Error
+}
+
+func (s *SQLiteStore) ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, error) {
+	var episodes []Episode
+	if err := s.db.Where("media_item_id = ?", mediaItemID).Order("season_number ASC, episode_number ASC").Find(&episodes).Error; err != nil {
+		return nil, err
+	}
+	return episodes, nil
+}
+
+func (s *SQLiteStore) DeleteEpisodesByMediaItem(mediaItemID uint) error {
+	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&Episode{}).Error
 }
 
 // --- Settings ---

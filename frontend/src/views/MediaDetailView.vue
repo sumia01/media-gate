@@ -5,6 +5,7 @@ import client from '@/api/client'
 import type { components } from '@/api/schema'
 import { useJobQueue } from '@/composables/useJobQueue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
+import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
@@ -22,6 +23,7 @@ const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)
 const error = ref('')
 const showMatchPanel = ref(false)
+const resyncing = ref(false)
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
@@ -134,6 +136,16 @@ function formatSize(bytes: number): string {
   if (mb < 1024) return mb.toFixed(1) + ' MB'
   const gb = mb / 1024
   return gb.toFixed(1) + ' GB'
+}
+
+async function handleResync() {
+  if (!item.value) return
+  resyncing.value = true
+  await client.POST('/media/{id}/resync', {
+    params: { path: { id: item.value.id } },
+  })
+  await fetchFiles(item.value.id)
+  resyncing.value = false
 }
 
 async function handleUnmatch() {
@@ -382,6 +394,14 @@ watch(() => route.params.id, loadAll)
               {{ metadata ? 'Re-match' : 'Match' }}
             </button>
             <button
+              v-if="item.source === 'disk'"
+              class="px-4 py-2 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-sm font-medium transition-colors duration-200"
+              :disabled="resyncing"
+              @click="handleResync"
+            >
+              {{ resyncing ? 'Rescanning...' : 'Rescan Files' }}
+            </button>
+            <button
               v-if="metadata"
               class="px-4 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors duration-200"
               @click="handleUnmatch"
@@ -423,6 +443,13 @@ watch(() => route.params.id, loadAll)
           </div>
         </div>
       </div>
+
+      <!-- Episodes section (series only) -->
+      <EpisodeGrid
+        v-if="item.mediaType === 'series' && metadata"
+        :mediaItemId="item.id"
+        class="mt-8"
+      />
 
       <!-- Files section -->
       <div class="mt-8">
