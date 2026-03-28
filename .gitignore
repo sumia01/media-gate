@@ -13,6 +13,9 @@ frontend/dist/
 internal/api/v1/gen.go
 frontend/src/api/schema.d.ts
 
+# Runtime cache
+.cache/
+
 # Environment
 .env
 
