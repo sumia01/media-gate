@@ -129,13 +129,13 @@ Architecture Decision Records: documenting key choices and their reasoning.
 
 ## ADR-011: In-memory job queue for background tasks
 **Date**: 2026-03-28
-**Status**: Accepted
+**Status**: Amended by ADR-017
 
 **Context**: Library sync can take time (reading disk, diffing DB). It shouldn't block the API request. Need a way to enqueue background work and track progress.
 
-**Decision**: In-memory job queue (`internal/jobqueue/`) with a single worker goroutine, buffered channel, and mutex-guarded state. Jobs are not persisted to DB. The frontend polls `GET /jobs` to track status.
+**Decision**: In-memory job queue (`internal/jobqueue/`) with a single worker goroutine, buffered channel, and mutex-guarded state. The frontend polls `GET /jobs` to track status.
 
-**Rationale**: Simple and sufficient for a single-instance homelab app. No need for Redis, a message broker, or a persistent task table at this stage. If the server restarts, incomplete jobs are lost — acceptable since a re-sync is cheap and idempotent. Can be upgraded to persistent storage later if needed.
+**Rationale**: Simple and sufficient for a single-instance homelab app. No need for Redis or a message broker. Active/pending jobs live in memory; completed job history is persisted to SQLite (see ADR-017).
 
 ---
 
@@ -184,3 +184,27 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: The `POST /settings/test-tmdb` and `POST /settings/test-tvdb` endpoints accept an optional `apiKey` in the request body. If provided, the supplied key is tested directly. If omitted, the backend falls back to the saved key from the database.
 
 **Rationale**: Covers both use cases with a single endpoint: testing a freshly pasted key (before save) and re-testing an already saved key (without the frontend sending the masked value).
+
+---
+
+## ADR-016: TMDB/TVDB auto-match with manual override
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: MediaItems created by sync have a parsed title and year but no metadata. Need to link them to TMDB/TVDB entries for posters, descriptions, and ratings.
+
+**Decision**: A matching service (`internal/matching/`) auto-matches MediaItems during sync by searching TMDB (movies) or TVDB (series) using the parsed folder name. The best result is stored as `MediaMetadata` linked to the MediaItem. Users can also manually search and pick a match from the UI if auto-match is wrong or missing.
+
+**Rationale**: Auto-match handles the common case (well-named folders). Manual match covers edge cases (ambiguous names, wrong matches). The two-step approach keeps the sync fast while giving users full control.
+
+---
+
+## ADR-017: Persist completed job history to SQLite
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Previously, completed/failed jobs were kept in an in-memory slice (max 20). Job history was lost on server restart, making it impossible to see past sync results.
+
+**Decision**: Completed and failed jobs are now persisted to a `job_records` table in SQLite. The queue reads the max existing ID on startup to continue the sequence. `ListJobs` returns active in-memory jobs plus recent records from DB. Old records are trimmed to keep the last 200.
+
+**Rationale**: Minimal complexity increase for significant UX improvement. Users can see job history across restarts. The 200-record cap prevents unbounded growth.
