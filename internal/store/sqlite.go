@@ -23,7 +23,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&Library{}, &MediaItem{}, &Setting{}); err != nil {
+	if err := db.AutoMigrate(&Library{}, &MediaItem{}, &MediaMetadata{}, &Setting{}); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
@@ -95,9 +95,39 @@ func (s *SQLiteStore) CreateMediaItem(item *MediaItem) error {
 	return s.db.Create(item).Error
 }
 
+func (s *SQLiteStore) GetMediaItem(id uint) (*MediaItem, error) {
+	var item MediaItem
+	if err := s.db.First(&item, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (s *SQLiteStore) UpdateMediaItem(item *MediaItem) error {
+	result := s.db.Save(item)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
 	var items []MediaItem
 	if err := s.db.Where("library_id = ?", libraryID).Order("title ASC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
+	var items []MediaItem
+	if err := s.db.Where("library_id = ? AND status = ?", libraryID, "new").Order("title ASC").Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil
@@ -120,6 +150,47 @@ func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (s *SQLiteStore) CreateMediaMetadata(meta *MediaMetadata) error {
+	return s.db.Create(meta).Error
+}
+
+func (s *SQLiteStore) GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error) {
+	var meta MediaMetadata
+	if err := s.db.Where("media_item_id = ?", mediaItemID).First(&meta).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func (s *SQLiteStore) UpdateMediaMetadata(meta *MediaMetadata) error {
+	result := s.db.Save(meta)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteMediaMetadataByMediaItem(mediaItemID uint) error {
+	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&MediaMetadata{}).Error
+}
+
+func (s *SQLiteStore) ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var metas []MediaMetadata
+	if err := s.db.Where("media_item_id IN ?", ids).Find(&metas).Error; err != nil {
+		return nil, err
+	}
+	return metas, nil
 }
 
 func (s *SQLiteStore) GetSetting(key string) (*Setting, error) {

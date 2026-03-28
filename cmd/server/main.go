@@ -14,6 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/logging"
+	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/sync"
@@ -40,15 +41,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	posterDir := ".cache/posters"
+	settingsSvc := settings.NewService(db)
 	syncSvc := sync.NewService(db)
-	queue := jobqueue.New(syncSvc, db, 100)
+	matchSvc := matching.NewService(db, settingsSvc, posterDir)
+
+	queue := jobqueue.New(syncSvc, matchSvc, db, 100)
 	queue.Start()
 	defer queue.Stop()
 
-	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settings.NewService(db))
+	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, posterDir)
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()
+
+	// Poster endpoint — raw binary, not part of generated strict server
+	mux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())
 
 	// Mount generated API routes under /api/v1.
 	apiHandler := apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{

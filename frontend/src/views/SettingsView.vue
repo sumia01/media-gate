@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
 
@@ -12,6 +12,13 @@ const tvdbDirty = ref(false)
 const showTmdbKey = ref(false)
 const showTvdbKey = ref(false)
 
+const primarySource = ref('tmdb')
+const tmdbRateLimit = ref('4')
+const tvdbRateLimit = ref('4')
+const primarySourceDirty = ref(false)
+const tmdbRateLimitDirty = ref(false)
+const tvdbRateLimitDirty = ref(false)
+
 const saving = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -21,6 +28,11 @@ const tmdbTest = ref<{ success: boolean; message: string } | null>(null)
 const tvdbTest = ref<{ success: boolean; message: string } | null>(null)
 const tmdbTesting = ref(false)
 const tvdbTesting = ref(false)
+
+const anyDirty = computed(() =>
+  tmdbDirty.value || tvdbDirty.value ||
+  primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value
+)
 
 async function fetchSettings() {
   loading.value = true
@@ -35,9 +47,15 @@ async function fetchSettings() {
   for (const s of settings) {
     if (s.key === 'tmdb_api_key') tmdbKey.value = s.value
     if (s.key === 'tvdb_api_key') tvdbKey.value = s.value
+    if (s.key === 'metadata_primary_source') primarySource.value = s.value
+    if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
+    if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
+  primarySourceDirty.value = false
+  tmdbRateLimitDirty.value = false
+  tvdbRateLimitDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -55,6 +73,15 @@ async function saveSettings() {
   }
   if (tvdbDirty.value && !isMasked(tvdbKey.value)) {
     items.push({ key: 'tvdb_api_key', value: tvdbKey.value })
+  }
+  if (primarySourceDirty.value) {
+    items.push({ key: 'metadata_primary_source', value: primarySource.value })
+  }
+  if (tmdbRateLimitDirty.value) {
+    items.push({ key: 'tmdb_rate_limit', value: tmdbRateLimit.value })
+  }
+  if (tvdbRateLimitDirty.value) {
+    items.push({ key: 'tvdb_rate_limit', value: tvdbRateLimit.value })
   }
 
   if (items.length === 0) {
@@ -78,9 +105,15 @@ async function saveSettings() {
   for (const s of settings) {
     if (s.key === 'tmdb_api_key') tmdbKey.value = s.value
     if (s.key === 'tvdb_api_key') tvdbKey.value = s.value
+    if (s.key === 'metadata_primary_source') primarySource.value = s.value
+    if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
+    if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
+  primarySourceDirty.value = false
+  tmdbRateLimitDirty.value = false
+  tvdbRateLimitDirty.value = false
 }
 
 async function testTmdb() {
@@ -239,11 +272,59 @@ onMounted(fetchSettings)
         </div>
       </div>
 
+      <!-- Metadata section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Metadata</h2>
+
+      <div class="space-y-4">
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Primary source -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Primary Source</label>
+              <select
+                v-model="primarySource"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @change="primarySourceDirty = true"
+              >
+                <option value="tmdb">TMDB</option>
+                <option value="tvdb">TVDB</option>
+              </select>
+            </div>
+
+            <!-- TMDB rate limit -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">TMDB Rate Limit (req/sec)</label>
+              <input
+                v-model="tmdbRateLimit"
+                type="number"
+                min="1"
+                max="40"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="tmdbRateLimitDirty = true"
+              />
+            </div>
+
+            <!-- TVDB rate limit -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">TVDB Rate Limit (req/sec)</label>
+              <input
+                v-model="tvdbRateLimit"
+                type="number"
+                min="1"
+                max="40"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="tvdbRateLimitDirty = true"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Save button -->
       <div class="flex items-center gap-3 mt-6">
         <button
           class="px-5 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="saving || (!tmdbDirty && !tvdbDirty)"
+          :disabled="saving || !anyDirty"
           @click="saveSettings"
         >
           {{ saving ? 'Saving...' : 'Save' }}

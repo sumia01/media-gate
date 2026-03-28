@@ -24,6 +24,26 @@ type MediaItem struct {
 	UpdatedAt  time.Time
 }
 
+type MediaMetadata struct {
+	ID          uint    `gorm:"primarykey"`
+	MediaItemID uint    `gorm:"not null;uniqueIndex"`
+	Source      string  `gorm:"not null"`
+	ExternalID  int     `gorm:"not null"`
+	Title       string  `gorm:"not null"`
+	Overview    string
+	PosterPath  string
+	Genres      string
+	Year        *int
+	Rating      *float64
+	Status      string
+	Runtime     *int
+	Seasons     *int
+	Confidence  float64
+	MatchedAt   time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Setting struct {
 	Key       string `gorm:"primarykey"`
 	Value     string `gorm:"not null"`
