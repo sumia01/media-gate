@@ -4,12 +4,13 @@ import { useRoute } from 'vue-router'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
 import { useJobQueue } from '@/composables/useJobQueue'
+import MatchPanel from '@/components/media/MatchPanel.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
 
 const route = useRoute()
-const { jobs, triggerSync, hasActiveJob, onSyncDone } = useJobQueue()
+const { jobs, triggerSync, triggerMatch, hasActiveJob, onJobDone } = useJobQueue()
 
 const library = ref<Library | null>(null)
 const items = ref<MediaItem[]>([])
@@ -17,15 +18,41 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 
+const selectedItem = ref<MediaItem | null>(null)
+
 const isSyncingThisLibrary = computed(() =>
   library.value
     ? jobs.value.some(
         (j) =>
           j.libraryId === library.value!.id &&
+          j.type === 'sync_library' &&
           (j.status === 'pending' || j.status === 'running'),
       )
     : false,
 )
+
+const isMatchingThisLibrary = computed(() =>
+  library.value
+    ? jobs.value.some(
+        (j) =>
+          j.libraryId === library.value!.id &&
+          j.type === 'match_library' &&
+          (j.status === 'pending' || j.status === 'running'),
+      )
+    : false,
+)
+
+const matchProgress = computed(() => {
+  if (!library.value) return null
+  const job = jobs.value.find(
+    (j) =>
+      j.libraryId === library.value!.id &&
+      j.type === 'match_library' &&
+      j.status === 'running' &&
+      j.progress,
+  )
+  return job?.progress ?? null
+})
 
 async function fetchLibrary(id: number) {
   const { data } = await client.GET('/libraries/{id}', {
@@ -54,21 +81,45 @@ async function handleSync() {
   await triggerSync(library.value.id)
 }
 
+async function handleMatch() {
+  if (!library.value) return
+  await triggerMatch(library.value.id)
+}
+
+function posterUrl(itemId: number): string {
+  return `/api/v1/media/${itemId}/poster`
+}
+
 async function loadAll() {
   const id = Number(route.params.id)
   await fetchLibrary(id)
   await fetchMedia(id)
 }
 
-// Reload media items when this library's sync finishes
-const removeSyncDoneListener = onSyncDone((libraryId) => {
+function openMatchPanel(item: MediaItem) {
+  selectedItem.value = item
+}
+
+function closeMatchPanel() {
+  selectedItem.value = null
+}
+
+async function onMatchDone() {
+  if (library.value) {
+    await fetchMedia(library.value.id)
+  }
+  selectedItem.value = null
+}
+
+// Reload media items when this library's jobs finish
+const removeJobDoneListener = onJobDone((libraryId, jobType) => {
   if (library.value && library.value.id === libraryId) {
     fetchMedia(library.value.id)
   }
 })
 
 onMounted(loadAll)
-onUnmounted(removeSyncDoneListener)
+onUnmounted(removeJobDoneListener)
 watch(() => route.params.id, loadAll)
 </script>
 
@@ -96,6 +147,22 @@ watch(() => route.params.id, loadAll)
         >
           <span class="text-base leading-none" :class="isSyncingThisLibrary ? 'animate-spin' : ''">&#x21bb;</span>
           {{ isSyncingThisLibrary ? 'Syncing...' : 'Sync' }}
+        </button>
+        <button
+          class="flex items-center gap-2 px-4 py-2 rounded-lg border border-violet-600/50 text-violet-300 hover:bg-violet-600/10 text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="isMatchingThisLibrary"
+          @click="handleMatch"
+        >
+          <span class="text-base leading-none" :class="isMatchingThisLibrary ? 'animate-pulse' : ''">&#x2728;</span>
+          <template v-if="isMatchingThisLibrary && matchProgress">
+            Matching {{ matchProgress.current }}/{{ matchProgress.total }}...
+          </template>
+          <template v-else-if="isMatchingThisLibrary">
+            Matching...
+          </template>
+          <template v-else>
+            Match
+          </template>
         </button>
       </div>
     </div>
@@ -127,11 +194,19 @@ watch(() => route.params.id, loadAll)
         <div
           v-for="item in items"
           :key="item.id"
-          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/30 transition-colors duration-200"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/30 transition-colors duration-200 cursor-pointer"
+          @click="openMatchPanel(item)"
         >
-          <!-- Poster placeholder -->
-          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
-            <span class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
+          <!-- Poster -->
+          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
+            <img
+              v-if="item.status === 'matched'"
+              :src="posterUrl(item.id)"
+              :alt="item.title"
+              class="w-full h-full object-cover"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span v-if="item.status !== 'matched'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
           </div>
           <!-- Info -->
           <div class="p-3">
@@ -153,5 +228,13 @@ watch(() => route.params.id, loadAll)
         </div>
       </div>
     </div>
+
+    <!-- Match Panel -->
+    <MatchPanel
+      v-if="selectedItem"
+      :item="selectedItem"
+      @close="closeMatchPanel"
+      @matched="onMatchDone"
+    />
   </div>
 </template>

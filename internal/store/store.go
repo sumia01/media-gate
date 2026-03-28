@@ -22,10 +22,19 @@ type Store interface {
 	DeleteLibrary(id uint) error
 
 	CreateMediaItem(item *MediaItem) error
+	GetMediaItem(id uint) (*MediaItem, error)
+	UpdateMediaItem(item *MediaItem) error
 	ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
+	ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	DeleteMediaItemsByLibrary(libraryID uint) error
 	DeleteMediaItemsByPaths(libraryID uint, paths []string) error
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
+
+	CreateMediaMetadata(meta *MediaMetadata) error
+	GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error)
+	UpdateMediaMetadata(meta *MediaMetadata) error
+	DeleteMediaMetadataByMediaItem(mediaItemID uint) error
+	ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error)
 
 	GetSetting(key string) (*Setting, error)
 	SetSetting(setting *Setting) error

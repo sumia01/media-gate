@@ -3,19 +3,23 @@ import client from '@/api/client'
 import type { components } from '@/api/schema'
 
 type Job = components['schemas']['Job']
-type SyncDoneCallback = (libraryId: number) => void
+type JobDoneCallback = (libraryId: number, jobType: string) => void
 
 const jobs = ref<Job[]>([])
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let subscribers = 0
-const syncDoneListeners = new Set<SyncDoneCallback>()
+const jobDoneListeners = new Set<JobDoneCallback>()
 
-// Track which library IDs had active jobs last poll
-let prevActiveLibraryIds = new Set<number>()
+// Track which library IDs had active jobs last poll (keyed by libId:type)
+let prevActiveKeys = new Set<string>()
 
 const hasActiveJob = computed(() =>
   jobs.value.some((j) => j.status === 'pending' || j.status === 'running'),
 )
+
+function activeKey(libId: number, type_: string) {
+  return `${libId}:${type_}`
+}
 
 async function fetchJobs() {
   const { data } = await client.GET('/jobs')
@@ -23,19 +27,20 @@ async function fetchJobs() {
     jobs.value = data.jobs
   }
 
-  // Detect which libraries just finished syncing
-  const currentActiveIds = new Set<number>()
+  // Detect which libraries just finished a job
+  const currentActiveKeys = new Set<string>()
   for (const j of jobs.value) {
     if ((j.status === 'pending' || j.status === 'running') && j.libraryId) {
-      currentActiveIds.add(j.libraryId)
+      currentActiveKeys.add(activeKey(j.libraryId, j.type))
     }
   }
-  for (const libId of prevActiveLibraryIds) {
-    if (!currentActiveIds.has(libId)) {
-      syncDoneListeners.forEach((cb) => cb(libId))
+  for (const key of prevActiveKeys) {
+    if (!currentActiveKeys.has(key)) {
+      const [libIdStr, jobType] = key.split(':')
+      jobDoneListeners.forEach((cb) => cb(Number(libIdStr), jobType ?? ''))
     }
   }
-  prevActiveLibraryIds = currentActiveIds
+  prevActiveKeys = currentActiveKeys
 }
 
 function startPolling() {
@@ -59,9 +64,8 @@ async function triggerSync(libraryId: number) {
     params: { path: { id: libraryId } },
   })
   if (data) {
-    // Mark this library as active immediately so we detect when it finishes
     if (data.libraryId) {
-      prevActiveLibraryIds.add(data.libraryId)
+      prevActiveKeys.add(activeKey(data.libraryId, data.type))
     }
     await fetchJobs()
     startPolling()
@@ -69,9 +73,23 @@ async function triggerSync(libraryId: number) {
   return data
 }
 
-function onSyncDone(cb: SyncDoneCallback) {
-  syncDoneListeners.add(cb)
-  return () => syncDoneListeners.delete(cb)
+async function triggerMatch(libraryId: number) {
+  const { data } = await client.POST('/libraries/{id}/match', {
+    params: { path: { id: libraryId } },
+  })
+  if (data) {
+    if (data.libraryId) {
+      prevActiveKeys.add(activeKey(data.libraryId, data.type))
+    }
+    await fetchJobs()
+    startPolling()
+  }
+  return data
+}
+
+function onJobDone(cb: JobDoneCallback) {
+  jobDoneListeners.add(cb)
+  return () => jobDoneListeners.delete(cb)
 }
 
 export function useJobQueue() {
@@ -91,6 +109,7 @@ export function useJobQueue() {
     hasActiveJob,
     fetchJobs,
     triggerSync,
-    onSyncDone,
+    triggerMatch,
+    onJobDone,
   }
 }

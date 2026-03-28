@@ -6,6 +6,7 @@ import (
 	gosync "sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/sync"
 )
@@ -13,7 +14,8 @@ import (
 type JobType string
 
 const (
-	JobTypeSyncLibrary JobType = "sync_library"
+	JobTypeSyncLibrary  JobType = "sync_library"
+	JobTypeMatchLibrary JobType = "match_library"
 )
 
 type JobStatus string
@@ -45,23 +47,25 @@ type Job struct {
 }
 
 type Queue struct {
-	mu      gosync.Mutex
-	jobs    map[string]*Job
-	recent  []*Job
-	pending chan *Job
-	syncSvc *sync.Service
-	store   store.Store
-	done    chan struct{}
-	seq     int
+	mu       gosync.Mutex
+	jobs     map[string]*Job
+	recent   []*Job
+	pending  chan *Job
+	syncSvc  *sync.Service
+	matchSvc *matching.Service
+	store    store.Store
+	done     chan struct{}
+	seq      int
 }
 
-func New(syncSvc *sync.Service, s store.Store, bufSize int) *Queue {
+func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSize int) *Queue {
 	return &Queue{
-		jobs:    make(map[string]*Job),
-		pending: make(chan *Job, bufSize),
-		syncSvc: syncSvc,
-		store:   s,
-		done:    make(chan struct{}),
+		jobs:     make(map[string]*Job),
+		pending:  make(chan *Job, bufSize),
+		syncSvc:  syncSvc,
+		matchSvc: matchSvc,
+		store:    s,
+		done:     make(chan struct{}),
 	}
 }
 
@@ -77,10 +81,10 @@ func (q *Queue) Enqueue(typ JobType, libID uint, libName string) (*Job, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Check for existing pending/running job for this library
+	// Check for existing pending/running job of the same type for this library
 	for _, j := range q.jobs {
-		if j.LibraryID == libID && (j.Status == JobStatusPending || j.Status == JobStatusRunning) {
-			return nil, fmt.Errorf("library %d already has an active sync job", libID)
+		if j.LibraryID == libID && j.Type == typ && (j.Status == JobStatusPending || j.Status == JobStatusRunning) {
+			return nil, fmt.Errorf("library %d already has an active %s job", libID, typ)
 		}
 	}
 
@@ -140,14 +144,40 @@ func (q *Queue) execute(job *Job) {
 		return
 	}
 
-	added, removed, err := q.syncSvc.SyncLibrary(lib)
-	if err != nil {
-		q.finishJob(job, "", err)
-		return
-	}
+	switch job.Type {
+	case JobTypeSyncLibrary:
+		added, removed, syncErr := q.syncSvc.SyncLibrary(lib)
+		if syncErr != nil {
+			q.finishJob(job, "", syncErr)
+			return
+		}
+		msg := fmt.Sprintf("added %d, removed %d", added, removed)
+		q.finishJob(job, msg, nil)
 
-	msg := fmt.Sprintf("added %d, removed %d", added, removed)
-	q.finishJob(job, msg, nil)
+		// Auto-enqueue matching after sync
+		if q.matchSvc != nil {
+			if _, enqErr := q.Enqueue(JobTypeMatchLibrary, lib.ID, lib.Name); enqErr != nil {
+				slog.Debug("skipping auto-match enqueue", "reason", enqErr)
+			}
+		}
+
+	case JobTypeMatchLibrary:
+		progressFn := func(current, total int) {
+			q.mu.Lock()
+			job.Progress = &JobProgress{
+				Current: current,
+				Total:   total,
+				Message: fmt.Sprintf("matching %d/%d", current, total),
+			}
+			q.mu.Unlock()
+		}
+		matchErr := q.matchSvc.MatchLibrary(lib, progressFn)
+		if matchErr != nil {
+			q.finishJob(job, "", matchErr)
+			return
+		}
+		q.finishJob(job, "matching complete", nil)
+	}
 }
 
 func (q *Queue) finishJob(job *Job, message string, err error) {

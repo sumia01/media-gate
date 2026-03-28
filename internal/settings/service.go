@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	KeyTMDBApiKey = "tmdb_api_key"
-	KeyTVDBApiKey = "tvdb_api_key"
+	KeyTMDBApiKey           = "tmdb_api_key"
+	KeyTVDBApiKey           = "tvdb_api_key"
+	KeyMetadataPrimarySource = "metadata_primary_source"
+	KeyTMDBRateLimit        = "tmdb_rate_limit"
+	KeyTVDBRateLimit        = "tvdb_rate_limit"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -65,6 +68,14 @@ func (s *Service) Get(key string) (string, error) {
 		return "", err
 	}
 	return setting.Value, nil
+}
+
+func (s *Service) GetWithDefault(key, defaultValue string) string {
+	val, err := s.Get(key)
+	if err != nil {
+		return defaultValue
+	}
+	return val
 }
 
 func (s *Service) TestTMDB(apiKey *string) (bool, string, error) {

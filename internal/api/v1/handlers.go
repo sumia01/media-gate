@@ -3,10 +3,15 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
+	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -15,14 +20,45 @@ import (
 var _ StrictServerInterface = (*Handlers)(nil)
 
 type Handlers struct {
-	lib      *library.Service
-	store    store.Store
-	queue    *jobqueue.Queue
-	settings *settings.Service
+	lib       *library.Service
+	store     store.Store
+	queue     *jobqueue.Queue
+	settings  *settings.Service
+	matchSvc  *matching.Service
+	posterDir string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, posterDir string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, posterDir: posterDir}
+}
+
+func (h *Handlers) PosterHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		id, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", id))
+		info, err := os.Stat(posterPath)
+		if err != nil {
+			http.Error(w, "poster not found", http.StatusNotFound)
+			return
+		}
+
+		f, err := os.Open(posterPath)
+		if err != nil {
+			http.Error(w, "poster not found", http.StatusNotFound)
+			return
+		}
+		defer f.Close()
+
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeContent(w, r, posterPath, info.ModTime(), f)
+	}
 }
 
 func (h *Handlers) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
@@ -199,9 +235,23 @@ func (h *Handlers) ListMediaItems(_ context.Context, req ListMediaItemsRequestOb
 		return nil, err
 	}
 
+	// Batch fetch metadata for all items
+	ids := make([]uint, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+	}
+	metas, err := h.store.ListMediaMetadataByMediaItemIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	metaMap := make(map[uint]*store.MediaMetadata, len(metas))
+	for i := range metas {
+		metaMap[metas[i].MediaItemID] = &metas[i]
+	}
+
 	apiItems := make([]MediaItem, len(items))
 	for i, item := range items {
-		apiItems[i] = mediaItemToAPI(&item)
+		apiItems[i] = mediaItemToAPI(&item, metaMap[item.ID])
 	}
 
 	return ListMediaItems200JSONResponse{
@@ -231,6 +281,128 @@ func (h *Handlers) TriggerSync(_ context.Context, req TriggerSyncRequestObject) 
 	}
 
 	return TriggerSync202JSONResponse(jobToAPI(job)), nil
+}
+
+func (h *Handlers) TriggerMatch(_ context.Context, req TriggerMatchRequestObject) (TriggerMatchResponseObject, error) {
+	lib, err := h.lib.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return TriggerMatch404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "library not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	job, err := h.queue.Enqueue(jobqueue.JobTypeMatchLibrary, lib.ID, lib.Name)
+	if err != nil {
+		return TriggerMatch409JSONResponse{
+			Code:    http.StatusConflict,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return TriggerMatch202JSONResponse(jobToAPI(job)), nil
+}
+
+func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandidatesRequestObject) (SearchMediaCandidatesResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return SearchMediaCandidates404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	query := item.Title
+	if req.Params.Query != nil && *req.Params.Query != "" {
+		query = *req.Params.Query
+	}
+
+	var source string
+	if req.Params.Source != nil {
+		source = string(*req.Params.Source)
+	}
+
+	candidates, err := h.matchSvc.SearchCandidates(query, item.MediaType, item.Year, source)
+	if err != nil {
+		return nil, err
+	}
+
+	apiCandidates := make([]MatchCandidate, len(candidates))
+	for i, c := range candidates {
+		apiCandidates[i] = MatchCandidate{
+			Source:     MatchCandidateSource(c.Source),
+			ExternalId: c.ExternalID,
+			Title:      c.Title,
+			Confidence: float32(c.Confidence),
+		}
+		if c.Overview != "" {
+			apiCandidates[i].Overview = &c.Overview
+		}
+		if c.Year != nil {
+			apiCandidates[i].Year = c.Year
+		}
+		if c.PosterURL != "" {
+			apiCandidates[i].PosterUrl = &c.PosterURL
+		}
+	}
+
+	return SearchMediaCandidates200JSONResponse{Candidates: apiCandidates}, nil
+}
+
+func (h *Handlers) ManualMatch(_ context.Context, req ManualMatchRequestObject) (ManualMatchResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ManualMatch404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if err := h.matchSvc.ManualMatch(item.ID, string(req.Body.Source), req.Body.ExternalId); err != nil {
+		return nil, err
+	}
+
+	// Re-fetch the updated item
+	item, err = h.store.GetMediaItem(item.ID)
+	if err != nil {
+		return nil, err
+	}
+	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
+
+	return ManualMatch200JSONResponse(mediaItemToAPI(item, meta)), nil
+}
+
+func (h *Handlers) UnmatchMedia(_ context.Context, req UnmatchMediaRequestObject) (UnmatchMediaResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UnmatchMedia404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if err := h.matchSvc.Unmatch(item.ID); err != nil {
+		return nil, err
+	}
+
+	item, err = h.store.GetMediaItem(item.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return UnmatchMedia200JSONResponse(mediaItemToAPI(item, nil)), nil
 }
 
 func (h *Handlers) ListJobs(_ context.Context, _ ListJobsRequestObject) (ListJobsResponseObject, error) {
@@ -301,8 +473,8 @@ func libraryToAPI(lib *store.Library) Library {
 	}
 }
 
-func mediaItemToAPI(item *store.MediaItem) MediaItem {
-	return MediaItem{
+func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem {
+	apiItem := MediaItem{
 		Id:         int64(item.ID),
 		LibraryId:  int64(item.LibraryID),
 		Title:      item.Title,
@@ -314,6 +486,47 @@ func mediaItemToAPI(item *store.MediaItem) MediaItem {
 		CreatedAt:  item.CreatedAt,
 		UpdatedAt:  item.UpdatedAt,
 	}
+	if meta != nil {
+		apiMeta := mediaMetadataToAPI(meta)
+		apiItem.Metadata = &apiMeta
+	}
+	return apiItem
+}
+
+func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
+	m := MediaMetadata{
+		Id:         int64(meta.ID),
+		Source:     MediaMetadataSource(meta.Source),
+		ExternalId: meta.ExternalID,
+		Title:      meta.Title,
+		Confidence: float32(meta.Confidence),
+	}
+	if meta.Overview != "" {
+		m.Overview = &meta.Overview
+	}
+	if meta.PosterPath != "" {
+		m.PosterPath = &meta.PosterPath
+	}
+	if meta.Genres != "" {
+		m.Genres = &meta.Genres
+	}
+	if meta.Year != nil {
+		m.Year = meta.Year
+	}
+	if meta.Rating != nil {
+		r := float32(*meta.Rating)
+		m.Rating = &r
+	}
+	if meta.Status != "" {
+		m.Status = &meta.Status
+	}
+	if meta.Runtime != nil {
+		m.Runtime = meta.Runtime
+	}
+	if meta.Seasons != nil {
+		m.Seasons = meta.Seasons
+	}
+	return m
 }
 
 func jobToAPI(j *jobqueue.Job) Job {
