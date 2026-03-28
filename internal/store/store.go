@@ -26,4 +26,9 @@ type Store interface {
 	DeleteMediaItemsByLibrary(libraryID uint) error
 	DeleteMediaItemsByPaths(libraryID uint, paths []string) error
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
+
+	GetSetting(key string) (*Setting, error)
+	SetSetting(setting *Setting) error
+	ListSettings() ([]Setting, error)
+	DeleteSetting(key string) error
 }

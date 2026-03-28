@@ -1,6 +1,6 @@
 # Go
 media-gate
-server
+/server
 *.exe
 *.db
 tmp/

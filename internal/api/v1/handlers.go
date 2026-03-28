@@ -7,6 +7,7 @@ import (
 
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -14,13 +15,14 @@ import (
 var _ StrictServerInterface = (*Handlers)(nil)
 
 type Handlers struct {
-	lib   *library.Service
-	store store.Store
-	queue *jobqueue.Queue
+	lib      *library.Service
+	store    store.Store
+	queue    *jobqueue.Queue
+	settings *settings.Service
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set}
 }
 
 func (h *Handlers) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
@@ -240,6 +242,54 @@ func (h *Handlers) ListJobs(_ context.Context, _ ListJobsRequestObject) (ListJob
 	return ListJobs200JSONResponse{Jobs: apiJobs}, nil
 }
 
+func (h *Handlers) ListSettings(_ context.Context, _ ListSettingsRequestObject) (ListSettingsResponseObject, error) {
+	items, err := h.settings.List()
+	if err != nil {
+		return nil, err
+	}
+	apiSettings := make([]Setting, len(items))
+	for i, s := range items {
+		apiSettings[i] = settingToAPI(&s)
+	}
+	return ListSettings200JSONResponse{Settings: apiSettings}, nil
+}
+
+func (h *Handlers) UpdateSettings(_ context.Context, req UpdateSettingsRequestObject) (UpdateSettingsResponseObject, error) {
+	kvs := make([]settings.KeyValue, len(req.Body.Settings))
+	for i, s := range req.Body.Settings {
+		kvs[i] = settings.KeyValue{Key: s.Key, Value: s.Value}
+	}
+	if err := h.settings.Update(kvs); err != nil {
+		return nil, err
+	}
+
+	items, err := h.settings.List()
+	if err != nil {
+		return nil, err
+	}
+	apiSettings := make([]Setting, len(items))
+	for i, s := range items {
+		apiSettings[i] = settingToAPI(&s)
+	}
+	return UpdateSettings200JSONResponse{Settings: apiSettings}, nil
+}
+
+func (h *Handlers) TestTmdbConnection(_ context.Context, req TestTmdbConnectionRequestObject) (TestTmdbConnectionResponseObject, error) {
+	success, msg, err := h.settings.TestTMDB(req.Body.ApiKey)
+	if err != nil {
+		return nil, err
+	}
+	return TestTmdbConnection200JSONResponse{Success: success, Message: &msg}, nil
+}
+
+func (h *Handlers) TestTvdbConnection(_ context.Context, req TestTvdbConnectionRequestObject) (TestTvdbConnectionResponseObject, error) {
+	success, msg, err := h.settings.TestTVDB(req.Body.ApiKey)
+	if err != nil {
+		return nil, err
+	}
+	return TestTvdbConnection200JSONResponse{Success: success, Message: &msg}, nil
+}
+
 func libraryToAPI(lib *store.Library) Library {
 	return Library{
 		Id:        int64(lib.ID),
@@ -297,4 +347,12 @@ func jobToAPI(j *jobqueue.Job) Job {
 		}
 	}
 	return apiJob
+}
+
+func settingToAPI(s *store.Setting) Setting {
+	return Setting{
+		Key:       s.Key,
+		Value:     s.Value,
+		Sensitive: &s.Sensitive,
+	}
 }

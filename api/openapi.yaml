@@ -259,6 +259,84 @@ paths:
                     items:
                       $ref: "#/components/schemas/Job"
 
+  /settings:
+    get:
+      operationId: listSettings
+      summary: List all settings
+      responses:
+        "200":
+          description: Settings list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - settings
+                properties:
+                  settings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Setting"
+    put:
+      operationId: updateSettings
+      summary: Update settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - settings
+                properties:
+                  settings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Setting"
+
+  /settings/test-tmdb:
+    post:
+      operationId: testTmdbConnection
+      summary: Test TMDB API connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  /settings/test-tvdb:
+    post:
+      operationId: testTvdbConnection
+      summary: Test TVDB API connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
 components:
   schemas:
     HealthResponse:
@@ -465,3 +543,52 @@ components:
         completedAt:
           type: string
           format: date-time
+
+    Setting:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        sensitive:
+          type: boolean
+
+    SettingsUpdate:
+      type: object
+      required:
+        - settings
+      properties:
+        settings:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - value
+            properties:
+              key:
+                type: string
+              value:
+                type: string
+
+    ConnectionTestRequest:
+      type: object
+      required:
+        - apiKey
+      properties:
+        apiKey:
+          type: string
+
+    ConnectionTestResult:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string

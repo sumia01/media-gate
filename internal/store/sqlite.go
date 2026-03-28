@@ -23,7 +23,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&Library{}, &MediaItem{}); err != nil {
+	if err := db.AutoMigrate(&Library{}, &MediaItem{}, &Setting{}); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
@@ -120,4 +120,38 @@ func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (s *SQLiteStore) GetSetting(key string) (*Setting, error) {
+	var setting Setting
+	if err := s.db.First(&setting, "key = ?", key).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &setting, nil
+}
+
+func (s *SQLiteStore) SetSetting(setting *Setting) error {
+	return s.db.Save(setting).Error
+}
+
+func (s *SQLiteStore) ListSettings() ([]Setting, error) {
+	var settings []Setting
+	if err := s.db.Find(&settings).Error; err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
+func (s *SQLiteStore) DeleteSetting(key string) error {
+	result := s.db.Delete(&Setting{}, "key = ?", key)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
