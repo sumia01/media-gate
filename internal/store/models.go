@@ -35,6 +35,7 @@ type MediaMetadata struct {
 	Overview    string
 	PosterPath  string
 	Genres      string
+	Credits     string
 	Year        *int
 	Rating      *float64
 	Status      string

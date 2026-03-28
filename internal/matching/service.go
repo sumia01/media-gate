@@ -413,6 +413,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 			meta.Year = y
 		}
 		meta.Genres = genresToJSON(details.Genres)
+		meta.Credits = tmdbCreditsToJSON(details.Credits)
 	} else {
 		details, err := client.GetTV(externalID)
 		if err != nil {
@@ -430,6 +431,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 			meta.Year = y
 		}
 		meta.Genres = genresToJSON(details.Genres)
+		meta.Credits = tmdbCreditsToJSON(details.Credits)
 	}
 	return nil
 }
@@ -444,13 +446,14 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 	meta.Overview = details.Overview
 	meta.PosterPath = details.Image
 	meta.Status = details.Status.Name
-	if details.NumberOfSeasons > 0 {
-		ns := details.NumberOfSeasons
+	if len(details.Seasons) > 0 {
+		ns := len(details.Seasons)
 		meta.Seasons = &ns
 	}
 	if y := parseYear(details.FirstAired); y != nil {
 		meta.Year = y
 	}
+	meta.Credits = tvdbCharactersToJSON(details.Characters)
 	return nil
 }
 
@@ -503,5 +506,99 @@ func genresToJSON(genres []tmdb.Genre) string {
 		names[i] = g.Name
 	}
 	b, _ := json.Marshal(names)
+	return string(b)
+}
+
+type CreditPerson struct {
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	Type  string `json:"type"`
+	Image string `json:"image,omitempty"`
+	Order int    `json:"order"`
+}
+
+func tmdbCreditsToJSON(credits *tmdb.Credits) string {
+	if credits == nil {
+		return ""
+	}
+	var people []CreditPerson
+
+	// Top 10 cast by order
+	for i, c := range credits.Cast {
+		if i >= 10 {
+			break
+		}
+		people = append(people, CreditPerson{
+			Name:  c.Name,
+			Role:  c.Character,
+			Type:  "cast",
+			Image: c.ProfilePath,
+			Order: c.Order,
+		})
+	}
+
+	// Up to 5 key crew (Director, Writer, Screenplay)
+	keyJobs := map[string]bool{"Director": true, "Writer": true, "Screenplay": true}
+	crewCount := 0
+	for _, c := range credits.Crew {
+		if crewCount >= 5 {
+			break
+		}
+		if !keyJobs[c.Job] {
+			continue
+		}
+		people = append(people, CreditPerson{
+			Name:  c.Name,
+			Role:  c.Job,
+			Type:  "crew",
+			Image: c.ProfilePath,
+			Order: crewCount,
+		})
+		crewCount++
+	}
+
+	if len(people) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(people)
+	return string(b)
+}
+
+func tvdbCharactersToJSON(characters []tvdb.Character) string {
+	if len(characters) == 0 {
+		return ""
+	}
+	var people []CreditPerson
+
+	castTypes := map[string]bool{"Actor": true, "Guest Star": true}
+	crewTypes := map[string]bool{"Director": true, "Writer": true}
+	castCount, crewCount := 0, 0
+
+	for _, c := range characters {
+		if castTypes[c.PeopleType] && castCount < 10 {
+			people = append(people, CreditPerson{
+				Name:  c.PersonName,
+				Role:  c.Name,
+				Type:  "cast",
+				Image: c.PersonImgURL,
+				Order: c.Sort,
+			})
+			castCount++
+		} else if crewTypes[c.PeopleType] && crewCount < 5 {
+			people = append(people, CreditPerson{
+				Name:  c.PersonName,
+				Role:  c.PeopleType,
+				Type:  "crew",
+				Image: c.PersonImgURL,
+				Order: crewCount,
+			})
+			crewCount++
+		}
+	}
+
+	if len(people) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(people)
 	return string(b)
 }

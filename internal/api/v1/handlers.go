@@ -811,6 +811,12 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 	if meta.Seasons != nil {
 		m.Seasons = meta.Seasons
 	}
+	if meta.Credits != "" {
+		var credits []CreditPerson
+		if err := json.Unmarshal([]byte(meta.Credits), &credits); err == nil {
+			m.Credits = &credits
+		}
+	}
 	return m
 }
 

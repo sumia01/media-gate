@@ -279,3 +279,15 @@ Architecture Decision Records: documenting key choices and their reasoning.
 The sync service now creates a MediaFile alongside each MediaItem when scanning disk directories. Removal detection compares MediaFile paths instead of MediaItem paths. Orphaned MediaItems (zero remaining files) are cleaned up.
 
 **Rationale**: Separating logical media from physical files enables: multi-copy support (same movie in 1080p and 4K), episode-level tracking for series, quality-based download decisions, and a clean path for the future download pipeline. The QualityProfile model is CRUD-ready via API; frontend UI is deferred to a later step.
+
+---
+
+## ADR-023: Cast & crew as JSON field on MediaMetadata
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Media detail pages need to show cast and crew. Both TMDB and TVDB provide credits data but in different structures (TMDB: `append_to_response=credits`, TVDB: extended endpoint with `characters` array).
+
+**Decision**: Store credits as a JSON string field (`Credits`) on `MediaMetadata`, same pattern as `Genres`. A unified `CreditPerson` struct (name, role, type, image, order) normalizes both TMDB and TVDB data. TMDB credits are fetched via `append_to_response` (no extra API call). TVDB credits come from the `/series/{id}/extended` endpoint. Credits are capped at 10 cast + 5 key crew per item.
+
+**Rationale**: JSON-in-column avoids a separate credits table and join queries for what is display-only data. The unified struct hides source differences from the API and frontend. The cap keeps storage and UI reasonable — full filmographies aren't useful for a media manager. Using `append_to_response` (TMDB) and switching to the extended endpoint (TVDB) avoids additional API calls per item.
