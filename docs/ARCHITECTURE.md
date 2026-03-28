@@ -36,7 +36,8 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 | Service       | Role                        | Status  |
 |---------------|-----------------------------|---------|
 | qBittorrent   | Torrent download client     | Planned |
-| TMDB / TVDB   | Media metadata              | Planned |
+| TMDB          | Movie & TV metadata (API v3) | Integrated |
+| TVDB          | TV series metadata (API v4)  | Integrated |
 | Indexers       | Torrent/NZB search (Prowlarr replacement) | Planned |
 
 More integrations will be defined incrementally as development progresses.
@@ -52,8 +53,11 @@ media-gate/
 │   ├── library/         # Library service (CRUD, path validation, folder browsing)
 │   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
 │   ├── jobqueue/        # In-memory job queue (single worker goroutine)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem)
-│   ├── integration/     # External service clients (qBittorrent, TMDB, etc.)
+│   ├── settings/        # Settings service (CRUD, masking, connection tests)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting)
+│   ├── integration/
+│   │   ├── tmdb/        # TMDB API v3 client
+│   │   └── tvdb/        # TVDB API v4 client (JWT auth)
 │   └── logging/         # slog setup, handler config
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
@@ -89,6 +93,7 @@ media-gate/
 |-------|-------|-------------|
 | `Library` | `libraries` | A media library (name, path, mediaType: movie/series) |
 | `MediaItem` | `media_items` | A folder within a library (title, year, status, FK to library) |
+| `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 
 ## Backend Service Layer
 
@@ -96,6 +101,7 @@ media-gate/
 HTTP Request
   → api/v1/handlers.go (generated interface, hand-written handlers)
     → library.Service (CRUD, path validation, folder browsing)
+    → settings.Service (settings CRUD, masking, TMDB/TVDB connection tests)
     → store.Store (GORM → SQLite/Postgres)
     → jobqueue.Queue (enqueue background work)
       → sync.Service (read disk, diff DB, create/remove MediaItems)
@@ -104,3 +110,6 @@ HTTP Request
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
 - **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB to add/remove MediaItems
 - **jobqueue.Queue** — in-memory single-worker queue; prevents duplicate jobs per library; keeps 20 recent completed jobs for UI display
+- **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
+- **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details, test connection
+- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get details, test connection
