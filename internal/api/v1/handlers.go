@@ -306,6 +306,22 @@ func (h *Handlers) TriggerMatch(_ context.Context, req TriggerMatchRequestObject
 	return TriggerMatch202JSONResponse(jobToAPI(job)), nil
 }
 
+func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject) (GetMediaItemResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return GetMediaItem404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
+
+	return GetMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
+}
+
 func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandidatesRequestObject) (SearchMediaCandidatesResponseObject, error) {
 	item, err := h.store.GetMediaItem(uint(req.Id))
 	if err != nil {

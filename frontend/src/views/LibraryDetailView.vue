@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
 import { useJobQueue } from '@/composables/useJobQueue'
-import MatchPanel from '@/components/media/MatchPanel.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
 
 const route = useRoute()
+const router = useRouter()
 const { jobs, triggerSync, triggerMatch, hasActiveJob, onJobDone } = useJobQueue()
 
 const library = ref<Library | null>(null)
@@ -17,8 +17,6 @@ const items = ref<MediaItem[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
-
-const selectedItem = ref<MediaItem | null>(null)
 
 const isSyncingThisLibrary = computed(() =>
   library.value
@@ -96,19 +94,8 @@ async function loadAll() {
   await fetchMedia(id)
 }
 
-function openMatchPanel(item: MediaItem) {
-  selectedItem.value = item
-}
-
-function closeMatchPanel() {
-  selectedItem.value = null
-}
-
-async function onMatchDone() {
-  if (library.value) {
-    await fetchMedia(library.value.id)
-  }
-  selectedItem.value = null
+function navigateToMedia(item: MediaItem) {
+  router.push({ name: 'media-detail', params: { id: item.id } })
 }
 
 // Reload media items when this library's jobs finish
@@ -195,7 +182,7 @@ watch(() => route.params.id, loadAll)
           v-for="item in items"
           :key="item.id"
           class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/30 transition-colors duration-200 cursor-pointer"
-          @click="openMatchPanel(item)"
+          @click="navigateToMedia(item)"
         >
           <!-- Poster -->
           <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
@@ -229,12 +216,5 @@ watch(() => route.params.id, loadAll)
       </div>
     </div>
 
-    <!-- Match Panel -->
-    <MatchPanel
-      v-if="selectedItem"
-      :item="selectedItem"
-      @close="closeMatchPanel"
-      @matched="onMatchDone"
-    />
   </div>
 </template>
