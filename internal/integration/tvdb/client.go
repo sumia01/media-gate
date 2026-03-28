@@ -44,7 +44,7 @@ func (c *Client) authenticate() error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return fmt.Errorf("reading login response: %w", err)
 	}
@@ -111,7 +111,7 @@ func (c *Client) GetSeries(id int) (*SeriesDetails, error) {
 	}
 	c.mu.Unlock()
 
-	body, err := c.get(fmt.Sprintf("/series/%d", id), nil)
+	body, err := c.get(fmt.Sprintf("/series/%d/extended", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (c *Client) get(path string, params url.Values) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
@@ -168,14 +168,30 @@ type SeriesResult struct {
 	ImageURL     string `json:"image_url"`
 }
 
+type Character struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	PeopleID     int    `json:"peopleId"`
+	PersonName   string `json:"personName"`
+	PeopleType   string `json:"peopleType"`
+	PersonImgURL string `json:"personImgURL"`
+	Sort         int    `json:"sort"`
+}
+
+type SeasonEntry struct {
+	ID     int `json:"id"`
+	Number int `json:"number"`
+}
+
 type SeriesDetails struct {
-	ID              int    `json:"id"`
-	Name            string `json:"name"`
-	Overview        string `json:"overview"`
-	FirstAired      string `json:"firstAired"`
-	Image           string `json:"image"`
-	NumberOfSeasons int    `json:"seasons"`
-	Status          Status `json:"status"`
+	ID         int           `json:"id"`
+	Name       string        `json:"name"`
+	Overview   string        `json:"overview"`
+	FirstAired string        `json:"firstAired"`
+	Image      string        `json:"image"`
+	Seasons    []SeasonEntry `json:"seasons"`
+	Characters []Character   `json:"characters"`
+	Status     Status        `json:"status"`
 }
 
 type Status struct {

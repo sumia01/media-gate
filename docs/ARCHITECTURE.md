@@ -96,7 +96,7 @@ media-gate/
 | `Library` | `libraries` | A media library (name, path, mediaType: movie/series, optional quality profile) |
 | `MediaItem` | `media_items` | A logical media entry — either synced from disk (source: disk) or manually requested (source: request). Links to quality profile and tracks monitor-new-seasons preference. |
 | `MediaFile` | `media_files` | A physical file/folder on disk, linked to a MediaItem. Tracks path, fileName, size, resolution, sourceType, and optional season/episode numbers. |
-| `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview) |
+| `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview, credits) |
 | `QualityProfile` | `quality_profiles` | Download quality preferences (resolutions, sources, exclude tags). Assignable to Library or MediaItem. |
 | `SeasonMonitor` | `season_monitors` | Per-season monitoring toggle for series MediaItems (unique per media item + season number) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
@@ -120,5 +120,5 @@ HTTP Request
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
 - **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
-- **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details, test connection
-- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get details, test connection
+- **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits (`append_to_response`), test connection
+- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get extended details with characters, test connection

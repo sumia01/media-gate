@@ -69,7 +69,7 @@ func (c *Client) SearchTV(query string, year *int) ([]TVResult, error) {
 }
 
 func (c *Client) GetMovie(id int) (*MovieDetails, error) {
-	body, err := c.get(fmt.Sprintf("/movie/%d", id))
+	body, err := c.getWithParams(fmt.Sprintf("/movie/%d", id), url.Values{"append_to_response": {"credits"}})
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (c *Client) GetMovie(id int) (*MovieDetails, error) {
 }
 
 func (c *Client) GetTV(id int) (*TVDetails, error) {
-	body, err := c.get(fmt.Sprintf("/tv/%d", id))
+	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits"}})
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 }
 
 func readBody(resp *http.Response) ([]byte, error) {
-	var buf [1 << 20]byte // 1MB max
+	var buf [2 << 20]byte // 2MB max
 	n := 0
 	for {
 		nn, err := resp.Body.Read(buf[n:])
@@ -169,16 +169,39 @@ type Genre struct {
 	Name string `json:"name"`
 }
 
+type CastMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	ProfilePath string `json:"profile_path"`
+	Order       int    `json:"order"`
+}
+
+type CrewMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	Department  string `json:"department"`
+	ProfilePath string `json:"profile_path"`
+}
+
+type Credits struct {
+	Cast []CastMember `json:"cast"`
+	Crew []CrewMember `json:"crew"`
+}
+
 type MovieDetails struct {
 	MovieResult
-	Genres  []Genre `json:"genres"`
-	Runtime int     `json:"runtime"`
-	Status  string  `json:"status"`
+	Genres  []Genre  `json:"genres"`
+	Runtime int      `json:"runtime"`
+	Status  string   `json:"status"`
+	Credits *Credits `json:"credits,omitempty"`
 }
 
 type TVDetails struct {
 	TVResult
-	Genres          []Genre `json:"genres"`
-	NumberOfSeasons int     `json:"number_of_seasons"`
-	Status          string  `json:"status"`
+	Genres          []Genre  `json:"genres"`
+	NumberOfSeasons int      `json:"number_of_seasons"`
+	Status          string   `json:"status"`
+	Credits         *Credits `json:"credits,omitempty"`
 }

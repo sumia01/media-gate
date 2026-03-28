@@ -49,6 +49,23 @@ const externalUrl = computed(() => {
   return null
 })
 
+const credits = computed(() => metadata.value?.credits ?? [])
+const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
+const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
+
+function profileImageUrl(person: { image?: string }): string | null {
+  if (!person.image) return null
+  // TMDB profile paths start with /
+  if (person.image.startsWith('/')) {
+    return `https://image.tmdb.org/t/p/w185${person.image}`
+  }
+  // TVDB: already a full URL
+  if (person.image.startsWith('http')) {
+    return person.image
+  }
+  return null
+}
+
 function posterUrl(itemId: number): string {
   return `/api/v1/media/${itemId}/poster`
 }
@@ -278,6 +295,58 @@ watch(() => route.params.id, loadAll)
             <div v-if="metadata.status" class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
               <p class="text-xs text-gray-500 mb-1">Status</p>
               <p class="text-sm font-medium text-gray-200">{{ metadata.status }}</p>
+            </div>
+          </div>
+
+          <!-- Cast -->
+          <div v-if="cast.length" class="mb-6">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Cast</h3>
+            <div class="flex flex-wrap gap-3">
+              <div
+                v-for="(person, i) in cast"
+                :key="'cast-' + i"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-900/20"
+              >
+                <div class="w-8 h-8 rounded-full bg-violet-900/30 flex-shrink-0 overflow-hidden">
+                  <img
+                    v-if="profileImageUrl(person)"
+                    :src="profileImageUrl(person)!"
+                    :alt="person.name"
+                    class="w-full h-full object-cover"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-gray-200 truncate">{{ person.name }}</p>
+                  <p class="text-[11px] text-gray-500 truncate">{{ person.role }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Crew -->
+          <div v-if="crew.length" class="mb-6">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Crew</h3>
+            <div class="flex flex-wrap gap-3">
+              <div
+                v-for="(person, i) in crew"
+                :key="'crew-' + i"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-900/20"
+              >
+                <div class="w-8 h-8 rounded-full bg-violet-900/30 flex-shrink-0 overflow-hidden">
+                  <img
+                    v-if="profileImageUrl(person)"
+                    :src="profileImageUrl(person)!"
+                    :alt="person.name"
+                    class="w-full h-full object-cover"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-gray-200 truncate">{{ person.name }}</p>
+                  <p class="text-[11px] text-gray-500 truncate">{{ person.role }}</p>
+                </div>
+              </div>
             </div>
           </div>
 

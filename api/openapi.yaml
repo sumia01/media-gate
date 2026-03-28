@@ -940,6 +940,10 @@ components:
           type: integer
         seasons:
           type: integer
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreditPerson"
         confidence:
           type: number
           format: float
@@ -952,6 +956,27 @@ components:
           format: int64
         monitorNewSeasons:
           type: boolean
+
+    CreditPerson:
+      type: object
+      required:
+        - name
+        - role
+        - type
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        type:
+          type: string
+          enum:
+            - cast
+            - crew
+        image:
+          type: string
+        order:
+          type: integer
 
     MediaProfile:
       type: object

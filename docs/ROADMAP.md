@@ -52,7 +52,7 @@
 - [x] Entity model redesign — split logical media (MediaItem) from physical files (MediaFile), add QualityProfile and SeasonMonitor models, quality profile CRUD API
 - [x] Update media item endpoint (`PATCH /media/{id}`) — assign quality profile, toggle monitor new seasons
 - [x] Quality profile selector on media detail page
-- [ ] Cast & crew display on media detail page
+- [x] Cast & crew display on media detail page
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
 - [ ] Indexer configuration and management
