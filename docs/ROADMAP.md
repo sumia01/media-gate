@@ -45,7 +45,8 @@
 - [x] Job history persistence — completed/failed jobs stored in SQLite (survives restarts)
 
 ## Phase 1b: Core Media Management ⬜
-- [ ] Rich media detail page (poster, overview, ratings, cast)
+- [x] Rich media detail page (poster, overview, ratings, genres, match info)
+- [ ] Cast & crew display on media detail page
 - [ ] Add/remove media to watchlist
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜

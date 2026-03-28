@@ -19,6 +19,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 - **Routing**: Vue Router
 - **API client**: Generated from the same OpenAPI spec via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) + [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch)
 - **SPA**: Served by the Go backend via `embed.FS`
+- **Key views**: Libraries list, Library detail (media grid), Media detail (poster, metadata, match actions), Settings
 
 ### Data Layer
 - **Interface-based**: A `Store` interface in Go, with concrete implementations for:
