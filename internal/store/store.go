@@ -29,7 +29,6 @@ type Store interface {
 	ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	DeleteMediaItemsByLibrary(libraryID uint) error
-	DeleteMediaItemsByPaths(libraryID uint, paths []string) error
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
 	MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error)
 
@@ -38,6 +37,29 @@ type Store interface {
 	UpdateMediaMetadata(meta *MediaMetadata) error
 	DeleteMediaMetadataByMediaItem(mediaItemID uint) error
 	ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error)
+
+	// QualityProfile CRUD
+	CreateQualityProfile(profile *QualityProfile) error
+	GetQualityProfile(id uint) (*QualityProfile, error)
+	ListQualityProfiles() ([]QualityProfile, error)
+	UpdateQualityProfile(profile *QualityProfile) error
+	DeleteQualityProfile(id uint) error
+
+	// MediaFile CRUD
+	CreateMediaFile(file *MediaFile) error
+	GetMediaFile(id uint) (*MediaFile, error)
+	ListMediaFilesByMediaItem(mediaItemID uint) ([]MediaFile, error)
+	ListMediaFilesByLibrary(libraryID uint) ([]MediaFile, error)
+	DeleteMediaFile(id uint) error
+	DeleteMediaFilesByMediaItem(mediaItemID uint) error
+	DeleteMediaFilesByPaths(paths []string) error
+	MediaFileExistsByPath(path string) bool
+
+	// SeasonMonitor CRUD
+	CreateSeasonMonitor(monitor *SeasonMonitor) error
+	ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonMonitor, error)
+	UpdateSeasonMonitor(monitor *SeasonMonitor) error
+	DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error
 
 	GetSetting(key string) (*Setting, error)
 	SetSetting(setting *Setting) error

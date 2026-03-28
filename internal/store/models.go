@@ -3,26 +3,27 @@ package store
 import "time"
 
 type Library struct {
-	ID        uint   `gorm:"primarykey"`
-	Name      string `gorm:"not null"`
-	Path      string `gorm:"not null;uniqueIndex"`
-	MediaType string `gorm:"not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID               uint   `gorm:"primarykey"`
+	Name             string `gorm:"not null"`
+	Path             string `gorm:"not null;uniqueIndex"`
+	MediaType        string `gorm:"not null"`
+	QualityProfileID *uint
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type MediaItem struct {
-	ID         uint    `gorm:"primarykey"`
-	LibraryID  uint    `gorm:"not null;index"`
-	Title      string  `gorm:"not null"`
-	FolderName *string // nil for requested items
-	Path       *string `gorm:"uniqueIndex"` // nil for requested items
-	MediaType  string  `gorm:"not null"`
-	Status     string  `gorm:"not null;default:new"`
-	Source     string  `gorm:"not null;default:disk"`
-	Year       *int
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID               uint   `gorm:"primarykey"`
+	LibraryID        uint   `gorm:"not null;index"`
+	Title            string `gorm:"not null"`
+	MediaType        string `gorm:"not null"`
+	Status           string `gorm:"not null;default:new"`
+	Source           string `gorm:"not null;default:disk"`
+	Year             *int
+	QualityProfileID *uint
+	MonitorNewSeasons bool  `gorm:"not null;default:false"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type MediaMetadata struct {
@@ -43,6 +44,40 @@ type MediaMetadata struct {
 	MatchedAt   time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type QualityProfile struct {
+	ID          uint   `gorm:"primarykey"`
+	Name        string `gorm:"not null;uniqueIndex"`
+	Resolutions string `gorm:"not null"` // JSON array: ["2160p","1080p"]
+	Sources     string                    // JSON array: ["webdl","webrip"]
+	ExcludeTags string                    // JSON array: ["3d","cam"]
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type MediaFile struct {
+	ID            uint   `gorm:"primarykey"`
+	MediaItemID   uint   `gorm:"not null;index"`
+	Path          string `gorm:"not null;uniqueIndex"`
+	FileName      string `gorm:"not null"`
+	Size          int64
+	Resolution    string
+	SourceType    string
+	SeasonNumber  *int
+	EpisodeNumber *int
+	AddedAt       time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type SeasonMonitor struct {
+	ID           uint `gorm:"primarykey"`
+	MediaItemID  uint `gorm:"not null;uniqueIndex:idx_media_season"`
+	SeasonNumber int  `gorm:"not null;uniqueIndex:idx_media_season"`
+	Monitored    bool `gorm:"not null;default:true"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type Setting struct {

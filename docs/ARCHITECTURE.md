@@ -56,7 +56,7 @@ media-gate/
 │   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, Setting, JobRecord)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Setting, JobRecord)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client
 │   │   └── tvdb/        # TVDB API v4 client (JWT auth)
@@ -93,9 +93,12 @@ media-gate/
 
 | Model | Table | Description |
 |-------|-------|-------------|
-| `Library` | `libraries` | A media library (name, path, mediaType: movie/series) |
-| `MediaItem` | `media_items` | A media item in a library — either synced from disk (source: disk) or manually requested (source: request). Requested items have nullable path/folderName. |
+| `Library` | `libraries` | A media library (name, path, mediaType: movie/series, optional quality profile) |
+| `MediaItem` | `media_items` | A logical media entry — either synced from disk (source: disk) or manually requested (source: request). Links to quality profile and tracks monitor-new-seasons preference. |
+| `MediaFile` | `media_files` | A physical file/folder on disk, linked to a MediaItem. Tracks path, fileName, size, resolution, sourceType, and optional season/episode numbers. |
 | `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview) |
+| `QualityProfile` | `quality_profiles` | Download quality preferences (resolutions, sources, exclude tags). Assignable to Library or MediaItem. |
+| `SeasonMonitor` | `season_monitors` | Per-season monitoring toggle for series MediaItems (unique per media item + season number) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
 
@@ -113,7 +116,7 @@ HTTP Request
 ```
 
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
-- **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB to add/remove MediaItems
+- **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB MediaFiles to add/remove entries. Creates a MediaItem + MediaFile per folder; cleans up orphaned MediaItems with zero files.
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
 - **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
