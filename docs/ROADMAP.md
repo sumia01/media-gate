@@ -53,6 +53,7 @@
 - [x] Update media item endpoint (`PATCH /media/{id}`) — assign quality profile, toggle monitor new seasons
 - [x] Quality profile selector on media detail page
 - [x] Cast & crew display on media detail page
+- [x] Collapsible files list on media detail page (collapsed by default)
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
 - [ ] Indexer configuration and management
