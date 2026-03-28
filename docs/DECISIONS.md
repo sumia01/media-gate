@@ -229,16 +229,14 @@ Architecture Decision Records: documenting key choices and their reasoning.
 
 **Context**: Users want to add media to a library before it physically exists on disk (e.g., movies they want to download later). This is the foundation for the future request/download workflow.
 
-**Decision**: Extend the existing `MediaItem` model with a `Source` field (`disk` | `request`) and a `requested` status, rather than creating a separate `Request` entity. Requested items have nullable `Path`/`FolderName` fields and are invisible to the sync service. They get full TMDB/TVDB metadata and posters on creation.
+**Decision**: Extend the existing `MediaItem` model with a `Source` field (`disk` | `request`) and a `requested` status, rather than creating a separate `Request` entity. Requested items are invisible to the sync service. They get full TMDB/TVDB metadata and posters on creation.
 
 **Rationale**:
 - Reuses existing matching, metadata, and poster infrastructure without duplication
 - Library views show both existing and requested media in a unified list
 - The sync service naturally ignores requested items (filters by `source = "disk"`)
-- A future import process (torrent integration) will fill in the `Path`/`FolderName` and transition the status — the sync service doesn't need to handle this
+- A future import process (torrent integration) will transition the status — the sync service doesn't need to handle this
 - If request-specific features are needed later (priority, approval), they can be added as fields rather than requiring a new entity and migration
-
-**Trade-offs**: `Path`/`FolderName` becoming nullable adds minor complexity to the model, but this is contained within the store layer.
 
 ---
 
@@ -251,3 +249,21 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: Media search (`GET /libraries/{id}/search`) and add (`POST /libraries/{id}/media`) are scoped to a specific library. The search automatically uses the library's `mediaType` (movie/series) to filter results. The topbar global search bar triggers the same add-media panel when on a library detail page.
 
 **Rationale**: Library-scoping ensures requested items are tied to the correct library path for future download/import. The search endpoint also annotates results with `existingMediaId` if the candidate already exists in that library, preventing duplicates at the UI level.
+
+---
+
+## ADR-021: Entity model redesign — MediaFile, QualityProfile, SeasonMonitor
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: The original MediaItem model conflated logical media (metadata, requests) with physical files (path, folder name). This prevented supporting multiple file copies per item (different qualities), per-season monitoring for series, and quality profiles for download preferences.
+
+**Decision**: Split the model into separate concerns:
+- **MediaItem** — logical media entry (title, year, status, source). No longer holds path/folder info. Gains `QualityProfileID` and `MonitorNewSeasons` fields.
+- **MediaFile** — physical file on disk, linked to a MediaItem. Holds path, fileName, size, resolution, sourceType, and optional season/episode numbers. One MediaItem can have many MediaFiles.
+- **QualityProfile** — defines download quality preferences (resolutions, sources, exclude tags). Can be assigned to a Library (default) or individual MediaItem (override).
+- **SeasonMonitor** — per-season monitoring toggle for series, unique per (MediaItemID, SeasonNumber).
+
+The sync service now creates a MediaFile alongside each MediaItem when scanning disk directories. Removal detection compares MediaFile paths instead of MediaItem paths. Orphaned MediaItems (zero remaining files) are cleaned up.
+
+**Rationale**: Separating logical media from physical files enables: multi-copy support (same movie in 1080p and 4K), episode-level tracking for series, quality-based download decisions, and a clean path for the future download pipeline. The QualityProfile model is CRUD-ready via API; frontend UI is deferred to a later step.

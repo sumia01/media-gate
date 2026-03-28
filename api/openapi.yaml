@@ -576,6 +576,106 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
+  /quality-profiles:
+    get:
+      operationId: listQualityProfiles
+      summary: List all quality profiles
+      responses:
+        "200":
+          description: Quality profiles list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - profiles
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QualityProfile"
+    post:
+      operationId: createQualityProfile
+      summary: Create a quality profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QualityProfileCreate"
+      responses:
+        "201":
+          description: Quality profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityProfile"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /quality-profiles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getQualityProfile
+      summary: Get a quality profile by ID
+      responses:
+        "200":
+          description: Quality profile found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityProfile"
+        "404":
+          description: Quality profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateQualityProfile
+      summary: Update a quality profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QualityProfileCreate"
+      responses:
+        "200":
+          description: Quality profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityProfile"
+        "404":
+          description: Quality profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteQualityProfile
+      summary: Delete a quality profile
+      responses:
+        "204":
+          description: Quality profile deleted
+        "404":
+          description: Quality profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthResponse:
@@ -620,6 +720,9 @@ components:
           enum:
             - movie
             - series
+        qualityProfileId:
+          type: integer
+          format: int64
         createdAt:
           type: string
           format: date-time
@@ -711,10 +814,6 @@ components:
           format: int64
         title:
           type: string
-        folderName:
-          type: string
-        path:
-          type: string
         mediaType:
           type: string
           enum:
@@ -725,8 +824,10 @@ components:
           enum:
             - new
             - matched
-            - missing
             - requested
+            - partial
+            - available
+            - missing
         source:
           type: string
           enum:
@@ -734,6 +835,11 @@ components:
             - request
         year:
           type: integer
+        qualityProfileId:
+          type: integer
+          format: int64
+        monitorNewSeasons:
+          type: boolean
         createdAt:
           type: string
           format: date-time
@@ -784,6 +890,113 @@ components:
         confidence:
           type: number
           format: float
+
+    QualityProfile:
+      type: object
+      required:
+        - id
+        - name
+        - resolutions
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        resolutions:
+          type: array
+          items:
+            type: string
+        sources:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    QualityProfileCreate:
+      type: object
+      required:
+        - name
+        - resolutions
+      properties:
+        name:
+          type: string
+        resolutions:
+          type: array
+          items:
+            type: string
+        sources:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: array
+          items:
+            type: string
+
+    MediaFile:
+      type: object
+      required:
+        - id
+        - mediaItemId
+        - path
+        - fileName
+        - addedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        mediaItemId:
+          type: integer
+          format: int64
+        path:
+          type: string
+        fileName:
+          type: string
+        size:
+          type: integer
+          format: int64
+        resolution:
+          type: string
+        sourceType:
+          type: string
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        addedAt:
+          type: string
+          format: date-time
+
+    SeasonMonitor:
+      type: object
+      required:
+        - id
+        - mediaItemId
+        - seasonNumber
+        - monitored
+      properties:
+        id:
+          type: integer
+          format: int64
+        mediaItemId:
+          type: integer
+          format: int64
+        seasonNumber:
+          type: integer
+        monitored:
+          type: boolean
 
     MatchCandidate:
       type: object

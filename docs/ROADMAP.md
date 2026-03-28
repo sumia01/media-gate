@@ -49,6 +49,7 @@
 - [x] Add media to library — search TMDB/TVDB from library detail page, add as requested item with full metadata
 - [x] Delete requested media items (with metadata + poster cleanup)
 - [x] Global search bar in topbar triggers add-media panel on library pages
+- [x] Entity model redesign — split logical media (MediaItem) from physical files (MediaFile), add QualityProfile and SeasonMonitor models, quality profile CRUD API
 - [ ] Cast & crew display on media detail page
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
@@ -64,7 +65,10 @@
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
 - [x] Requested media items (source: request, status: requested) — foundation
-- [ ] Quality profiles (define download quality preferences per library/item)
+- [x] Quality profiles model + CRUD API (data model ready, frontend deferred)
+- [x] MediaFile model for multi-copy/multi-quality file tracking
+- [x] SeasonMonitor model for per-season monitoring
+- [ ] Quality profile UI (list/create/edit)
 - [ ] Request details page (quality profile, monitoring settings)
 - [ ] Multi-copy handling (same media in different qualities)
 - [ ] Series episode tracking (which seasons/episodes are present/missing)
