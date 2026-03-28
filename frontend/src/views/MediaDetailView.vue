@@ -8,6 +8,8 @@ import MatchPanel from '@/components/media/MatchPanel.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
+type MediaFile = components['schemas']['MediaFile']
+type MediaProfile = components['schemas']['MediaProfile']
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +17,8 @@ const { onJobDone } = useJobQueue()
 
 const item = ref<MediaItem | null>(null)
 const library = ref<Library | null>(null)
+const files = ref<MediaFile[]>([])
+const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)
 const error = ref('')
 const showMatchPanel = ref(false)
@@ -63,6 +67,7 @@ async function fetchItem(id: number) {
   if (data) {
     item.value = data
     fetchLibrary(data.libraryId)
+    fetchFiles(data.id)
   }
 }
 
@@ -71,6 +76,47 @@ async function fetchLibrary(id: number) {
     params: { path: { id } },
   })
   if (data) library.value = data
+}
+
+async function fetchFiles(id: number) {
+  const { data } = await client.GET('/media/{id}/files', {
+    params: { path: { id } },
+  })
+  files.value = data?.files ?? []
+}
+
+async function fetchProfiles() {
+  const { data } = await client.GET('/media-profiles')
+  profiles.value = data?.profiles ?? []
+}
+
+async function updateMediaItem(update: { mediaProfileId?: number; monitorNewSeasons?: boolean }) {
+  if (!item.value) return
+  const { data } = await client.PATCH('/media/{id}', {
+    params: { path: { id: item.value.id } },
+    body: update,
+  })
+  if (data) item.value = data
+}
+
+async function onProfileChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  await updateMediaItem({ mediaProfileId: value ? Number(value) : undefined })
+}
+
+async function onMonitorToggle(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  await updateMediaItem({ monitorNewSeasons: checked })
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  const kb = bytes / 1024
+  if (kb < 1024) return kb.toFixed(1) + ' KB'
+  const mb = kb / 1024
+  if (mb < 1024) return mb.toFixed(1) + ' MB'
+  const gb = mb / 1024
+  return gb.toFixed(1) + ' GB'
 }
 
 async function handleUnmatch() {
@@ -117,6 +163,7 @@ const removeJobDoneListener = onJobDone((libraryId) => {
 function loadAll() {
   const id = Number(route.params.id)
   fetchItem(id)
+  fetchProfiles()
 }
 
 onMounted(loadAll)
@@ -155,13 +202,13 @@ watch(() => route.params.id, loadAll)
         <div class="flex-shrink-0 w-[300px]">
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
-              v-if="item.status === 'matched' || item.status === 'requested'"
+              v-if="item.status === 'available' || item.status === 'requested'"
               :src="posterUrl(item.id)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span v-if="item.status !== 'matched' && item.status !== 'requested'" class="text-6xl text-gray-600">
+            <span v-if="item.status !== 'available' && item.status !== 'requested'" class="text-6xl text-gray-600">
               {{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}
             </span>
           </div>
@@ -188,7 +235,7 @@ watch(() => route.params.id, loadAll)
             <span
               class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
               :class="{
-                'bg-emerald-600/20 text-emerald-300': item.status === 'matched',
+                'bg-emerald-600/20 text-emerald-300': item.status === 'available',
                 'bg-yellow-600/20 text-yellow-300': item.status === 'new',
                 'bg-red-600/20 text-red-300': item.status === 'missing',
                 'bg-sky-600/20 text-sky-300': item.status === 'requested',
@@ -263,10 +310,10 @@ watch(() => route.params.id, loadAll)
               class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
               @click="openMatchPanel"
             >
-              {{ item.status === 'matched' ? 'Re-match' : 'Match' }}
+              {{ metadata ? 'Re-match' : 'Match' }}
             </button>
             <button
-              v-if="item.status === 'matched'"
+              v-if="metadata"
               class="px-4 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors duration-200"
               @click="handleUnmatch"
             >
@@ -279,6 +326,84 @@ watch(() => route.params.id, loadAll)
             >
               Delete
             </button>
+          </div>
+
+          <!-- Settings -->
+          <div class="flex items-center gap-6 mt-6">
+            <div class="flex items-center gap-2">
+              <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
+              <select
+                id="profile-select"
+                class="text-sm bg-[#161b2e] border border-violet-900/20 rounded-lg px-3 py-1.5 text-gray-200 focus:outline-none focus:border-violet-500/50"
+                :value="item.mediaProfileId ?? ''"
+                @change="onProfileChange"
+              >
+                <option value="">None</option>
+                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
+            </div>
+            <label v-if="item.mediaType === 'series'" class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                class="w-4 h-4 rounded border-violet-900/20 bg-[#161b2e] text-violet-600 focus:ring-violet-500/50 focus:ring-offset-0"
+                :checked="item.monitorNewSeasons ?? false"
+                @change="onMonitorToggle"
+              />
+              <span class="text-xs text-gray-500">Monitor new seasons</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Files section -->
+      <div class="mt-8">
+        <div class="flex items-center gap-3 mb-4">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Files</h2>
+          <span
+            v-if="files.length"
+            class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
+          >
+            {{ files.length }}
+          </span>
+        </div>
+
+        <div v-if="!files.length" class="text-sm text-gray-500">No files found.</div>
+
+        <div v-else class="space-y-2">
+          <div
+            v-for="file in files"
+            :key="file.id"
+            class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-gray-200 truncate">{{ file.fileName }}</p>
+                <p class="text-xs text-gray-500 font-mono truncate mt-0.5">{{ file.path }}</p>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <span
+                  v-if="file.seasonNumber != null"
+                  class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-fuchsia-600/20 text-fuchsia-300"
+                >
+                  S{{ String(file.seasonNumber).padStart(2, '0') }}E{{ String(file.episodeNumber ?? 0).padStart(2, '0') }}
+                </span>
+                <span
+                  v-if="file.resolution"
+                  class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
+                >
+                  {{ file.resolution }}
+                </span>
+                <span
+                  v-if="file.sourceType"
+                  class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-600/20 text-sky-300"
+                >
+                  {{ file.sourceType }}
+                </span>
+                <span v-if="file.size" class="text-xs text-gray-500">
+                  {{ formatSize(file.size) }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

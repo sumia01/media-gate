@@ -38,12 +38,12 @@ type Store interface {
 	DeleteMediaMetadataByMediaItem(mediaItemID uint) error
 	ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error)
 
-	// QualityProfile CRUD
-	CreateQualityProfile(profile *QualityProfile) error
-	GetQualityProfile(id uint) (*QualityProfile, error)
-	ListQualityProfiles() ([]QualityProfile, error)
-	UpdateQualityProfile(profile *QualityProfile) error
-	DeleteQualityProfile(id uint) error
+	// MediaProfile CRUD
+	CreateMediaProfile(profile *MediaProfile) error
+	GetMediaProfile(id uint) (*MediaProfile, error)
+	ListMediaProfiles() ([]MediaProfile, error)
+	UpdateMediaProfile(profile *MediaProfile) error
+	DeleteMediaProfile(id uint) error
 
 	// MediaFile CRUD
 	CreateMediaFile(file *MediaFile) error

@@ -252,6 +252,18 @@ Architecture Decision Records: documenting key choices and their reasoning.
 
 ---
 
+## ADR-022: PATCH endpoint for partial media item updates
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: After adding requested media or syncing from disk, users need to assign quality profiles and configure monitoring preferences per media item. The existing `GET /media/{id}` and `DELETE /media/{id}` endpoints don't support updates.
+
+**Decision**: Add `PATCH /media/{id}` with a `MediaItemUpdate` body containing optional fields (`mediaProfileId`, `monitorNewSeasons`). Only provided fields are updated — omitted fields are left unchanged. The handler validates that the referenced profile exists before assignment.
+
+**Rationale**: PATCH (not PUT) because updates are partial — users typically change one setting at a time from the UI. This avoids requiring the client to send the entire MediaItem back. The frontend wires this to a dropdown and toggle on the media detail page for immediate, per-field saves.
+
+---
+
 ## ADR-021: Entity model redesign — MediaFile, QualityProfile, SeasonMonitor
 **Date**: 2026-03-28
 **Status**: Accepted

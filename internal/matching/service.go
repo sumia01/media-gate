@@ -91,7 +91,7 @@ func (s *Service) MatchLibrary(lib *store.Library, progressFn func(current, tota
 
 		if err := s.matchSingleItem(&item, source, apiKey, lib.MediaType); err != nil {
 			slog.Warn("match failed for item", "item_id", item.ID, "title", item.Title, "error", err)
-		} else if item.Status == "matched" {
+		} else if item.Status == "available" {
 			matched++
 		}
 
@@ -298,7 +298,9 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 		}
 	}
 
-	item.Status = "matched"
+	if item.Source != "request" {
+		item.Status = "available"
+	}
 	return s.store.UpdateMediaItem(item)
 }
 

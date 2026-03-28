@@ -7,7 +7,7 @@ type Library struct {
 	Name             string `gorm:"not null"`
 	Path             string `gorm:"not null;uniqueIndex"`
 	MediaType        string `gorm:"not null"`
-	QualityProfileID *uint
+	MediaProfileID *uint
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -20,7 +20,7 @@ type MediaItem struct {
 	Status           string `gorm:"not null;default:new"`
 	Source           string `gorm:"not null;default:disk"`
 	Year             *int
-	QualityProfileID *uint
+	MediaProfileID *uint
 	MonitorNewSeasons bool  `gorm:"not null;default:false"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -46,10 +46,11 @@ type MediaMetadata struct {
 	UpdatedAt   time.Time
 }
 
-type QualityProfile struct {
+type MediaProfile struct {
 	ID          uint   `gorm:"primarykey"`
 	Name        string `gorm:"not null;uniqueIndex"`
 	Resolutions string `gorm:"not null"` // JSON array: ["2160p","1080p"]
+	Languages   string `gorm:"not null"` // JSON array: ["hun","eng"]
 	Sources     string                    // JSON array: ["webdl","webrip"]
 	ExcludeTags string                    // JSON array: ["3d","cam"]
 	CreatedAt   time.Time

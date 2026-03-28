@@ -101,8 +101,8 @@ onMounted(search)
         </button>
       </div>
 
-      <!-- Unmatch button if matched -->
-      <div v-if="item.status === 'matched' && item.metadata" class="mb-6">
+      <!-- Unmatch button if has metadata -->
+      <div v-if="item.metadata" class="mb-6">
         <div class="px-4 py-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
           <div class="flex items-center justify-between">
             <div>
