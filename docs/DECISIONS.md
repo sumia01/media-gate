@@ -160,3 +160,27 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: A shared `useJobQueue` composable manages global job state with adaptive polling (2s when active, 30s idle). It tracks which library IDs have active jobs and fires `onSyncDone(libraryId)` callbacks when a library's job transitions from active to completed/failed.
 
 **Rationale**: Avoids WebSocket complexity for a single-user app. The per-library callback pattern is more precise than watching a global `hasActiveJob` flag — it correctly handles fast syncs (job completes between polls) and multiple libraries syncing concurrently.
+
+---
+
+## ADR-014: DB-backed settings for API keys
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: TMDB and TVDB integrations require API keys. These need to be configurable at runtime from the UI, not baked into `.env` or environment variables.
+
+**Decision**: Store settings as key-value pairs in a `settings` table (GORM model with `Key` as primary key). Sensitive values (API keys) are masked in API responses (`****` + last 4 chars). The settings service auto-detects which keys are sensitive based on a hardcoded set.
+
+**Rationale**: DB storage allows runtime changes from the UI without server restart. Masking prevents API key leakage while still showing enough of the value for the user to identify which key is stored. The `sensitive` flag is server-determined (not user-controlled) to prevent accidental exposure.
+
+---
+
+## ADR-015: Connection test accepts optional API key in request body
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Users need to test TMDB/TVDB API keys before saving them. Initially, the test endpoint read the key from DB, which meant users had to save first — unintuitive UX. But after saving, the stored key (returned masked) also needs to be testable without re-entering it.
+
+**Decision**: The `POST /settings/test-tmdb` and `POST /settings/test-tvdb` endpoints accept an optional `apiKey` in the request body. If provided, the supplied key is tested directly. If omitted, the backend falls back to the saved key from the database.
+
+**Rationale**: Covers both use cases with a single endpoint: testing a freshly pasted key (before save) and re-testing an already saved key (without the frontend sending the masked value).
