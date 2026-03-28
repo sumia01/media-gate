@@ -67,26 +67,36 @@ func (s *Service) Get(key string) (string, error) {
 	return setting.Value, nil
 }
 
-func (s *Service) TestTMDB(apiKey string) (bool, string, error) {
-	if strings.TrimSpace(apiKey) == "" {
-		return false, "TMDB API key is empty", nil
+func (s *Service) TestTMDB(apiKey *string) (bool, string, error) {
+	key, err := s.resolveKey(apiKey, KeyTMDBApiKey)
+	if err != nil {
+		return false, "TMDB API key not configured", nil
 	}
-	client := tmdb.NewClient(apiKey)
+	client := tmdb.NewClient(key)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
 	return true, "Connection successful", nil
 }
 
-func (s *Service) TestTVDB(apiKey string) (bool, string, error) {
-	if strings.TrimSpace(apiKey) == "" {
-		return false, "TVDB API key is empty", nil
+func (s *Service) TestTVDB(apiKey *string) (bool, string, error) {
+	key, err := s.resolveKey(apiKey, KeyTVDBApiKey)
+	if err != nil {
+		return false, "TVDB API key not configured", nil
 	}
-	client := tvdb.NewClient(apiKey)
+	client := tvdb.NewClient(key)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
 	return true, "Connection successful", nil
+}
+
+// resolveKey returns the provided key if non-empty, otherwise falls back to the saved value.
+func (s *Service) resolveKey(provided *string, settingKey string) (string, error) {
+	if provided != nil && strings.TrimSpace(*provided) != "" {
+		return *provided, nil
+	}
+	return s.Get(settingKey)
 }
 
 func maskValue(v string) string {

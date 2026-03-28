@@ -87,7 +87,7 @@ async function testTmdb() {
   tmdbTesting.value = true
   tmdbTest.value = null
   const { data, error: err } = await client.POST('/settings/test-tmdb', {
-    body: { apiKey: tmdbKey.value },
+    body: tmdbDirty.value ? { apiKey: tmdbKey.value } : {},
   })
   tmdbTesting.value = false
   if (err) {
@@ -101,7 +101,7 @@ async function testTvdb() {
   tvdbTesting.value = true
   tvdbTest.value = null
   const { data, error: err } = await client.POST('/settings/test-tvdb', {
-    body: { apiKey: tvdbKey.value },
+    body: tvdbDirty.value ? { apiKey: tvdbKey.value } : {},
   })
   tvdbTesting.value = false
   if (err) {
