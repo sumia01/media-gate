@@ -23,7 +23,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&Library{}, &MediaItem{}, &MediaMetadata{}, &Setting{}); err != nil {
+	if err := db.AutoMigrate(&Library{}, &MediaItem{}, &MediaMetadata{}, &Setting{}, &JobRecord{}); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
@@ -225,4 +225,34 @@ func (s *SQLiteStore) DeleteSetting(key string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *SQLiteStore) CreateJobRecord(record *JobRecord) error {
+	return s.db.Create(record).Error
+}
+
+func (s *SQLiteStore) ListJobRecords(limit int) ([]JobRecord, error) {
+	var records []JobRecord
+	if err := s.db.Order("completed_at DESC").Limit(limit).Find(&records).Error; err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (s *SQLiteStore) DeleteOldJobRecords(keep int) error {
+	return s.db.Exec(
+		"DELETE FROM job_records WHERE id NOT IN (SELECT id FROM job_records ORDER BY completed_at DESC LIMIT ?)",
+		keep,
+	).Error
+}
+
+func (s *SQLiteStore) MaxJobRecordID() (uint, error) {
+	var maxID *uint
+	if err := s.db.Model(&JobRecord{}).Select("MAX(id)").Scan(&maxID).Error; err != nil {
+		return 0, err
+	}
+	if maxID == nil {
+		return 0, nil
+	}
+	return *maxID, nil
 }

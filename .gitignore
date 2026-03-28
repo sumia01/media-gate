@@ -16,6 +16,9 @@ frontend/src/api/schema.d.ts
 # Runtime cache
 .cache/
 
+# Plans
+.plans/
+
 # Environment
 .env
 
