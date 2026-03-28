@@ -19,7 +19,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 - **Routing**: Vue Router
 - **API client**: Generated from the same OpenAPI spec via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) + [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch)
 - **SPA**: Served by the Go backend via `embed.FS`
-- **Key views**: Libraries list, Library detail (media grid), Media detail (poster, metadata, match actions), Settings
+- **Key views**: Libraries list, Library detail (media grid + add media search), Media detail (poster, metadata, match/delete actions), Settings
 
 ### Data Layer
 - **Interface-based**: A `Store` interface in Go, with concrete implementations for:
@@ -64,7 +64,7 @@ media-gate/
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
 │       ├── api/         # Generated TypeScript API client
-│       ├── composables/ # Shared reactive state (useJobQueue)
+│       ├── composables/ # Shared reactive state (useJobQueue, useGlobalSearch)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
 │       │   └── media/   # Media-related components + shared types
@@ -94,7 +94,7 @@ media-gate/
 | Model | Table | Description |
 |-------|-------|-------------|
 | `Library` | `libraries` | A media library (name, path, mediaType: movie/series) |
-| `MediaItem` | `media_items` | A folder within a library (title, year, status, FK to library) |
+| `MediaItem` | `media_items` | A media item in a library — either synced from disk (source: disk) or manually requested (source: request). Requested items have nullable path/folderName. |
 | `MediaMetadata` | `media_metadata` | Matched TMDB/TVDB metadata for a MediaItem (external ID, poster, overview) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
@@ -115,7 +115,7 @@ HTTP Request
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
 - **sync.Service** — reads a library's directory, parses folder names for title/year, diffs against DB to add/remove MediaItems
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
-- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI
+- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get details, test connection

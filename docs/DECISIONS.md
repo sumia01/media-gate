@@ -220,3 +220,34 @@ Architecture Decision Records: documenting key choices and their reasoning.
 **Decision**: Added a `GET /media/{id}` API endpoint and a dedicated `/media/:id` route (`MediaDetailView.vue`). Library grid cards now navigate to this page. The MatchPanel is rendered on the detail page (triggered by a "Re-match" button) instead of on the library grid.
 
 **Rationale**: A full page provides space for a hero poster, metadata stats grid, genre pills, match source info, and action buttons. The side panel was too constrained for a rich detail view. Moving match/unmatch actions to the detail page keeps the library grid simple (browse-only).
+
+---
+
+## ADR-019: Requested media via MediaItem extension (not separate entity)
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: Users want to add media to a library before it physically exists on disk (e.g., movies they want to download later). This is the foundation for the future request/download workflow.
+
+**Decision**: Extend the existing `MediaItem` model with a `Source` field (`disk` | `request`) and a `requested` status, rather than creating a separate `Request` entity. Requested items have nullable `Path`/`FolderName` fields and are invisible to the sync service. They get full TMDB/TVDB metadata and posters on creation.
+
+**Rationale**:
+- Reuses existing matching, metadata, and poster infrastructure without duplication
+- Library views show both existing and requested media in a unified list
+- The sync service naturally ignores requested items (filters by `source = "disk"`)
+- A future import process (torrent integration) will fill in the `Path`/`FolderName` and transition the status — the sync service doesn't need to handle this
+- If request-specific features are needed later (priority, approval), they can be added as fields rather than requiring a new entity and migration
+
+**Trade-offs**: `Path`/`FolderName` becoming nullable adds minor complexity to the model, but this is contained within the store layer.
+
+---
+
+## ADR-020: Library-scoped media search and requests
+**Date**: 2026-03-28
+**Status**: Accepted
+
+**Context**: When adding requested media, the system needs to know which library the media belongs to. Multiple libraries of the same type may exist (e.g., "Kids Movies", "Adult Movies").
+
+**Decision**: Media search (`GET /libraries/{id}/search`) and add (`POST /libraries/{id}/media`) are scoped to a specific library. The search automatically uses the library's `mediaType` (movie/series) to filter results. The topbar global search bar triggers the same add-media panel when on a library detail page.
+
+**Rationale**: Library-scoping ensures requested items are tied to the correct library path for future download/import. The search endpoint also annotates results with `existingMediaId` if the candidate already exists in that library, preventing duplicates at the UI level.

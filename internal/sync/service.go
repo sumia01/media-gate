@@ -46,8 +46,8 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		folders = append(folders, folderInfo{name: name, title: title, year: year, path: fullPath})
 	}
 
-	// Get existing items from DB
-	existing, err := s.store.ListMediaItemsByLibrary(lib.ID)
+	// Get existing disk-sourced items from DB (skip requested items)
+	existing, err := s.store.ListDiskMediaItemsByLibrary(lib.ID)
 	if err != nil {
 		return 0, 0, fmt.Errorf("listing existing items: %w", err)
 	}
@@ -55,9 +55,12 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	existingPaths := make(map[string]struct{}, len(existing))
 	var removePaths []string
 	for _, item := range existing {
-		existingPaths[item.Path] = struct{}{}
-		if _, ok := diskPaths[item.Path]; !ok {
-			removePaths = append(removePaths, item.Path)
+		if item.Path == nil {
+			continue
+		}
+		existingPaths[*item.Path] = struct{}{}
+		if _, ok := diskPaths[*item.Path]; !ok {
+			removePaths = append(removePaths, *item.Path)
 		}
 	}
 
@@ -74,13 +77,16 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		if _, ok := existingPaths[f.path]; ok {
 			continue
 		}
+		folderName := f.name
+		path := f.path
 		item := &store.MediaItem{
 			LibraryID:  lib.ID,
 			Title:      f.title,
-			FolderName: f.name,
-			Path:       f.path,
+			FolderName: &folderName,
+			Path:       &path,
 			MediaType:  lib.MediaType,
 			Status:     "new",
+			Source:     "disk",
 			Year:       f.year,
 		}
 		if err := s.store.CreateMediaItem(item); err != nil {

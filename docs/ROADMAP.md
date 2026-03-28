@@ -46,8 +46,10 @@
 
 ## Phase 1b: Core Media Management ⬜
 - [x] Rich media detail page (poster, overview, ratings, genres, match info)
+- [x] Add media to library — search TMDB/TVDB from library detail page, add as requested item with full metadata
+- [x] Delete requested media items (with metadata + poster cleanup)
+- [x] Global search bar in topbar triggers add-media panel on library pages
 - [ ] Cast & crew display on media detail page
-- [ ] Add/remove media to watchlist
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
 - [ ] Indexer configuration and management
@@ -61,7 +63,12 @@
 - [ ] Download status monitoring
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
-- [ ] Media request workflow
+- [x] Requested media items (source: request, status: requested) — foundation
+- [ ] Quality profiles (define download quality preferences per library/item)
+- [ ] Request details page (quality profile, monitoring settings)
+- [ ] Multi-copy handling (same media in different qualities)
+- [ ] Series episode tracking (which seasons/episodes are present/missing)
+- [ ] Season bundles vs standalone episodes vs complete series downloads
 - [ ] Request approval / auto-approve rules
 - [ ] User management (if multi-user)
 

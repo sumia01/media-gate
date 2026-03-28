@@ -24,11 +24,14 @@ type Store interface {
 	CreateMediaItem(item *MediaItem) error
 	GetMediaItem(id uint) (*MediaItem, error)
 	UpdateMediaItem(item *MediaItem) error
+	DeleteMediaItem(id uint) error
 	ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
+	ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	DeleteMediaItemsByLibrary(libraryID uint) error
 	DeleteMediaItemsByPaths(libraryID uint, paths []string) error
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
+	MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error)
 
 	CreateMediaMetadata(meta *MediaMetadata) error
 	GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error)

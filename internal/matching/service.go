@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,14 +24,17 @@ const (
 	tmdbPosterBase     = "https://image.tmdb.org/t/p/w500"
 )
 
+var ErrAlreadyExists = errors.New("media already exists in this library")
+
 type Candidate struct {
-	Source     string
-	ExternalID int
-	Title      string
-	Overview   string
-	Year       *int
-	PosterURL  string
-	Confidence float64
+	Source          string
+	ExternalID      int
+	Title           string
+	Overview        string
+	Year            *int
+	PosterURL       string
+	Confidence      float64
+	ExistingMediaID *uint
 }
 
 type Service struct {
@@ -157,8 +161,105 @@ func (s *Service) Unmatch(mediaItemID uint) error {
 		return fmt.Errorf("deleting metadata: %w", err)
 	}
 
-	item.Status = "new"
+	// Requested items stay "requested" when unmatched (they have no disk presence to fall back to "new")
+	if item.Source == "request" {
+		item.Status = "requested"
+	} else {
+		item.Status = "new"
+	}
 	return s.store.UpdateMediaItem(item)
+}
+
+// SearchForLibrary searches external sources based on library media type.
+// It also annotates candidates with existing media item IDs if they already exist in the library.
+func (s *Service) SearchForLibrary(lib *store.Library, query string) ([]Candidate, error) {
+	source := s.settings.GetWithDefault(settings.KeyMetadataPrimarySource, "tmdb")
+	candidates, err := s.SearchCandidates(query, lib.MediaType, nil, source)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check which candidates already exist in the library
+	items, err := s.store.ListMediaItemsByLibrary(lib.ID)
+	if err != nil {
+		return nil, fmt.Errorf("listing library items: %w", err)
+	}
+
+	// Build a lookup: source+externalID → media item ID
+	ids := make([]uint, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+	}
+	metas, err := s.store.ListMediaMetadataByMediaItemIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("listing metadata: %w", err)
+	}
+
+	type metaKey struct {
+		source     string
+		externalID int
+	}
+	existingMap := make(map[metaKey]uint, len(metas))
+	for _, m := range metas {
+		existingMap[metaKey{source: m.Source, externalID: m.ExternalID}] = m.MediaItemID
+	}
+
+	for i, c := range candidates {
+		if mediaItemID, ok := existingMap[metaKey{source: c.Source, externalID: c.ExternalID}]; ok {
+			candidates[i].ExistingMediaID = &mediaItemID
+		}
+	}
+
+	return candidates, nil
+}
+
+// AddMediaToLibrary creates a new requested media item with full metadata from an external source.
+func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalID int) (*store.MediaItem, error) {
+	// Check for duplicates
+	exists, err := s.store.MediaItemExistsByExternalID(lib.ID, source, externalID)
+	if err != nil {
+		return nil, fmt.Errorf("checking for duplicates: %w", err)
+	}
+	if exists {
+		return nil, ErrAlreadyExists
+	}
+
+	apiKey, err := s.resolveAPIKey(source)
+	if err != nil {
+		return nil, fmt.Errorf("no API key configured for %s", source)
+	}
+
+	// Create the media item first (we need the ID for poster filename)
+	item := &store.MediaItem{
+		LibraryID: lib.ID,
+		Title:     "pending", // will be updated from metadata
+		MediaType: lib.MediaType,
+		Status:    "requested",
+		Source:    "request",
+	}
+	if err := s.store.CreateMediaItem(item); err != nil {
+		return nil, fmt.Errorf("creating media item: %w", err)
+	}
+
+	// Apply match (fetches details, creates metadata, downloads poster)
+	if err := s.applyMatch(item, source, apiKey, lib.MediaType, externalID, 1.0); err != nil {
+		// Clean up on failure
+		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
+		return nil, fmt.Errorf("applying match: %w", err)
+	}
+
+	// Update title and year from metadata
+	meta, err := s.store.GetMediaMetadataByMediaItem(item.ID)
+	if err == nil && meta != nil {
+		item.Title = meta.Title
+		item.Year = meta.Year
+	}
+	item.Status = "requested"
+	if err := s.store.UpdateMediaItem(item); err != nil {
+		return nil, fmt.Errorf("updating media item: %w", err)
+	}
+
+	return item, nil
 }
 
 func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType string, externalID int, confidence float64) error {

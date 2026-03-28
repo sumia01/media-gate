@@ -117,9 +117,28 @@ func (s *SQLiteStore) UpdateMediaItem(item *MediaItem) error {
 	return nil
 }
 
+func (s *SQLiteStore) DeleteMediaItem(id uint) error {
+	result := s.db.Delete(&MediaItem{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
 	var items []MediaItem
 	if err := s.db.Where("library_id = ?", libraryID).Order("title ASC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
+	var items []MediaItem
+	if err := s.db.Where("library_id = ? AND source = ?", libraryID, "disk").Order("title ASC").Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil
@@ -150,6 +169,18 @@ func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (s *SQLiteStore) MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error) {
+	var count int64
+	err := s.db.Model(&MediaMetadata{}).
+		Joins("JOIN media_items ON media_items.id = media_metadata.media_item_id").
+		Where("media_items.library_id = ? AND media_metadata.source = ? AND media_metadata.external_id = ?", libraryID, source, externalID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (s *SQLiteStore) CreateMediaMetadata(meta *MediaMetadata) error {

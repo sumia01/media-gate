@@ -322,6 +322,39 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 	return GetMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
+func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return DeleteMediaItem404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if item.Source != "request" {
+		return DeleteMediaItem409JSONResponse{
+			Code:    http.StatusConflict,
+			Message: "only requested media items can be deleted",
+		}, nil
+	}
+
+	// Delete metadata and poster
+	_ = h.store.DeleteMediaMetadataByMediaItem(item.ID)
+
+	// Delete poster file
+	posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
+	_ = os.Remove(posterPath)
+
+	if err := h.store.DeleteMediaItem(item.ID); err != nil {
+		return nil, err
+	}
+
+	return DeleteMediaItem204Response{}, nil
+}
+
 func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandidatesRequestObject) (SearchMediaCandidatesResponseObject, error) {
 	item, err := h.store.GetMediaItem(uint(req.Id))
 	if err != nil {
@@ -351,21 +384,7 @@ func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandi
 
 	apiCandidates := make([]MatchCandidate, len(candidates))
 	for i, c := range candidates {
-		apiCandidates[i] = MatchCandidate{
-			Source:     MatchCandidateSource(c.Source),
-			ExternalId: c.ExternalID,
-			Title:      c.Title,
-			Confidence: float32(c.Confidence),
-		}
-		if c.Overview != "" {
-			apiCandidates[i].Overview = &c.Overview
-		}
-		if c.Year != nil {
-			apiCandidates[i].Year = c.Year
-		}
-		if c.PosterURL != "" {
-			apiCandidates[i].PosterUrl = &c.PosterURL
-		}
+		apiCandidates[i] = candidateToAPI(c)
 	}
 
 	return SearchMediaCandidates200JSONResponse{Candidates: apiCandidates}, nil
@@ -478,6 +497,58 @@ func (h *Handlers) TestTvdbConnection(_ context.Context, req TestTvdbConnectionR
 	return TestTvdbConnection200JSONResponse{Success: success, Message: &msg}, nil
 }
 
+func (h *Handlers) SearchMediaForLibrary(_ context.Context, req SearchMediaForLibraryRequestObject) (SearchMediaForLibraryResponseObject, error) {
+	lib, err := h.lib.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return SearchMediaForLibrary404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "library not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	candidates, err := h.matchSvc.SearchForLibrary(lib, req.Params.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	apiCandidates := make([]MatchCandidate, len(candidates))
+	for i, c := range candidates {
+		apiCandidates[i] = candidateToAPI(c)
+	}
+
+	return SearchMediaForLibrary200JSONResponse{Candidates: apiCandidates}, nil
+}
+
+func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryRequestObject) (AddMediaToLibraryResponseObject, error) {
+	lib, err := h.lib.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return AddMediaToLibrary404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "library not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	item, err := h.matchSvc.AddMediaToLibrary(lib, string(req.Body.Source), req.Body.ExternalId)
+	if err != nil {
+		if errors.Is(err, matching.ErrAlreadyExists) {
+			return AddMediaToLibrary409JSONResponse{
+				Code:    http.StatusConflict,
+				Message: err.Error(),
+			}, nil
+		}
+		return nil, err
+	}
+
+	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
+	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
+}
+
 func libraryToAPI(lib *store.Library) Library {
 	return Library{
 		Id:        int64(lib.ID),
@@ -498,6 +569,7 @@ func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem 
 		Path:       item.Path,
 		MediaType:  MediaItemMediaType(item.MediaType),
 		Status:     MediaItemStatus(item.Status),
+		Source:     MediaItemSource(item.Source),
 		Year:       item.Year,
 		CreatedAt:  item.CreatedAt,
 		UpdatedAt:  item.UpdatedAt,
@@ -584,4 +656,27 @@ func settingToAPI(s *store.Setting) Setting {
 		Value:     s.Value,
 		Sensitive: &s.Sensitive,
 	}
+}
+
+func candidateToAPI(c matching.Candidate) MatchCandidate {
+	mc := MatchCandidate{
+		Source:     MatchCandidateSource(c.Source),
+		ExternalId: c.ExternalID,
+		Title:      c.Title,
+		Confidence: float32(c.Confidence),
+	}
+	if c.Overview != "" {
+		mc.Overview = &c.Overview
+	}
+	if c.Year != nil {
+		mc.Year = c.Year
+	}
+	if c.PosterURL != "" {
+		mc.PosterUrl = &c.PosterURL
+	}
+	if c.ExistingMediaID != nil {
+		id := int64(*c.ExistingMediaID)
+		mc.ExistingMediaId = &id
+	}
+	return mc
 }

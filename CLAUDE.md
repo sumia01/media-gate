@@ -95,4 +95,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), and **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), and is progressing through **Phase 1b** (core media management: add/delete requested media, global search). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
