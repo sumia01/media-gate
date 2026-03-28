@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type Library = components['schemas']['Library']
+import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const route = useRoute()
-const libraries = ref<Library[]>([])
+const { libraries, refreshLibraries } = useSidebarLibraries()
 
 const staticTop = [
   { icon: '◈', label: 'Discover', to: '/' },
@@ -23,12 +20,7 @@ function mediaTypeIcon(type: string) {
   return type === 'movie' ? '◻' : '▤'
 }
 
-async function fetchLibraries() {
-  const { data } = await client.GET('/libraries')
-  if (data) libraries.value = data
-}
-
-onMounted(fetchLibraries)
+onMounted(refreshLibraries)
 </script>
 
 <template>

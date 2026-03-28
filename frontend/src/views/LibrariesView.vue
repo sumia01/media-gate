@@ -3,10 +3,13 @@ import { ref, onMounted } from 'vue'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
 import FolderBrowser from '@/components/FolderBrowser.vue'
+import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 
 type Library = components['schemas']['Library']
 type LibraryCreate = components['schemas']['LibraryCreate']
 type ScanEntry = components['schemas']['ScanEntry']
+
+const { refreshLibraries: refreshSidebar } = useSidebarLibraries()
 
 const libraries = ref<Library[]>([])
 const loading = ref(false)
@@ -73,6 +76,7 @@ async function submitForm() {
   showForm.value = false
   editing.value = null
   await fetchLibraries()
+  refreshSidebar()
 }
 
 async function deleteLibrary(lib: Library) {
@@ -85,6 +89,7 @@ async function deleteLibrary(lib: Library) {
     return
   }
   await fetchLibraries()
+  refreshSidebar()
 }
 
 async function scanLibrary(lib: Library) {
