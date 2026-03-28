@@ -72,6 +72,8 @@ async function addMedia(candidate: MatchCandidate) {
     candidates.value[idx].existingMediaId = data.id
   }
   emit('added')
+  emit('close')
+  router.push({ name: 'media-detail', params: { id: data.id } })
 }
 
 function navigateToMedia(id: number) {

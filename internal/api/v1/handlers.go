@@ -332,6 +332,44 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 	return GetMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
+func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateMediaItem404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if req.Body.MediaProfileId != nil {
+		profileID := uint(*req.Body.MediaProfileId)
+		if _, err := h.store.GetMediaProfile(profileID); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return UpdateMediaItem404JSONResponse{
+					Code:    http.StatusNotFound,
+					Message: "media profile not found",
+				}, nil
+			}
+			return nil, err
+		}
+		item.MediaProfileID = &profileID
+	}
+
+	if req.Body.MonitorNewSeasons != nil {
+		item.MonitorNewSeasons = *req.Body.MonitorNewSeasons
+	}
+
+	if err := h.store.UpdateMediaItem(item); err != nil {
+		return nil, err
+	}
+
+	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
+	return UpdateMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
+}
+
 func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
 	item, err := h.store.GetMediaItem(uint(req.Id))
 	if err != nil {
@@ -560,27 +598,56 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
-// --- Quality Profile handlers ---
+// --- Media File handlers ---
 
-func (h *Handlers) ListQualityProfiles(_ context.Context, _ ListQualityProfilesRequestObject) (ListQualityProfilesResponseObject, error) {
-	profiles, err := h.store.ListQualityProfiles()
+func (h *Handlers) ListMediaFiles(_ context.Context, req ListMediaFilesRequestObject) (ListMediaFilesResponseObject, error) {
+	_, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ListMediaFiles404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	files, err := h.store.ListMediaFilesByMediaItem(uint(req.Id))
 	if err != nil {
 		return nil, err
 	}
 
-	apiProfiles := make([]QualityProfile, len(profiles))
-	for i := range profiles {
-		apiProfiles[i] = qualityProfileToAPI(&profiles[i])
+	apiFiles := make([]MediaFile, len(files))
+	for i := range files {
+		apiFiles[i] = mediaFileToAPI(&files[i])
 	}
 
-	return ListQualityProfiles200JSONResponse{Profiles: apiProfiles}, nil
+	return ListMediaFiles200JSONResponse{Files: apiFiles}, nil
 }
 
-func (h *Handlers) CreateQualityProfile(_ context.Context, req CreateQualityProfileRequestObject) (CreateQualityProfileResponseObject, error) {
+// --- Media Profile handlers ---
+
+func (h *Handlers) ListMediaProfiles(_ context.Context, _ ListMediaProfilesRequestObject) (ListMediaProfilesResponseObject, error) {
+	profiles, err := h.store.ListMediaProfiles()
+	if err != nil {
+		return nil, err
+	}
+
+	apiProfiles := make([]MediaProfile, len(profiles))
+	for i := range profiles {
+		apiProfiles[i] = mediaProfileToAPI(&profiles[i])
+	}
+
+	return ListMediaProfiles200JSONResponse{Profiles: apiProfiles}, nil
+}
+
+func (h *Handlers) CreateMediaProfile(_ context.Context, req CreateMediaProfileRequestObject) (CreateMediaProfileResponseObject, error) {
 	resJSON, _ := json.Marshal(req.Body.Resolutions)
-	profile := &store.QualityProfile{
+	langJSON, _ := json.Marshal(req.Body.Languages)
+	profile := &store.MediaProfile{
 		Name:        req.Body.Name,
 		Resolutions: string(resJSON),
+		Languages:   string(langJSON),
 	}
 	if req.Body.Sources != nil {
 		srcJSON, _ := json.Marshal(*req.Body.Sources)
@@ -591,46 +658,48 @@ func (h *Handlers) CreateQualityProfile(_ context.Context, req CreateQualityProf
 		profile.ExcludeTags = string(tagJSON)
 	}
 
-	if err := h.store.CreateQualityProfile(profile); err != nil {
-		return CreateQualityProfile400JSONResponse{
+	if err := h.store.CreateMediaProfile(profile); err != nil {
+		return CreateMediaProfile400JSONResponse{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}, nil
 	}
 
-	return CreateQualityProfile201JSONResponse(qualityProfileToAPI(profile)), nil
+	return CreateMediaProfile201JSONResponse(mediaProfileToAPI(profile)), nil
 }
 
-func (h *Handlers) GetQualityProfile(_ context.Context, req GetQualityProfileRequestObject) (GetQualityProfileResponseObject, error) {
-	profile, err := h.store.GetQualityProfile(uint(req.Id))
+func (h *Handlers) GetMediaProfile(_ context.Context, req GetMediaProfileRequestObject) (GetMediaProfileResponseObject, error) {
+	profile, err := h.store.GetMediaProfile(uint(req.Id))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return GetQualityProfile404JSONResponse{
+			return GetMediaProfile404JSONResponse{
 				Code:    http.StatusNotFound,
-				Message: "quality profile not found",
+				Message: "media profile not found",
 			}, nil
 		}
 		return nil, err
 	}
 
-	return GetQualityProfile200JSONResponse(qualityProfileToAPI(profile)), nil
+	return GetMediaProfile200JSONResponse(mediaProfileToAPI(profile)), nil
 }
 
-func (h *Handlers) UpdateQualityProfile(_ context.Context, req UpdateQualityProfileRequestObject) (UpdateQualityProfileResponseObject, error) {
-	profile, err := h.store.GetQualityProfile(uint(req.Id))
+func (h *Handlers) UpdateMediaProfile(_ context.Context, req UpdateMediaProfileRequestObject) (UpdateMediaProfileResponseObject, error) {
+	profile, err := h.store.GetMediaProfile(uint(req.Id))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return UpdateQualityProfile404JSONResponse{
+			return UpdateMediaProfile404JSONResponse{
 				Code:    http.StatusNotFound,
-				Message: "quality profile not found",
+				Message: "media profile not found",
 			}, nil
 		}
 		return nil, err
 	}
 
 	resJSON, _ := json.Marshal(req.Body.Resolutions)
+	langJSON, _ := json.Marshal(req.Body.Languages)
 	profile.Name = req.Body.Name
 	profile.Resolutions = string(resJSON)
+	profile.Languages = string(langJSON)
 	if req.Body.Sources != nil {
 		srcJSON, _ := json.Marshal(*req.Body.Sources)
 		profile.Sources = string(srcJSON)
@@ -644,25 +713,25 @@ func (h *Handlers) UpdateQualityProfile(_ context.Context, req UpdateQualityProf
 		profile.ExcludeTags = ""
 	}
 
-	if err := h.store.UpdateQualityProfile(profile); err != nil {
+	if err := h.store.UpdateMediaProfile(profile); err != nil {
 		return nil, err
 	}
 
-	return UpdateQualityProfile200JSONResponse(qualityProfileToAPI(profile)), nil
+	return UpdateMediaProfile200JSONResponse(mediaProfileToAPI(profile)), nil
 }
 
-func (h *Handlers) DeleteQualityProfile(_ context.Context, req DeleteQualityProfileRequestObject) (DeleteQualityProfileResponseObject, error) {
-	if err := h.store.DeleteQualityProfile(uint(req.Id)); err != nil {
+func (h *Handlers) DeleteMediaProfile(_ context.Context, req DeleteMediaProfileRequestObject) (DeleteMediaProfileResponseObject, error) {
+	if err := h.store.DeleteMediaProfile(uint(req.Id)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return DeleteQualityProfile404JSONResponse{
+			return DeleteMediaProfile404JSONResponse{
 				Code:    http.StatusNotFound,
-				Message: "quality profile not found",
+				Message: "media profile not found",
 			}, nil
 		}
 		return nil, err
 	}
 
-	return DeleteQualityProfile204Response{}, nil
+	return DeleteMediaProfile204Response{}, nil
 }
 
 // --- Conversion helpers ---
@@ -676,9 +745,9 @@ func libraryToAPI(lib *store.Library) Library {
 		CreatedAt: lib.CreatedAt,
 		UpdatedAt: lib.UpdatedAt,
 	}
-	if lib.QualityProfileID != nil {
-		qpID := int64(*lib.QualityProfileID)
-		apiLib.QualityProfileId = &qpID
+	if lib.MediaProfileID != nil {
+		mpID := int64(*lib.MediaProfileID)
+		apiLib.MediaProfileId = &mpID
 	}
 	return apiLib
 }
@@ -695,9 +764,9 @@ func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem 
 		CreatedAt: item.CreatedAt,
 		UpdatedAt: item.UpdatedAt,
 	}
-	if item.QualityProfileID != nil {
-		qpID := int64(*item.QualityProfileID)
-		apiItem.QualityProfileId = &qpID
+	if item.MediaProfileID != nil {
+		mpID := int64(*item.MediaProfileID)
+		apiItem.MediaProfileId = &mpID
 	}
 	if item.MonitorNewSeasons {
 		apiItem.MonitorNewSeasons = &item.MonitorNewSeasons
@@ -745,8 +814,8 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 	return m
 }
 
-func qualityProfileToAPI(p *store.QualityProfile) QualityProfile {
-	api := QualityProfile{
+func mediaProfileToAPI(p *store.MediaProfile) MediaProfile {
+	api := MediaProfile{
 		Id:        int64(p.ID),
 		Name:      p.Name,
 		CreatedAt: p.CreatedAt,
@@ -757,6 +826,10 @@ func qualityProfileToAPI(p *store.QualityProfile) QualityProfile {
 	var resolutions []string
 	if err := json.Unmarshal([]byte(p.Resolutions), &resolutions); err == nil {
 		api.Resolutions = resolutions
+	}
+	var languages []string
+	if err := json.Unmarshal([]byte(p.Languages), &languages); err == nil {
+		api.Languages = languages
 	}
 	if p.Sources != "" {
 		var sources []string
@@ -813,6 +886,32 @@ func settingToAPI(s *store.Setting) Setting {
 		Value:     s.Value,
 		Sensitive: &s.Sensitive,
 	}
+}
+
+func mediaFileToAPI(f *store.MediaFile) MediaFile {
+	api := MediaFile{
+		Id:          int64(f.ID),
+		MediaItemId: int64(f.MediaItemID),
+		Path:        f.Path,
+		FileName:    f.FileName,
+		AddedAt:     f.AddedAt,
+	}
+	if f.Size > 0 {
+		api.Size = &f.Size
+	}
+	if f.Resolution != "" {
+		api.Resolution = &f.Resolution
+	}
+	if f.SourceType != "" {
+		api.SourceType = &f.SourceType
+	}
+	if f.SeasonNumber != nil {
+		api.SeasonNumber = f.SeasonNumber
+	}
+	if f.EpisodeNumber != nil {
+		api.EpisodeNumber = f.EpisodeNumber
+	}
+	return api
 }
 
 func candidateToAPI(c matching.Candidate) MatchCandidate {

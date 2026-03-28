@@ -364,6 +364,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateMediaItem
+      summary: Update a media item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaItemUpdate"
+      responses:
+        "200":
+          description: Media item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+        "404":
+          description: Media item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteMediaItem
       summary: Delete a media item
@@ -379,6 +401,38 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Cannot delete non-requested media item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /media/{id}/files:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: listMediaFiles
+      summary: List files for a media item
+      responses:
+        "200":
+          description: Media files list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - files
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MediaFile"
+        "404":
+          description: Media item not found
           content:
             application/json:
               schema:
@@ -576,13 +630,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
-  /quality-profiles:
+  /media-profiles:
     get:
-      operationId: listQualityProfiles
-      summary: List all quality profiles
+      operationId: listMediaProfiles
+      summary: List all media profiles
       responses:
         "200":
-          description: Quality profiles list
+          description: Media profiles list
           content:
             application/json:
               schema:
@@ -593,23 +647,23 @@ paths:
                   profiles:
                     type: array
                     items:
-                      $ref: "#/components/schemas/QualityProfile"
+                      $ref: "#/components/schemas/MediaProfile"
     post:
-      operationId: createQualityProfile
-      summary: Create a quality profile
+      operationId: createMediaProfile
+      summary: Create a media profile
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QualityProfileCreate"
+              $ref: "#/components/schemas/MediaProfileCreate"
       responses:
         "201":
-          description: Quality profile created
+          description: Media profile created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QualityProfile"
+                $ref: "#/components/schemas/MediaProfile"
         "400":
           description: Invalid request
           content:
@@ -617,7 +671,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /quality-profiles/{id}:
+  /media-profiles/{id}:
     parameters:
       - name: id
         in: path
@@ -626,51 +680,51 @@ paths:
           type: integer
           format: int64
     get:
-      operationId: getQualityProfile
-      summary: Get a quality profile by ID
+      operationId: getMediaProfile
+      summary: Get a media profile by ID
       responses:
         "200":
-          description: Quality profile found
+          description: Media profile found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QualityProfile"
+                $ref: "#/components/schemas/MediaProfile"
         "404":
-          description: Quality profile not found
+          description: Media profile not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     put:
-      operationId: updateQualityProfile
-      summary: Update a quality profile
+      operationId: updateMediaProfile
+      summary: Update a media profile
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QualityProfileCreate"
+              $ref: "#/components/schemas/MediaProfileCreate"
       responses:
         "200":
-          description: Quality profile updated
+          description: Media profile updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QualityProfile"
+                $ref: "#/components/schemas/MediaProfile"
         "404":
-          description: Quality profile not found
+          description: Media profile not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
-      operationId: deleteQualityProfile
-      summary: Delete a quality profile
+      operationId: deleteMediaProfile
+      summary: Delete a media profile
       responses:
         "204":
-          description: Quality profile deleted
+          description: Media profile deleted
         "404":
-          description: Quality profile not found
+          description: Media profile not found
           content:
             application/json:
               schema:
@@ -720,7 +774,7 @@ components:
           enum:
             - movie
             - series
-        qualityProfileId:
+        mediaProfileId:
           type: integer
           format: int64
         createdAt:
@@ -823,7 +877,6 @@ components:
           type: string
           enum:
             - new
-            - matched
             - requested
             - partial
             - available
@@ -835,7 +888,7 @@ components:
             - request
         year:
           type: integer
-        qualityProfileId:
+        mediaProfileId:
           type: integer
           format: int64
         monitorNewSeasons:
@@ -891,12 +944,22 @@ components:
           type: number
           format: float
 
-    QualityProfile:
+    MediaItemUpdate:
+      type: object
+      properties:
+        mediaProfileId:
+          type: integer
+          format: int64
+        monitorNewSeasons:
+          type: boolean
+
+    MediaProfile:
       type: object
       required:
         - id
         - name
         - resolutions
+        - languages
         - createdAt
         - updatedAt
       properties:
@@ -906,6 +969,10 @@ components:
         name:
           type: string
         resolutions:
+          type: array
+          items:
+            type: string
+        languages:
           type: array
           items:
             type: string
@@ -924,15 +991,20 @@ components:
           type: string
           format: date-time
 
-    QualityProfileCreate:
+    MediaProfileCreate:
       type: object
       required:
         - name
         - resolutions
+        - languages
       properties:
         name:
           type: string
         resolutions:
+          type: array
+          items:
+            type: string
+        languages:
           type: array
           items:
             type: string

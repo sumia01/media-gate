@@ -212,13 +212,13 @@ watch(() => route.params.id, loadAll)
           <!-- Poster -->
           <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
             <img
-              v-if="item.status === 'matched' || item.status === 'requested'"
+              v-if="item.status === 'available' || item.status === 'requested'"
               :src="posterUrl(item.id)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span v-if="item.status !== 'matched' && item.status !== 'requested'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
+            <span v-if="item.status !== 'available' && item.status !== 'requested'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
           </div>
           <!-- Info -->
           <div class="p-3">
@@ -228,7 +228,7 @@ watch(() => route.params.id, loadAll)
               <span
                 class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full"
                 :class="{
-                  'bg-emerald-600/20 text-emerald-300': item.status === 'matched',
+                  'bg-emerald-600/20 text-emerald-300': item.status === 'available',
                   'bg-yellow-600/20 text-yellow-300': item.status === 'new',
                   'bg-red-600/20 text-red-300': item.status === 'missing',
                   'bg-sky-600/20 text-sky-300': item.status === 'requested',

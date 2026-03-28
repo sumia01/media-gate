@@ -3,6 +3,7 @@ import HomeView from '@/views/HomeView.vue'
 import LibrariesView from '@/views/LibrariesView.vue'
 import LibraryDetailView from '@/views/LibraryDetailView.vue'
 import MediaDetailView from '@/views/MediaDetailView.vue'
+import MediaProfilesView from '@/views/MediaProfilesView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 
 const router = createRouter({
@@ -29,6 +30,11 @@ const router = createRouter({
       name: 'media-detail',
       component: MediaDetailView,
       props: true,
+    },
+    {
+      path: '/media-profiles',
+      name: 'media-profiles',
+      component: MediaProfilesView,
     },
     {
       path: '/settings',

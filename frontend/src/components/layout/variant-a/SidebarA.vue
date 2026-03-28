@@ -13,6 +13,7 @@ const staticTop = [
 
 const staticBottom = [
   { icon: '⛁', label: 'Libraries', to: '/libraries' },
+  { icon: '▦', label: 'Profiles', to: '/media-profiles' },
   { icon: '⚙', label: 'Settings', to: '/settings' },
 ]
 

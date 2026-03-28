@@ -23,11 +23,21 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
+	// Pre-migration renames for existing databases (ignore errors for fresh installs)
+	sqlDB, _ := db.DB()
+	if sqlDB != nil {
+		sqlDB.Exec("ALTER TABLE quality_profiles RENAME TO media_profiles")
+		sqlDB.Exec("ALTER TABLE media_profiles ADD COLUMN languages TEXT DEFAULT ''")
+		sqlDB.Exec("ALTER TABLE libraries RENAME COLUMN quality_profile_id TO media_profile_id")
+		sqlDB.Exec("ALTER TABLE media_items RENAME COLUMN quality_profile_id TO media_profile_id")
+		sqlDB.Exec("UPDATE media_items SET status = 'available' WHERE status = 'matched'")
+	}
+
 	if err := db.AutoMigrate(
 		&Library{},
 		&MediaItem{},
 		&MediaMetadata{},
-		&QualityProfile{},
+		&MediaProfile{},
 		&MediaFile{},
 		&SeasonMonitor{},
 		&Setting{},
@@ -232,14 +242,14 @@ func (s *SQLiteStore) ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetada
 	return metas, nil
 }
 
-// --- QualityProfile ---
+// --- MediaProfile ---
 
-func (s *SQLiteStore) CreateQualityProfile(profile *QualityProfile) error {
+func (s *SQLiteStore) CreateMediaProfile(profile *MediaProfile) error {
 	return s.db.Create(profile).Error
 }
 
-func (s *SQLiteStore) GetQualityProfile(id uint) (*QualityProfile, error) {
-	var profile QualityProfile
+func (s *SQLiteStore) GetMediaProfile(id uint) (*MediaProfile, error) {
+	var profile MediaProfile
 	if err := s.db.First(&profile, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
@@ -249,15 +259,15 @@ func (s *SQLiteStore) GetQualityProfile(id uint) (*QualityProfile, error) {
 	return &profile, nil
 }
 
-func (s *SQLiteStore) ListQualityProfiles() ([]QualityProfile, error) {
-	var profiles []QualityProfile
+func (s *SQLiteStore) ListMediaProfiles() ([]MediaProfile, error) {
+	var profiles []MediaProfile
 	if err := s.db.Order("name ASC").Find(&profiles).Error; err != nil {
 		return nil, err
 	}
 	return profiles, nil
 }
 
-func (s *SQLiteStore) UpdateQualityProfile(profile *QualityProfile) error {
+func (s *SQLiteStore) UpdateMediaProfile(profile *MediaProfile) error {
 	result := s.db.Save(profile)
 	if result.Error != nil {
 		return result.Error
@@ -268,8 +278,8 @@ func (s *SQLiteStore) UpdateQualityProfile(profile *QualityProfile) error {
 	return nil
 }
 
-func (s *SQLiteStore) DeleteQualityProfile(id uint) error {
-	result := s.db.Delete(&QualityProfile{}, id)
+func (s *SQLiteStore) DeleteMediaProfile(id uint) error {
+	result := s.db.Delete(&MediaProfile{}, id)
 	if result.Error != nil {
 		return result.Error
 	}
