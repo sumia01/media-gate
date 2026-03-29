@@ -361,3 +361,29 @@ The IMDb ID is stored as a string field on `MediaMetadata`, exposed in the API, 
 **Decision**: The Match button now opens a modal with two options: "Unmatched only" (default behavior) and "Full re-match" (re-matches all items, replacing existing metadata and episodes). Implemented as a `fullRematch` query parameter on `POST /libraries/{id}/match`, propagated through the job queue to `matching.MatchLibrary()`. Full rematch uses `ListMediaItemsByLibrary` (all items) instead of `ListNewMediaItemsByLibrary` (unmatched only), and clears existing metadata/episodes before re-matching each item.
 
 **Rationale**: A modal is less error-prone than two separate buttons — the destructive option (replacing all metadata) requires an explicit choice. The query parameter approach avoids a new endpoint while keeping the default behavior unchanged for auto-match after sync.
+
+---
+
+## ADR-029: TVDB search type filtering and string ID handling
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Two bugs in the TVDB integration: (1) The TVDB v4 `/search` endpoint returns all entity types (series, movies, people) by default. Selecting a result that was actually a movie and calling `/series/{id}/extended` returned 404. (2) The search response returns `tvdb_id` as a string, but the Go struct had it typed as `int`, causing JSON unmarshal errors.
+
+**Decision**:
+- Add `type=series` parameter to `SearchSeries()` so only series results are returned.
+- Change `SeriesResult.ID` from `int` field to a `TVDBID string` field with an `ID()` method that converts via `strconv.Atoi`.
+
+**Rationale**: The type filter prevents cross-type ID collisions (a movie and a series can share the same numeric ID). Parsing the string ID with a method keeps the rest of the codebase working with `int` IDs while correctly handling the API's string response.
+
+---
+
+## ADR-030: Poster cache-busting via updatedAt timestamp
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Poster files are stored as `{mediaItemId}.jpg`. After re-matching, the file changes on disk but the browser serves the old image from cache because the URL hasn't changed.
+
+**Decision**: Append `?t={updatedAt timestamp}` to poster URLs on the frontend. When a re-match updates the MediaItem's `updatedAt`, the URL changes and the browser fetches the new image. The backend poster handler ignores the query parameter — `http.ServeContent` uses the file's `ModTime` for ETag/caching.
+
+**Rationale**: Zero backend changes needed. The `updatedAt` field is already present on every MediaItem and naturally changes on re-match. No need for random strings or version counters.

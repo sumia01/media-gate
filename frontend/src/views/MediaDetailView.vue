@@ -74,8 +74,9 @@ function profileImageUrl(person: { image?: string }): string | null {
   return null
 }
 
-function posterUrl(itemId: number): string {
-  return `/api/v1/media/${itemId}/poster`
+function posterUrl(mediaItem: MediaItem): string {
+  const ts = new Date(mediaItem.updatedAt).getTime()
+  return `/api/v1/media/${mediaItem.id}/poster?t=${ts}`
 }
 
 async function fetchItem(id: number) {
@@ -300,7 +301,7 @@ watch(() => route.params.id, loadAll)
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
               v-if="item.status === 'available' || item.status === 'requested'"
-              :src="posterUrl(item.id)"
+              :src="posterUrl(item)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"

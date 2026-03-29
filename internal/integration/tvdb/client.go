@@ -82,7 +82,7 @@ func (c *Client) SearchSeries(query string, year *int) ([]SeriesResult, error) {
 	}
 	c.mu.Unlock()
 
-	params := url.Values{"query": {query}}
+	params := url.Values{"query": {query}, "type": {"series"}}
 	if year != nil {
 		params.Set("year", strconv.Itoa(*year))
 	}
@@ -188,11 +188,17 @@ func (c *Client) get(path string, params url.Values) ([]byte, error) {
 // Types
 
 type SeriesResult struct {
-	ID           int    `json:"tvdb_id"`
+	TVDBID       string `json:"tvdb_id"`
 	Name         string `json:"name"`
 	Overview     string `json:"overview"`
 	FirstAirDate string `json:"first_air_time"`
 	ImageURL     string `json:"image_url"`
+}
+
+// ID returns the TVDB ID as an int.
+func (r SeriesResult) ID() int {
+	n, _ := strconv.Atoi(r.TVDBID)
+	return n
 }
 
 type Character struct {

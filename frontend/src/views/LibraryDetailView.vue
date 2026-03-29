@@ -105,8 +105,9 @@ async function handleMatchChoice(fullRematch: boolean) {
   await triggerMatch(library.value.id, fullRematch)
 }
 
-function posterUrl(itemId: number): string {
-  return `/api/v1/media/${itemId}/poster`
+function posterUrl(item: MediaItem): string {
+  const ts = new Date(item.updatedAt).getTime()
+  return `/api/v1/media/${item.id}/poster?t=${ts}`
 }
 
 async function loadAll() {
@@ -220,7 +221,7 @@ watch(() => route.params.id, loadAll)
           <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
             <img
               v-if="item.status === 'available' || item.status === 'requested'"
-              :src="posterUrl(item.id)"
+              :src="posterUrl(item)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
