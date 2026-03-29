@@ -2,10 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
+import type { Library } from '@/types/api'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
-
-type Library = components['schemas']['Library']
 
 const props = defineProps<{
   source: string

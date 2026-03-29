@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type ScanEntry = components['schemas']['ScanEntry']
+import type { ScanEntry } from '@/types/api'
 
 const props = defineProps<{
   modelValue: string

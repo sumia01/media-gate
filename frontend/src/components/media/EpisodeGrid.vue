@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type SeasonSummary = components['schemas']['SeasonSummary']
-type Episode = components['schemas']['Episode']
+import type { SeasonSummary, Episode } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number

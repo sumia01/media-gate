@@ -2,15 +2,12 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
+import type { Library, MediaItem, MediaFile, MediaProfile } from '@/types/api'
 import { useJobQueue } from '@/composables/useJobQueue'
+import { parseGenres, profileImageUrl, posterUrl } from '@/utils/media'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
-
-type Library = components['schemas']['Library']
-type MediaItem = components['schemas']['MediaItem']
-type MediaFile = components['schemas']['MediaFile']
-type MediaProfile = components['schemas']['MediaProfile']
 
 const route = useRoute()
 const router = useRouter()
@@ -28,17 +25,7 @@ const filesExpanded = ref(false)
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
-const genres = computed<string[]>(() => {
-  if (!metadata.value?.genres) return []
-  try {
-    const parsed = JSON.parse(metadata.value.genres)
-    if (Array.isArray(parsed)) return parsed
-  } catch {
-    // Fall back to comma-separated
-    return metadata.value.genres.split(',').map((g: string) => g.trim()).filter(Boolean)
-  }
-  return []
-})
+const genres = computed(() => parseGenres(metadata.value?.genres))
 
 const externalUrl = computed(() => {
   if (!metadata.value) return null
@@ -60,24 +47,6 @@ const imdbUrl = computed(() => {
 const credits = computed(() => metadata.value?.credits ?? [])
 const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
 const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
-
-function profileImageUrl(person: { image?: string }): string | null {
-  if (!person.image) return null
-  // TMDB profile paths start with /
-  if (person.image.startsWith('/')) {
-    return `https://image.tmdb.org/t/p/w185${person.image}`
-  }
-  // TVDB: already a full URL
-  if (person.image.startsWith('http')) {
-    return person.image
-  }
-  return null
-}
-
-function posterUrl(mediaItem: MediaItem): string {
-  const ts = new Date(mediaItem.updatedAt).getTime()
-  return `/api/v1/media/${mediaItem.id}/poster?t=${ts}`
-}
 
 async function fetchItem(id: number) {
   loading.value = true
@@ -281,13 +250,7 @@ watch(() => route.params.id, loadAll)
       </div>
     </div>
 
-    <!-- Error -->
-    <div
-      v-if="error"
-      class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-    >
-      {{ error }}
-    </div>
+    <ErrorBanner :message="error" />
 
     <!-- Loading -->
     <div v-if="loading && !item" class="text-gray-500 text-sm">Loading...</div>

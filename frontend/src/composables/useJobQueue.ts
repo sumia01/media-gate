@@ -1,8 +1,6 @@
 import { ref, computed, onUnmounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type Job = components['schemas']['Job']
+import type { Job } from '@/types/api'
 type JobDoneCallback = (libraryId: number, jobType: string) => void
 
 const jobs = ref<Job[]>([])

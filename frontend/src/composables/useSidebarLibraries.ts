@@ -1,8 +1,6 @@
 import { ref } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type Library = components['schemas']['Library']
+import type { Library } from '@/types/api'
 
 const libraries = ref<Library[]>([])
 

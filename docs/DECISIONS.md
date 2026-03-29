@@ -409,3 +409,21 @@ Backend additions:
 The `useGlobalSearch` composable was expanded with `activeLibraryId` and `searchMediaType` state. When search is opened from a library page, the library is pre-selected in the Add modal and the media type toggle is pre-set. The old `AddMediaSearch.vue` component was removed.
 
 **Rationale**: Decoupling search from a specific library enables browsing/discovery. The preview page gives users confidence in what they're adding (especially useful when multiple results share similar names). The three-stage flow (search → preview → add) matches the mental model of Sonarr/Radarr. Reusing existing backend methods (`SearchCandidates`, `fetchTMDBDetails`, `fetchTVDBDetails`, `posterURL`) meant the backend changes were minimal — two new thin endpoints and one new struct.
+
+---
+
+## ADR-032: Frontend shared utilities, types, and base components
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: The frontend had accumulated duplicated code across views and components: `parseGenres()` and `profileImageUrl()` were copy-pasted between `MediaDetailView` and `MediaPreviewView`, `posterUrl()` between `MediaDetailView` and `LibraryDetailView`, error banners (identical Tailwind markup) in 6 files, modal Teleport+backdrop structures in 4 files, and every component repeated `type X = components['schemas']['X']` aliases.
+
+**Decision**: Introduced four new shared modules:
+- **`src/types/api.ts`** — centralized re-exports of all commonly used OpenAPI schema types. Components import from `@/types/api` instead of aliasing `components['schemas']` inline.
+- **`src/utils/media.ts`** — pure utility functions (`parseGenres`, `profileImageUrl`, `posterUrl`) extracted from views.
+- **`src/components/BaseModal.vue`** — reusable modal wrapper (Teleport to body, backdrop click-to-close, configurable max-width via prop). Replaces inline Teleport+backdrop patterns.
+- **`src/components/ErrorBanner.vue`** — takes a `message` prop, renders the standard error banner when non-empty. Replaces 6 identical `v-if="error"` div blocks.
+
+Also removed dead code: the unused `NavItem` interface and `navItems` constant from `dummyData.ts`.
+
+**Rationale**: Reduces duplication, makes the codebase easier to read and maintain. Changes to error styling or modal behavior now happen in one place. The type re-export file eliminates the most common boilerplate line in every component.

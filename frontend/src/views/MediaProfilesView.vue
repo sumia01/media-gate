@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type MediaProfile = components['schemas']['MediaProfile']
-type MediaProfileCreate = components['schemas']['MediaProfileCreate']
+import type { MediaProfile, MediaProfileCreate } from '@/types/api'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import BaseModal from '@/components/BaseModal.vue'
 
 const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)
@@ -159,13 +158,7 @@ onMounted(fetchProfiles)
       </button>
     </div>
 
-    <!-- Error banner -->
-    <div
-      v-if="error"
-      class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-    >
-      {{ error }}
-    </div>
+    <ErrorBanner :message="error" />
 
     <!-- Loading -->
     <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>
@@ -244,118 +237,114 @@ onMounted(fetchProfiles)
     </div>
 
     <!-- Add/Edit modal -->
-    <Teleport to="body">
-      <div
-        v-if="showForm"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-        @click.self="cancelForm"
-      >
-        <div class="w-full max-w-xl bg-[#0c0f1a] border border-violet-900/20 rounded-xl p-6 shadow-2xl">
-          <h2 class="text-lg font-semibold text-gray-100 mb-5">
-            {{ editing ? 'Edit Profile' : 'Add Profile' }}
-          </h2>
+    <BaseModal
+      v-if="showForm"
+      max-width="max-w-xl"
+      @close="cancelForm"
+    >
+      <h2 class="text-lg font-semibold text-gray-100 mb-5">
+        {{ editing ? 'Edit Profile' : 'Add Profile' }}
+      </h2>
 
-          <form class="space-y-4" @submit.prevent="submitForm">
-            <!-- Name -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Name</label>
-              <input
-                v-model="form.name"
-                type="text"
-                required
-                placeholder="e.g. HUN 4K"
-                class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-              />
-            </div>
-
-            <!-- Languages -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Languages <span class="text-gray-600">(click order = priority)</span></label>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="lang in languageOptions"
-                  :key="lang"
-                  type="button"
-                  class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200 relative"
-                  :class="form.languages.includes(lang)
-                    ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
-                    : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
-                  @click="toggleLanguage(lang)"
-                >
-                  <span v-if="form.languages.includes(lang)" class="text-[10px] mr-1 opacity-70">{{ languagePriority(lang) }}.</span>
-                  {{ lang.toUpperCase() }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Resolutions -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Resolutions</label>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="res in resolutionOptions"
-                  :key="res"
-                  type="button"
-                  class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200"
-                  :class="form.resolutions.includes(res)
-                    ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
-                    : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
-                  @click="toggleResolution(res)"
-                >
-                  {{ res }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Sources -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Sources <span class="text-gray-600">(optional)</span></label>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="src in sourceOptions"
-                  :key="src"
-                  type="button"
-                  class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200"
-                  :class="form.sources?.includes(src)
-                    ? 'bg-sky-600/20 border-sky-500/50 text-sky-300'
-                    : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
-                  @click="toggleSource(src)"
-                >
-                  {{ src }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Exclude tags -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Exclude Tags <span class="text-gray-600">(comma-separated, optional)</span></label>
-              <input
-                v-model="excludeTagsInput"
-                type="text"
-                placeholder="e.g. 3d, cam, ts"
-                class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-              />
-            </div>
-
-            <!-- Buttons -->
-            <div class="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors duration-200"
-                @click="cancelForm"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
-              >
-                {{ editing ? 'Save' : 'Add' }}
-              </button>
-            </div>
-          </form>
+      <form class="space-y-4" @submit.prevent="submitForm">
+        <!-- Name -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Name</label>
+          <input
+            v-model="form.name"
+            type="text"
+            required
+            placeholder="e.g. HUN 4K"
+            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+          />
         </div>
-      </div>
-    </Teleport>
+
+        <!-- Languages -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Languages <span class="text-gray-600">(click order = priority)</span></label>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="lang in languageOptions"
+              :key="lang"
+              type="button"
+              class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200 relative"
+              :class="form.languages.includes(lang)
+                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+              @click="toggleLanguage(lang)"
+            >
+              <span v-if="form.languages.includes(lang)" class="text-[10px] mr-1 opacity-70">{{ languagePriority(lang) }}.</span>
+              {{ lang.toUpperCase() }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Resolutions -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Resolutions</label>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="res in resolutionOptions"
+              :key="res"
+              type="button"
+              class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200"
+              :class="form.resolutions.includes(res)
+                ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+              @click="toggleResolution(res)"
+            >
+              {{ res }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Sources -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Sources <span class="text-gray-600">(optional)</span></label>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="src in sourceOptions"
+              :key="src"
+              type="button"
+              class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors duration-200"
+              :class="form.sources?.includes(src)
+                ? 'bg-sky-600/20 border-sky-500/50 text-sky-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+              @click="toggleSource(src)"
+            >
+              {{ src }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Exclude tags -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Exclude Tags <span class="text-gray-600">(comma-separated, optional)</span></label>
+          <input
+            v-model="excludeTagsInput"
+            type="text"
+            placeholder="e.g. 3d, cam, ts"
+            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+          />
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors duration-200"
+            @click="cancelForm"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
+          >
+            {{ editing ? 'Save' : 'Add' }}
+          </button>
+        </div>
+      </form>
+    </BaseModal>
   </div>
 </template>

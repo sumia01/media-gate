@@ -2,10 +2,8 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
+import type { MatchCandidate } from '@/types/api'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
-
-type MatchCandidate = components['schemas']['MatchCandidate']
 
 const router = useRouter()
 const { searchMediaType, closeSearch } = useGlobalSearch()

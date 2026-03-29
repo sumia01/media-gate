@@ -30,18 +30,3 @@ export const trending: MediaItem[] = [
   { id: 13, title: 'Killers of the Flower Moon', year: 2023, type: 'movie', posterColor: '#c2410c', posterUrl: tmdb('/6cJuZds6dBfLgx8dn6VLoGhs6pQ.jpg'), rating: 8.6 },
   { id: 14, title: 'Slow Horses', year: 2024, type: 'series', posterColor: '#7c3aed', posterUrl: tmdb('/qBLksHQn8dedP1TwItRYDwQGlLp.jpg'), rating: 8.1 },
 ]
-
-export interface NavItem {
-  icon: string
-  label: string
-  active?: boolean
-  badge?: number
-}
-
-export const navItems: NavItem[] = [
-  { icon: '◈', label: 'Discover', active: true },
-  { icon: '◻', label: 'Movies' },
-  { icon: '▤', label: 'Series' },
-  { icon: '↗', label: 'Requests', badge: 3 },
-  { icon: '⚙', label: 'Settings' },
-]

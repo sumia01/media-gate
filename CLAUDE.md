@@ -33,6 +33,8 @@ media-gate/
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
 │       ├── api/         # Generated TypeScript API client
+│       ├── types/       # Shared API type re-exports from schema
+│       ├── utils/       # Shared utility functions (parseGenres, posterUrl, etc.)
 │       ├── composables/ # Shared reactive state (useJobQueue)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
