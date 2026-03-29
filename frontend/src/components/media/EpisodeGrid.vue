@@ -5,6 +5,12 @@ import type { SeasonSummary, Episode } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
+  refreshKey?: number
+}>()
+
+const emit = defineEmits<{
+  searchSeason: [seasonNumber: number]
+  searchEpisode: [seasonNumber: number, episodeNumber: number, episodeId: number]
 }>()
 
 const seasons = ref<SeasonSummary[]>([])
@@ -30,16 +36,31 @@ function toggleSeason(seasonNumber: number) {
   expandedSeasons.value = s
 }
 
-function episodeStatus(ep: Episode): 'available' | 'missing' | 'unaired' {
+type EpStatus = 'available' | 'missing' | 'unaired' | 'pending' | 'downloading' | 'downloaded' | 'importing' | 'seeding'
+
+function episodeStatus(ep: Episode): EpStatus {
   if (ep.hasFile) return 'available'
+  if (ep.downloadStatus && ep.downloadStatus !== 'completed' && ep.downloadStatus !== 'failed') {
+    return ep.downloadStatus as EpStatus
+  }
   if (!ep.airDate) return 'unaired'
   const airDate = new Date(ep.airDate)
   if (airDate > new Date()) return 'unaired'
   return 'missing'
 }
 
+function isDownloadStatus(status: EpStatus): boolean {
+  return ['pending', 'downloading', 'downloaded', 'importing', 'seeding'].includes(status)
+}
+
+function statusLabel(status: EpStatus): string {
+  if (status === 'available') return 'on disk'
+  return status
+}
+
 onMounted(fetchEpisodes)
 watch(() => props.mediaItemId, fetchEpisodes)
+watch(() => props.refreshKey, fetchEpisodes)
 </script>
 
 <template>
@@ -81,6 +102,13 @@ watch(() => props.mediaItemId, fetchEpisodes)
             >
               unmonitored
             </span>
+            <button
+              class="px-2 py-0.5 rounded-md text-[10px] text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
+              title="Search indexers for this season"
+              @click.stop="emit('searchSeason', season.seasonNumber)"
+            >
+              Search
+            </button>
           </div>
           <span class="text-gray-500 text-xs transition-transform duration-200" :class="expandedSeasons.has(season.seasonNumber) ? 'rotate-180' : ''">
             &#9660;
@@ -97,6 +125,7 @@ watch(() => props.mediaItemId, fetchEpisodes)
               'bg-emerald-600/5': episodeStatus(ep) === 'available',
               'bg-red-600/5': episodeStatus(ep) === 'missing',
               'bg-gray-600/5': episodeStatus(ep) === 'unaired',
+              'bg-sky-600/5': isDownloadStatus(episodeStatus(ep)),
             }"
           >
             <!-- Episode number badge -->
@@ -106,6 +135,7 @@ watch(() => props.mediaItemId, fetchEpisodes)
                 'bg-emerald-600/20 text-emerald-300': episodeStatus(ep) === 'available',
                 'bg-red-600/20 text-red-300': episodeStatus(ep) === 'missing',
                 'bg-gray-600/20 text-gray-400': episodeStatus(ep) === 'unaired',
+                'bg-sky-600/20 text-sky-300': isDownloadStatus(episodeStatus(ep)),
               }"
             >
               {{ ep.episodeNumber }}
@@ -122,6 +152,15 @@ watch(() => props.mediaItemId, fetchEpisodes)
               </div>
             </div>
 
+            <!-- Search button -->
+            <button
+              class="flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
+              title="Search indexers for this episode"
+              @click="emit('searchEpisode', season.seasonNumber, ep.episodeNumber, ep.id)"
+            >
+              Search
+            </button>
+
             <!-- Status indicator -->
             <span
               class="flex-shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
@@ -129,9 +168,10 @@ watch(() => props.mediaItemId, fetchEpisodes)
                 'bg-emerald-600/20 text-emerald-300': episodeStatus(ep) === 'available',
                 'bg-red-600/20 text-red-300': episodeStatus(ep) === 'missing',
                 'bg-gray-600/20 text-gray-400': episodeStatus(ep) === 'unaired',
+                'bg-sky-600/20 text-sky-300': isDownloadStatus(episodeStatus(ep)),
               }"
             >
-              {{ episodeStatus(ep) === 'available' ? 'on disk' : episodeStatus(ep) === 'missing' ? 'missing' : 'unaired' }}
+              {{ statusLabel(episodeStatus(ep)) }}
             </span>
           </div>
         </div>

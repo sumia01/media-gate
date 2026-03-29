@@ -82,4 +82,11 @@ type Store interface {
 	ListIndexers() ([]Indexer, error)
 	UpdateIndexer(indexer *Indexer) error
 	DeleteIndexer(id uint) error
+
+	// Download CRUD
+	CreateDownload(download *Download) error
+	GetDownload(id uint) (*Download, error)
+	UpdateDownload(download *Download) error
+	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
+	DeleteDownload(id uint) error
 }

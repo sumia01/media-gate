@@ -53,6 +53,8 @@ type IndexerInfo struct {
 	Enabled      bool
 	Settings     map[string]string
 	Priority     int
+	SeedMinRatio float64
+	SeedMinTime  int
 }
 
 // TorrentResult is a search result from an indexer.
@@ -131,7 +133,7 @@ func (s *Service) GetDefinition(id string) (*DefinitionInfo, error) {
 }
 
 // Create adds a new indexer configuration.
-func (s *Service) Create(name, definitionID string, settings map[string]string, priority int) (*IndexerInfo, error) {
+func (s *Service) Create(name, definitionID string, settings map[string]string, priority int, seedMinRatio float64, seedMinTime int) (*IndexerInfo, error) {
 	if _, ok := s.defs[definitionID]; !ok {
 		return nil, fmt.Errorf("unknown definition: %q", definitionID)
 	}
@@ -147,6 +149,8 @@ func (s *Service) Create(name, definitionID string, settings map[string]string, 
 		Enabled:      true,
 		Settings:     string(settingsJSON),
 		Priority:     priority,
+		SeedMinRatio: seedMinRatio,
+		SeedMinTime:  seedMinTime,
 	}
 	if err := s.store.CreateIndexer(indexer); err != nil {
 		return nil, fmt.Errorf("creating indexer: %w", err)
@@ -181,7 +185,7 @@ func (s *Service) List() ([]IndexerInfo, error) {
 }
 
 // Update modifies an existing indexer.
-func (s *Service) Update(id uint, name *string, settings map[string]string, enabled *bool, priority *int) (*IndexerInfo, error) {
+func (s *Service) Update(id uint, name *string, settings map[string]string, enabled *bool, priority *int, seedMinRatio *float64, seedMinTime *int) (*IndexerInfo, error) {
 	indexer, err := s.store.GetIndexer(id)
 	if err != nil {
 		return nil, err
@@ -203,6 +207,12 @@ func (s *Service) Update(id uint, name *string, settings map[string]string, enab
 		}
 		indexer.Settings = string(settingsJSON)
 		s.invalidateEngine(id)
+	}
+	if seedMinRatio != nil {
+		indexer.SeedMinRatio = *seedMinRatio
+	}
+	if seedMinTime != nil {
+		indexer.SeedMinTime = *seedMinTime
 	}
 
 	if err := s.store.UpdateIndexer(indexer); err != nil {
@@ -418,6 +428,8 @@ func (s *Service) indexerToInfo(indexer *store.Indexer) (*IndexerInfo, error) {
 		Enabled:      indexer.Enabled,
 		Settings:     settings,
 		Priority:     indexer.Priority,
+		SeedMinRatio: indexer.SeedMinRatio,
+		SeedMinTime:  indexer.SeedMinTime,
 	}, nil
 }
 

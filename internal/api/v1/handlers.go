@@ -737,6 +737,11 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 		return nil, err
 	}
 
+	downloads, err := h.store.ListDownloads(&itemID, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	// Build file presence lookup: "S{season}E{episode}" → true
 	fileLookup := make(map[string]bool)
 	for _, f := range files {
@@ -750,6 +755,42 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 	monitorLookup := make(map[int]bool)
 	for _, m := range monitors {
 		monitorLookup[m.SeasonNumber] = m.Monitored
+	}
+
+	// Build download status lookups.
+	// Priority: downloading > pending > downloaded > importing > seeding (completed/failed ignored).
+	dlStatusPriority := map[string]int{
+		"downloading": 5,
+		"pending":     4,
+		"downloaded":  3,
+		"importing":   2,
+		"seeding":     1,
+	}
+	// episodeDownloadStatus: episodeDBID → best download status
+	episodeDownloadStatus := make(map[uint]string)
+	// seasonDownloadStatus: seasonNumber → best download status (for season-level downloads)
+	seasonDownloadStatus := make(map[int]string)
+	// itemDownloadStatus: best download status for item-level downloads
+	var itemDownloadStatus string
+	for _, dl := range downloads {
+		pri := dlStatusPriority[dl.Status]
+		if pri == 0 {
+			continue // skip completed/failed
+		}
+		if dl.EpisodeID != nil {
+			if cur, ok := episodeDownloadStatus[*dl.EpisodeID]; !ok || pri > dlStatusPriority[cur] {
+				episodeDownloadStatus[*dl.EpisodeID] = dl.Status
+			}
+		} else if dl.SeasonNumber != nil {
+			sn := *dl.SeasonNumber
+			if cur, ok := seasonDownloadStatus[sn]; !ok || pri > dlStatusPriority[cur] {
+				seasonDownloadStatus[sn] = dl.Status
+			}
+		} else {
+			if dlStatusPriority[itemDownloadStatus] < pri {
+				itemDownloadStatus = dl.Status
+			}
+		}
 	}
 
 	// Group episodes by season
@@ -776,6 +817,19 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 		if ep.Runtime != nil {
 			apiEp.Runtime = ep.Runtime
 		}
+
+		// Resolve download status: episode-level > season-level > item-level
+		if status, ok := episodeDownloadStatus[ep.ID]; ok {
+			ds := EpisodeDownloadStatus(status)
+			apiEp.DownloadStatus = &ds
+		} else if status, ok := seasonDownloadStatus[ep.SeasonNumber]; ok {
+			ds := EpisodeDownloadStatus(status)
+			apiEp.DownloadStatus = &ds
+		} else if itemDownloadStatus != "" {
+			ds := EpisodeDownloadStatus(itemDownloadStatus)
+			apiEp.DownloadStatus = &ds
+		}
+
 		seasonMap[ep.SeasonNumber] = append(seasonMap[ep.SeasonNumber], apiEp)
 	}
 
@@ -938,7 +992,17 @@ func (h *Handlers) CreateIndexer(_ context.Context, req CreateIndexerRequestObje
 		priority = *req.Body.Priority
 	}
 
-	info, err := h.indexerSvc.Create(req.Body.Name, req.Body.DefinitionId, settings, priority)
+	var seedMinRatio float64
+	if req.Body.SeedMinRatio != nil {
+		seedMinRatio = float64(*req.Body.SeedMinRatio)
+	}
+
+	var seedMinTime int
+	if req.Body.SeedMinTime != nil {
+		seedMinTime = *req.Body.SeedMinTime
+	}
+
+	info, err := h.indexerSvc.Create(req.Body.Name, req.Body.DefinitionId, settings, priority, seedMinRatio, seedMinTime)
 	if err != nil {
 		return CreateIndexer400JSONResponse{
 			Code:    http.StatusBadRequest,
@@ -969,7 +1033,18 @@ func (h *Handlers) UpdateIndexer(_ context.Context, req UpdateIndexerRequestObje
 		settings = *req.Body.Settings
 	}
 
-	info, err := h.indexerSvc.Update(uint(req.Id), req.Body.Name, settings, req.Body.Enabled, req.Body.Priority)
+	var seedMinRatio *float64
+	if req.Body.SeedMinRatio != nil {
+		v := float64(*req.Body.SeedMinRatio)
+		seedMinRatio = &v
+	}
+
+	var seedMinTime *int
+	if req.Body.SeedMinTime != nil {
+		seedMinTime = req.Body.SeedMinTime
+	}
+
+	info, err := h.indexerSvc.Update(uint(req.Id), req.Body.Name, settings, req.Body.Enabled, req.Body.Priority, seedMinRatio, seedMinTime)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateIndexer404JSONResponse{
@@ -1058,6 +1133,104 @@ func (h *Handlers) SearchIndexers(ctx context.Context, req SearchIndexersRequest
 	}
 
 	return SearchIndexers200JSONResponse{Results: apiResults}, nil
+}
+
+// --- Download handlers ---
+
+func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestObject) (CreateDownloadResponseObject, error) {
+	dl := &store.Download{
+		MediaItemID: uint(req.Body.MediaItemId),
+		IndexerID:   uint(req.Body.IndexerId),
+		IndexerName: req.Body.IndexerName,
+		Title:       req.Body.Title,
+		DownloadURL: req.Body.DownloadUrl,
+		Status:      "pending",
+	}
+	if req.Body.EpisodeId != nil {
+		eid := uint(*req.Body.EpisodeId)
+		dl.EpisodeID = &eid
+	}
+	if req.Body.SeasonNumber != nil {
+		dl.SeasonNumber = req.Body.SeasonNumber
+	}
+	if req.Body.DetailsUrl != nil {
+		dl.DetailsURL = *req.Body.DetailsUrl
+	}
+	if req.Body.Size != nil {
+		dl.Size = *req.Body.Size
+	}
+	if req.Body.ImdbId != nil {
+		dl.ImdbID = *req.Body.ImdbId
+	}
+
+	if err := h.store.CreateDownload(dl); err != nil {
+		return CreateDownload400JSONResponse{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return CreateDownload201JSONResponse(downloadToAPI(dl)), nil
+}
+
+func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObject) (ListDownloadsResponseObject, error) {
+	var mediaItemID *uint
+	if req.Params.MediaItemId != nil {
+		id := uint(*req.Params.MediaItemId)
+		mediaItemID = &id
+	}
+
+	var status *string
+	if req.Params.Status != nil {
+		s := string(*req.Params.Status)
+		status = &s
+	}
+
+	downloads, err := h.store.ListDownloads(mediaItemID, status)
+	if err != nil {
+		return nil, err
+	}
+
+	apiDownloads := make([]Download, len(downloads))
+	for i := range downloads {
+		apiDownloads[i] = downloadToAPI(&downloads[i])
+	}
+
+	return ListDownloads200JSONResponse{Downloads: apiDownloads}, nil
+}
+
+func (h *Handlers) GetDownload(_ context.Context, req GetDownloadRequestObject) (GetDownloadResponseObject, error) {
+	dl, err := h.store.GetDownload(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return GetDownload404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "download not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return GetDownload200JSONResponse(downloadToAPI(dl)), nil
+}
+
+func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadStatusRequestObject) (UpdateDownloadStatusResponseObject, error) {
+	dl, err := h.store.GetDownload(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateDownloadStatus404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "download not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	dl.Status = string(req.Body.Status)
+	if err := h.store.UpdateDownload(dl); err != nil {
+		return nil, err
+	}
+
+	return UpdateDownloadStatus200JSONResponse(downloadToAPI(dl)), nil
 }
 
 // --- Conversion helpers ---
@@ -1379,6 +1552,13 @@ func indexerInfoToAPI(info *indexer.IndexerInfo) Indexer {
 		s := info.Settings
 		api.Settings = &s
 	}
+	if info.SeedMinRatio != 0 {
+		r := float32(info.SeedMinRatio)
+		api.SeedMinRatio = &r
+	}
+	if info.SeedMinTime != 0 {
+		api.SeedMinTime = &info.SeedMinTime
+	}
 	return api
 }
 
@@ -1414,6 +1594,48 @@ func torrentResultToAPI(r *indexer.TorrentResult) TorrentResult {
 	if r.UploadVolumeFactor != 1.0 {
 		uvf := float32(r.UploadVolumeFactor)
 		api.UploadVolumeFactor = &uvf
+	}
+	return api
+}
+
+func downloadToAPI(dl *store.Download) Download {
+	api := Download{
+		Id:              int64(dl.ID),
+		MediaItemId:     int64(dl.MediaItemID),
+		IndexerId:       int64(dl.IndexerID),
+		IndexerName:     dl.IndexerName,
+		Title:           dl.Title,
+		DownloadUrl:     dl.DownloadURL,
+		Status:          DownloadStatus(dl.Status),
+		SeedingRequired: dl.SeedingRequired,
+		LinkedToLibrary: dl.LinkedToLibrary,
+		CreatedAt:       dl.CreatedAt,
+		UpdatedAt:       dl.UpdatedAt,
+	}
+	if dl.EpisodeID != nil {
+		eid := int64(*dl.EpisodeID)
+		api.EpisodeId = &eid
+	}
+	if dl.SeasonNumber != nil {
+		api.SeasonNumber = dl.SeasonNumber
+	}
+	if dl.DetailsURL != "" {
+		api.DetailsUrl = &dl.DetailsURL
+	}
+	if dl.Size != "" {
+		api.Size = &dl.Size
+	}
+	if dl.ImdbID != "" {
+		api.ImdbId = &dl.ImdbID
+	}
+	if dl.ClientTorrentHash != "" {
+		api.ClientTorrentHash = &dl.ClientTorrentHash
+	}
+	if dl.SavePath != "" {
+		api.SavePath = &dl.SavePath
+	}
+	if dl.CompletedAt != nil {
+		api.CompletedAt = dl.CompletedAt
 	}
 	return api
 }

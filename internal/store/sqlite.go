@@ -44,6 +44,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&Setting{},
 		&JobRecord{},
 		&Indexer{},
+		&Download{},
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
@@ -433,4 +434,37 @@ func (s *SQLiteStore) UpdateIndexer(indexer *Indexer) error {
 
 func (s *SQLiteStore) DeleteIndexer(id uint) error {
 	return deleteByID(s.db, &Indexer{}, id)
+}
+
+// --- Download ---
+
+func (s *SQLiteStore) CreateDownload(download *Download) error {
+	return s.db.Create(download).Error
+}
+
+func (s *SQLiteStore) GetDownload(id uint) (*Download, error) {
+	return getByID[Download](s.db, id)
+}
+
+func (s *SQLiteStore) UpdateDownload(download *Download) error {
+	return save(s.db, download)
+}
+
+func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]Download, error) {
+	var downloads []Download
+	q := s.db.Order("created_at DESC")
+	if mediaItemID != nil {
+		q = q.Where("media_item_id = ?", *mediaItemID)
+	}
+	if status != nil {
+		q = q.Where("status = ?", *status)
+	}
+	if err := q.Find(&downloads).Error; err != nil {
+		return nil, err
+	}
+	return downloads, nil
+}
+
+func (s *SQLiteStore) DeleteDownload(id uint) error {
+	return deleteByID(s.db, &Download{}, id)
 }

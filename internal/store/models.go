@@ -118,12 +118,36 @@ type JobRecord struct {
 }
 
 type Indexer struct {
-	ID           uint   `gorm:"primarykey"`
-	Name         string `gorm:"not null"`
-	DefinitionID string `gorm:"not null"`
-	Enabled      bool   `gorm:"not null;default:true"`
-	Settings     string `gorm:"not null;default:'{}'"` // JSON: {"username":"x","password":"y",...}
-	Priority     int    `gorm:"not null;default:0"`
+	ID           uint    `gorm:"primarykey"`
+	Name         string  `gorm:"not null"`
+	DefinitionID string  `gorm:"not null"`
+	Enabled      bool    `gorm:"not null;default:true"`
+	Settings     string  `gorm:"not null;default:'{}'"` // JSON: {"username":"x","password":"y",...}
+	Priority     int     `gorm:"not null;default:0"`
+	SeedMinRatio float64 `gorm:"not null;default:0"` // 0 = no requirement
+	SeedMinTime  int     `gorm:"not null;default:0"` // minutes, 0 = no requirement
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type Download struct {
+	ID                uint   `gorm:"primarykey"`
+	MediaItemID       uint   `gorm:"not null;index"`
+	EpisodeID         *uint  `gorm:"index"`
+	SeasonNumber      *int
+	IndexerID         uint   `gorm:"not null"`
+	IndexerName       string `gorm:"not null"`
+	Title             string `gorm:"not null"`
+	DownloadURL       string `gorm:"not null"`
+	DetailsURL        string
+	Size              string
+	ImdbID            string
+	Status            string `gorm:"not null;default:pending"`
+	ClientTorrentHash string
+	SavePath          string
+	SeedingRequired   bool `gorm:"not null;default:false"`
+	LinkedToLibrary   bool `gorm:"not null;default:false"`
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	CompletedAt       *time.Time
 }

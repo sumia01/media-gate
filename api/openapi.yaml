@@ -1126,6 +1126,115 @@ paths:
                     items:
                       $ref: "#/components/schemas/TorrentResult"
 
+  /downloads:
+    get:
+      operationId: listDownloads
+      summary: List downloads
+      parameters:
+        - name: mediaItemId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by media item ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - downloading
+              - downloaded
+              - importing
+              - seeding
+              - completed
+              - failed
+          description: Filter by status
+      responses:
+        "200":
+          description: Downloads list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - downloads
+                properties:
+                  downloads:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Download"
+    post:
+      operationId: createDownload
+      summary: Create a download record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadCreate"
+      responses:
+        "201":
+          description: Download created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /downloads/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getDownload
+      summary: Get a download by ID
+      responses:
+        "200":
+          description: Download found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "404":
+          description: Download not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateDownloadStatus
+      summary: Update download status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadStatusUpdate"
+      responses:
+        "200":
+          description: Download updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "404":
+          description: Download not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthResponse:
@@ -1502,6 +1611,16 @@ components:
           type: integer
         hasFile:
           type: boolean
+        downloadStatus:
+          type: string
+          enum:
+            - pending
+            - downloading
+            - downloaded
+            - importing
+            - seeding
+            - completed
+            - failed
 
     SeasonSummary:
       type: object
@@ -1807,6 +1926,12 @@ components:
             type: string
         priority:
           type: integer
+        seedMinRatio:
+          type: number
+          description: Minimum seed ratio requirement (0 = no requirement)
+        seedMinTime:
+          type: integer
+          description: Minimum seed time in minutes (0 = no requirement)
 
     IndexerCreate:
       type: object
@@ -1826,6 +1951,10 @@ components:
           type: boolean
         priority:
           type: integer
+        seedMinRatio:
+          type: number
+        seedMinTime:
+          type: integer
 
     IndexerUpdate:
       type: object
@@ -1839,6 +1968,10 @@ components:
         enabled:
           type: boolean
         priority:
+          type: integer
+        seedMinRatio:
+          type: number
+        seedMinTime:
           type: integer
 
     IndexerTestRequest:
@@ -1891,3 +2024,121 @@ components:
           type: number
         uploadVolumeFactor:
           type: number
+
+    Download:
+      type: object
+      required:
+        - id
+        - mediaItemId
+        - indexerId
+        - indexerName
+        - title
+        - downloadUrl
+        - status
+        - seedingRequired
+        - linkedToLibrary
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        mediaItemId:
+          type: integer
+          format: int64
+        episodeId:
+          type: integer
+          format: int64
+        seasonNumber:
+          type: integer
+        indexerId:
+          type: integer
+          format: int64
+        indexerName:
+          type: string
+        title:
+          type: string
+        downloadUrl:
+          type: string
+        detailsUrl:
+          type: string
+        size:
+          type: string
+        imdbId:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - downloading
+            - downloaded
+            - importing
+            - seeding
+            - completed
+            - failed
+        clientTorrentHash:
+          type: string
+        savePath:
+          type: string
+        seedingRequired:
+          type: boolean
+        linkedToLibrary:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    DownloadCreate:
+      type: object
+      required:
+        - mediaItemId
+        - indexerId
+        - indexerName
+        - title
+        - downloadUrl
+      properties:
+        mediaItemId:
+          type: integer
+          format: int64
+        episodeId:
+          type: integer
+          format: int64
+        seasonNumber:
+          type: integer
+        indexerId:
+          type: integer
+          format: int64
+        indexerName:
+          type: string
+        title:
+          type: string
+        downloadUrl:
+          type: string
+        detailsUrl:
+          type: string
+        size:
+          type: string
+        imdbId:
+          type: string
+
+    DownloadStatusUpdate:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - downloading
+            - downloaded
+            - importing
+            - seeding
+            - completed
+            - failed
