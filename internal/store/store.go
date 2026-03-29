@@ -75,4 +75,11 @@ type Store interface {
 	ListJobRecords(limit int) ([]JobRecord, error)
 	DeleteOldJobRecords(keep int) error
 	MaxJobRecordID() (uint, error)
+
+	// Indexer CRUD
+	CreateIndexer(indexer *Indexer) error
+	GetIndexer(id uint) (*Indexer, error)
+	ListIndexers() ([]Indexer, error)
+	UpdateIndexer(indexer *Indexer) error
+	DeleteIndexer(id uint) error
 }

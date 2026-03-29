@@ -116,3 +116,14 @@ type JobRecord struct {
 	StartedAt     *time.Time
 	CompletedAt   *time.Time
 }
+
+type Indexer struct {
+	ID           uint   `gorm:"primarykey"`
+	Name         string `gorm:"not null"`
+	DefinitionID string `gorm:"not null"`
+	Enabled      bool   `gorm:"not null;default:true"`
+	Settings     string `gorm:"not null;default:'{}'"` // JSON: {"username":"x","password":"y",...}
+	Priority     int    `gorm:"not null;default:0"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}

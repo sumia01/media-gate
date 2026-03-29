@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
+	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/matching"
@@ -23,17 +25,18 @@ import (
 var _ StrictServerInterface = (*Handlers)(nil)
 
 type Handlers struct {
-	lib       *library.Service
-	store     store.Store
-	queue     *jobqueue.Queue
-	settings  *settings.Service
-	matchSvc  *matching.Service
-	syncSvc   *sync.Service
-	posterDir string
+	lib        *library.Service
+	store      store.Store
+	queue      *jobqueue.Queue
+	settings   *settings.Service
+	matchSvc   *matching.Service
+	syncSvc    *sync.Service
+	indexerSvc *indexer.Service
+	posterDir  string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *sync.Service, posterDir string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, posterDir: posterDir}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *sync.Service, indexerSvc *indexer.Service, posterDir string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {
@@ -885,6 +888,178 @@ func (h *Handlers) DeleteMediaProfile(_ context.Context, req DeleteMediaProfileR
 	return DeleteMediaProfile204Response{}, nil
 }
 
+// --- Indexer Definition handlers ---
+
+func (h *Handlers) ListIndexerDefinitions(_ context.Context, _ ListIndexerDefinitionsRequestObject) (ListIndexerDefinitionsResponseObject, error) {
+	defs := h.indexerSvc.ListDefinitions()
+	apiDefs := make([]IndexerDefinition, len(defs))
+	for i, d := range defs {
+		apiDefs[i] = definitionToAPI(&d)
+	}
+	return ListIndexerDefinitions200JSONResponse{Definitions: apiDefs}, nil
+}
+
+func (h *Handlers) GetIndexerDefinition(_ context.Context, req GetIndexerDefinitionRequestObject) (GetIndexerDefinitionResponseObject, error) {
+	def, err := h.indexerSvc.GetDefinition(req.Id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return GetIndexerDefinition404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "indexer definition not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return GetIndexerDefinition200JSONResponse(definitionToAPI(def)), nil
+}
+
+// --- Indexer CRUD handlers ---
+
+func (h *Handlers) ListIndexers(_ context.Context, _ ListIndexersRequestObject) (ListIndexersResponseObject, error) {
+	indexers, err := h.indexerSvc.List()
+	if err != nil {
+		return nil, err
+	}
+	apiIndexers := make([]Indexer, len(indexers))
+	for i, idx := range indexers {
+		apiIndexers[i] = indexerInfoToAPI(&idx)
+	}
+	return ListIndexers200JSONResponse{Indexers: apiIndexers}, nil
+}
+
+func (h *Handlers) CreateIndexer(_ context.Context, req CreateIndexerRequestObject) (CreateIndexerResponseObject, error) {
+	settings := make(map[string]string)
+	if req.Body.Settings != nil {
+		settings = *req.Body.Settings
+	}
+
+	priority := 0
+	if req.Body.Priority != nil {
+		priority = *req.Body.Priority
+	}
+
+	info, err := h.indexerSvc.Create(req.Body.Name, req.Body.DefinitionId, settings, priority)
+	if err != nil {
+		return CreateIndexer400JSONResponse{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return CreateIndexer201JSONResponse(indexerInfoToAPI(info)), nil
+}
+
+func (h *Handlers) GetIndexer(_ context.Context, req GetIndexerRequestObject) (GetIndexerResponseObject, error) {
+	info, err := h.indexerSvc.Get(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return GetIndexer404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "indexer not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return GetIndexer200JSONResponse(indexerInfoToAPI(info)), nil
+}
+
+func (h *Handlers) UpdateIndexer(_ context.Context, req UpdateIndexerRequestObject) (UpdateIndexerResponseObject, error) {
+	var settings map[string]string
+	if req.Body.Settings != nil {
+		settings = *req.Body.Settings
+	}
+
+	info, err := h.indexerSvc.Update(uint(req.Id), req.Body.Name, settings, req.Body.Enabled, req.Body.Priority)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateIndexer404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "indexer not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return UpdateIndexer200JSONResponse(indexerInfoToAPI(info)), nil
+}
+
+func (h *Handlers) DeleteIndexer(_ context.Context, req DeleteIndexerRequestObject) (DeleteIndexerResponseObject, error) {
+	if err := h.indexerSvc.Delete(uint(req.Id)); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return DeleteIndexer404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "indexer not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return DeleteIndexer204Response{}, nil
+}
+
+func (h *Handlers) TestIndexerConnection(ctx context.Context, req TestIndexerConnectionRequestObject) (TestIndexerConnectionResponseObject, error) {
+	var overrideSettings map[string]string
+	if req.Body != nil && req.Body.Settings != nil {
+		overrideSettings = *req.Body.Settings
+	}
+
+	success, msg, err := h.indexerSvc.TestConnection(uint(req.Id), overrideSettings)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return TestIndexerConnection404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "indexer not found",
+			}, nil
+		}
+		return nil, err
+	}
+	return TestIndexerConnection200JSONResponse{Success: success, Message: &msg}, nil
+}
+
+func (h *Handlers) SearchIndexers(ctx context.Context, req SearchIndexersRequestObject) (SearchIndexersResponseObject, error) {
+	params := indexer.SearchParams{}
+
+	if req.Params.Query != nil {
+		params.Query = *req.Params.Query
+	}
+	if req.Params.ImdbId != nil {
+		params.ImdbID = *req.Params.ImdbId
+	}
+	if req.Params.Type != nil {
+		params.Type = string(*req.Params.Type)
+	}
+	if req.Params.Season != nil {
+		params.Season = *req.Params.Season
+	}
+	if req.Params.Episode != nil {
+		params.Episode = *req.Params.Episode
+	}
+	if req.Params.Categories != nil {
+		params.Categories = strings.Split(*req.Params.Categories, ",")
+	}
+	if req.Params.IndexerIds != nil {
+		for _, idStr := range strings.Split(*req.Params.IndexerIds, ",") {
+			id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 64)
+			if err == nil {
+				params.IndexerIDs = append(params.IndexerIDs, uint(id))
+			}
+		}
+	}
+	if req.Params.Limit != nil {
+		params.Limit = *req.Params.Limit
+	}
+
+	results, err := h.indexerSvc.Search(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	apiResults := make([]TorrentResult, len(results))
+	for i, r := range results {
+		apiResults[i] = torrentResultToAPI(&r)
+	}
+
+	return SearchIndexers200JSONResponse{Results: apiResults}, nil
+}
+
 // --- Conversion helpers ---
 
 func libraryToAPI(lib *store.Library) Library {
@@ -1160,4 +1335,85 @@ func updateMediaProfileFromAPI(p *store.MediaProfile, name string, resolutions, 
 	} else {
 		p.ExcludeTags = ""
 	}
+}
+
+func definitionToAPI(d *indexer.DefinitionInfo) IndexerDefinition {
+	api := IndexerDefinition{
+		Id:       d.ID,
+		Name:     d.Name,
+		Type:     d.Type,
+		Language: d.Language,
+	}
+	if d.Description != "" {
+		api.Description = &d.Description
+	}
+	if len(d.Links) > 0 {
+		api.Links = &d.Links
+	}
+	if len(d.Settings) > 0 {
+		settings := make([]IndexerDefinitionSetting, len(d.Settings))
+		for i, s := range d.Settings {
+			settings[i] = IndexerDefinitionSetting{
+				Name:  s.Name,
+				Type:  s.Type,
+				Label: s.Label,
+			}
+			if s.Default != "" {
+				settings[i].Default = &s.Default
+			}
+		}
+		api.Settings = &settings
+	}
+	return api
+}
+
+func indexerInfoToAPI(info *indexer.IndexerInfo) Indexer {
+	api := Indexer{
+		Id:           int64(info.ID),
+		Name:         info.Name,
+		DefinitionId: info.DefinitionID,
+		Enabled:      info.Enabled,
+		Priority:     info.Priority,
+	}
+	if len(info.Settings) > 0 {
+		s := info.Settings
+		api.Settings = &s
+	}
+	return api
+}
+
+func torrentResultToAPI(r *indexer.TorrentResult) TorrentResult {
+	api := TorrentResult{
+		IndexerId:   int64(r.IndexerID),
+		IndexerName: r.IndexerName,
+		Title:       r.Title,
+		Size:        r.Size,
+		Seeders:     r.Seeders,
+		Leechers:    r.Leechers,
+		Date:        r.Date,
+	}
+	if r.DetailsURL != "" {
+		api.DetailsUrl = &r.DetailsURL
+	}
+	if r.DownloadURL != "" {
+		api.DownloadUrl = &r.DownloadURL
+	}
+	if r.Category != "" {
+		api.Category = &r.Category
+	}
+	if r.CategoryDesc != "" {
+		api.CategoryDesc = &r.CategoryDesc
+	}
+	if r.ImdbID != "" {
+		api.ImdbId = &r.ImdbID
+	}
+	if r.DownloadVolumeFactor != 1.0 {
+		dvf := float32(r.DownloadVolumeFactor)
+		api.DownloadVolumeFactor = &dvf
+	}
+	if r.UploadVolumeFactor != 1.0 {
+		uvf := float32(r.UploadVolumeFactor)
+		api.UploadVolumeFactor = &uvf
+	}
+	return api
 }

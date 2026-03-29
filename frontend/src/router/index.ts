@@ -5,6 +5,8 @@ import LibraryDetailView from '@/views/LibraryDetailView.vue'
 import MediaDetailView from '@/views/MediaDetailView.vue'
 import MediaPreviewView from '@/views/MediaPreviewView.vue'
 import MediaProfilesView from '@/views/MediaProfilesView.vue'
+import IndexersView from '@/views/IndexersView.vue'
+import IndexerSearchView from '@/views/IndexerSearchView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 
 const router = createRouter({
@@ -42,6 +44,16 @@ const router = createRouter({
       path: '/media-profiles',
       name: 'media-profiles',
       component: MediaProfilesView,
+    },
+    {
+      path: '/indexers',
+      name: 'indexers',
+      component: IndexersView,
+    },
+    {
+      path: '/indexers/search',
+      name: 'indexer-search',
+      component: IndexerSearchView,
     },
     {
       path: '/settings',
