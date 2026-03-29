@@ -880,6 +880,252 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /indexer-definitions:
+    get:
+      operationId: listIndexerDefinitions
+      summary: List available indexer definitions
+      responses:
+        "200":
+          description: Indexer definitions list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - definitions
+                properties:
+                  definitions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IndexerDefinition"
+
+  /indexer-definitions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getIndexerDefinition
+      summary: Get an indexer definition by ID
+      responses:
+        "200":
+          description: Indexer definition found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndexerDefinition"
+        "404":
+          description: Indexer definition not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /indexers:
+    get:
+      operationId: listIndexers
+      summary: List all configured indexers
+      responses:
+        "200":
+          description: Indexers list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - indexers
+                properties:
+                  indexers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Indexer"
+    post:
+      operationId: createIndexer
+      summary: Create an indexer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexerCreate"
+      responses:
+        "201":
+          description: Indexer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Indexer"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /indexers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getIndexer
+      summary: Get an indexer by ID
+      responses:
+        "200":
+          description: Indexer found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Indexer"
+        "404":
+          description: Indexer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateIndexer
+      summary: Update an indexer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexerUpdate"
+      responses:
+        "200":
+          description: Indexer updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Indexer"
+        "404":
+          description: Indexer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteIndexer
+      summary: Delete an indexer
+      responses:
+        "204":
+          description: Indexer deleted
+        "404":
+          description: Indexer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /indexers/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    post:
+      operationId: testIndexerConnection
+      summary: Test an indexer connection
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexerTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+        "404":
+          description: Indexer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /indexers/search:
+    get:
+      operationId: searchIndexers
+      summary: Search across configured indexers
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Search query
+        - name: imdbId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: IMDb ID to search for
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - search
+              - tv-search
+              - movie-search
+          description: Search type
+        - name: season
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Season number
+        - name: episode
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Episode number
+        - name: categories
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated category list
+        - name: indexerIds
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated indexer ID list
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Maximum number of results
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - results
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TorrentResult"
+
 components:
   schemas:
     HealthResponse:
@@ -1493,3 +1739,155 @@ components:
           type: boolean
         message:
           type: string
+
+    IndexerDefinition:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - language
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        language:
+          type: string
+        links:
+          type: array
+          items:
+            type: string
+        settings:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndexerDefinitionSetting"
+
+    IndexerDefinitionSetting:
+      type: object
+      required:
+        - name
+        - type
+        - label
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        default:
+          type: string
+
+    Indexer:
+      type: object
+      required:
+        - id
+        - name
+        - definitionId
+        - enabled
+        - priority
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        definitionId:
+          type: string
+        enabled:
+          type: boolean
+        settings:
+          type: object
+          additionalProperties:
+            type: string
+        priority:
+          type: integer
+
+    IndexerCreate:
+      type: object
+      required:
+        - name
+        - definitionId
+      properties:
+        name:
+          type: string
+        definitionId:
+          type: string
+        settings:
+          type: object
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+
+    IndexerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        settings:
+          type: object
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+
+    IndexerTestRequest:
+      type: object
+      properties:
+        settings:
+          type: object
+          additionalProperties:
+            type: string
+
+    TorrentResult:
+      type: object
+      required:
+        - indexerId
+        - indexerName
+        - title
+        - size
+        - seeders
+        - leechers
+        - date
+      properties:
+        indexerId:
+          type: integer
+          format: int64
+        indexerName:
+          type: string
+        title:
+          type: string
+        detailsUrl:
+          type: string
+        downloadUrl:
+          type: string
+        size:
+          type: string
+        seeders:
+          type: integer
+        leechers:
+          type: integer
+        date:
+          type: integer
+          format: int64
+          description: Unix timestamp
+        category:
+          type: string
+        categoryDesc:
+          type: string
+        imdbId:
+          type: string
+        downloadVolumeFactor:
+          type: number
+        uploadVolumeFactor:
+          type: number

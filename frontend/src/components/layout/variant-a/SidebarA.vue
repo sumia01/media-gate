@@ -13,6 +13,7 @@ const staticTop = [
 
 const staticBottom = [
   { icon: '⛁', label: 'Libraries', to: '/libraries' },
+  { icon: '⇌', label: 'Indexers', to: '/indexers' },
   { icon: '▦', label: 'Profiles', to: '/media-profiles' },
   { icon: '⚙', label: 'Settings', to: '/settings' },
 ]
@@ -84,7 +85,7 @@ onMounted(refreshLibraries)
           :key="item.label"
           :to="item.to"
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"
-          :class="route.path === item.to && item.to !== '/'
+          :class="(route.path === item.to || route.path.startsWith(item.to + '/')) && item.to !== '/'
             ? 'bg-violet-600/20 text-violet-300'
             : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
         >

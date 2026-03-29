@@ -39,7 +39,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 | qBittorrent   | Torrent download client     | Planned |
 | TMDB          | Movie & TV metadata (API v3) | Integrated |
 | TVDB          | TV series metadata (API v4)  | Integrated |
-| Indexers       | Torrent/NZB search (Prowlarr replacement) | Planned |
+| Indexers       | Torrent/NZB search (Cardigann engine) | Integrated |
 
 More integrations will be defined incrementally as development progresses.
 
@@ -57,7 +57,10 @@ media-gate/
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
 │   ├── fileparse/       # Filename parser (resolution, source type, season/episode extraction)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, Episode, QualityProfile, SeasonMonitor, Setting, JobRecord)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, Episode, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer)
+│   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
+│   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
+│   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client
 │   │   └── tvdb/        # TVDB API v4 client (JWT auth)
@@ -103,6 +106,7 @@ media-gate/
 | `SeasonMonitor` | `season_monitors` | Per-season monitoring toggle for series MediaItems (unique per media item + season number) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
+| `Indexer` | `indexers` | Configured indexer instance (name, definition ID, credentials as JSON, priority, enabled) |
 
 ## Backend Service Layer
 
@@ -112,6 +116,7 @@ HTTP Request
     → library.Service (CRUD, path validation, folder browsing)
     → settings.Service (settings CRUD, masking, TMDB/TVDB connection tests)
     → store.Store (GORM → SQLite/Postgres)
+    → indexer.Service (indexer CRUD, Cardigann engine orchestration, multi-indexer search)
     → jobqueue.Queue (enqueue background work, persist history to SQLite)
       → sync.Service (read disk, diff DB, create/remove MediaItems)
       → matching.Service (auto-match MediaItems to TMDB/TVDB)
@@ -124,3 +129,4 @@ HTTP Request
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection
+- **indexer.Service** — manages indexer CRUD (configurations stored in DB with JSON credentials); loads Cardigann YAML definitions from embedded filesystem; lazy-creates and caches engine instances per indexer; parallel multi-indexer search with semaphore; credential masking in API responses. The Cardigann engine (`internal/indexer/cardigann/`) supports POST login with cookie sessions, HTML scraping via goquery, Go template rendering for dynamic inputs, and a filter pipeline (querystring, replace, dateparse, regexp, append, etc.)

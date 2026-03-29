@@ -427,3 +427,23 @@ The `useGlobalSearch` composable was expanded with `activeLibraryId` and `search
 Also removed dead code: the unused `NavItem` interface and `navItems` constant from `dummyData.ts`.
 
 **Rationale**: Reduces duplication, makes the codebase easier to read and maintain. Changes to error styling or modal behavior now happen in one place. The type re-export file eliminates the most common boilerplate line in every component.
+
+---
+
+## ADR-033: Cardigann-compatible indexer engine
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Phase 2 of the roadmap is indexer integration (Prowlarr replacement). The choice is between integrating with Prowlarr as an external dependency or building a native indexer engine. The primary target tracker is ncore (Hungarian private tracker).
+
+**Decision**: Build a native Cardigann engine that can parse and execute Prowlarr's YAML indexer definitions directly. The engine lives in `internal/indexer/cardigann/` and supports:
+- YAML definition parsing (same format as Prowlarr's `definitions/v11/*.yml`)
+- POST-based login with cookie session management
+- HTML scraping with CSS selectors (via `goquery`)
+- Go template rendering for dynamic inputs/queries
+- Filter pipeline (querystring, replace, dateparse, regexp, append, etc.)
+- Category mapping (site categories → Newznab standard)
+
+Built-in definitions are embedded via `go:embed` in `internal/indexer/definitions/`. Dropping a `.yml` file into this directory makes it available. The indexer service (`internal/indexer/service.go`) handles CRUD, engine lifecycle caching, credential masking, and parallel multi-indexer search.
+
+**Rationale**: Building a native engine keeps the "single binary" deployment model — no external Prowlarr instance needed. The Cardigann YAML format is a well-established standard with 700+ definitions maintained by the Prowlarr community. For ncore specifically, the format is simple: POST login + HTML scraping. The engine is ~600 lines of Go and uses only two new dependencies (`yaml.v3`, `goquery`). Future indexers can be added by dropping YAML files — no code changes needed.

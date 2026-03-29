@@ -11,6 +11,7 @@ import (
 	"github.com/sumia01/media-gate/frontend"
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
 	"github.com/sumia01/media-gate/internal/config"
+	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/logging"
@@ -50,7 +51,13 @@ func main() {
 	queue.Start()
 	defer queue.Stop()
 
-	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, syncSvc, posterDir)
+	indexerSvc, err := indexer.NewService(db)
+	if err != nil {
+		slog.Error("failed to initialize indexer service", "error", err)
+		os.Exit(1)
+	}
+
+	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()

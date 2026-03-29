@@ -60,10 +60,14 @@
 - [x] IMDb ID tracking — extracted from TMDB/TVDB during matching, stored on MediaMetadata, displayed on media detail page with link
 - [x] Match mode modal — library match button offers "unmatched only" or "full re-match all" via modal
 
-## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
-- [ ] Indexer configuration and management
-- [ ] Search across configured indexers
-- [ ] Result ranking and filtering
+## Phase 2: Indexer Integration (Prowlarr replacement) ✅
+- [x] Cardigann YAML engine (parse + execute Prowlarr indexer definitions)
+- [x] Built-in indexer definitions (ncore.yml embedded via go:embed)
+- [x] Indexer CRUD (store model, service, API endpoints)
+- [x] Multi-indexer search with parallel execution
+- [x] Indexer connection testing
+- [x] Indexer management UI (frontend)
+- [x] Search results UI (frontend)
 
 ## Phase 3: Download Management (Sonarr/Radarr replacement) ⬜
 - [ ] qBittorrent API integration

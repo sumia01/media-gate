@@ -43,6 +43,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&Episode{},
 		&Setting{},
 		&JobRecord{},
+		&Indexer{},
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
@@ -406,4 +407,30 @@ func (s *SQLiteStore) MaxJobRecordID() (uint, error) {
 		return 0, err
 	}
 	return maxID, nil
+}
+
+// --- Indexer ---
+
+func (s *SQLiteStore) CreateIndexer(indexer *Indexer) error {
+	return s.db.Create(indexer).Error
+}
+
+func (s *SQLiteStore) GetIndexer(id uint) (*Indexer, error) {
+	return getByID[Indexer](s.db, id)
+}
+
+func (s *SQLiteStore) ListIndexers() ([]Indexer, error) {
+	var indexers []Indexer
+	if err := s.db.Order("priority DESC, name ASC").Find(&indexers).Error; err != nil {
+		return nil, err
+	}
+	return indexers, nil
+}
+
+func (s *SQLiteStore) UpdateIndexer(indexer *Indexer) error {
+	return save(s.db, indexer)
+}
+
+func (s *SQLiteStore) DeleteIndexer(id uint) error {
+	return deleteByID(s.db, &Indexer{}, id)
 }
