@@ -5,7 +5,6 @@ import client from '@/api/client'
 import type { components } from '@/api/schema'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
-import AddMediaSearch from '@/components/media/AddMediaSearch.vue'
 
 type Library = components['schemas']['Library']
 type MediaItem = components['schemas']['MediaItem']
@@ -13,24 +12,20 @@ type MediaItem = components['schemas']['MediaItem']
 const route = useRoute()
 const router = useRouter()
 const { jobs, triggerSync, triggerMatch, hasActiveJob, onJobDone } = useJobQueue()
-const { searchOpen, closeSearch } = useGlobalSearch()
+const { openSearch, setActiveLibrary } = useGlobalSearch()
 
 const library = ref<Library | null>(null)
 const items = ref<MediaItem[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
-const showAddSearch = ref(false)
 const showMatchModal = ref(false)
 
-// Sync global search bar with local add-media panel
-watch(searchOpen, (open) => {
-  if (open) showAddSearch.value = true
-})
-
-function closeAddSearch() {
-  showAddSearch.value = false
-  closeSearch()
+function openAddSearch() {
+  if (library.value) {
+    setActiveLibrary(library.value.id, library.value.mediaType as 'movie' | 'series')
+  }
+  openSearch()
 }
 
 const isSyncingThisLibrary = computed(() =>
@@ -120,10 +115,6 @@ function navigateToMedia(item: MediaItem) {
   router.push({ name: 'media-detail', params: { id: item.id } })
 }
 
-function handleMediaAdded() {
-  if (library.value) fetchMedia(library.value.id)
-}
-
 // Reload media items when this library's jobs finish
 const removeJobDoneListener = onJobDone((libraryId, jobType) => {
   if (library.value && library.value.id === libraryId) {
@@ -155,7 +146,7 @@ watch(() => route.params.id, loadAll)
         <span v-if="library" class="text-xs text-gray-500 font-mono">{{ library.path }}</span>
         <button
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
-          @click="showAddSearch = true"
+          @click="openAddSearch"
         >
           <span class="text-base leading-none">+</span>
           Add
@@ -249,17 +240,6 @@ watch(() => route.params.id, loadAll)
         </div>
       </div>
     </div>
-
-    <!-- Add Media Search -->
-    <Teleport to="body">
-      <AddMediaSearch
-        v-if="showAddSearch && library"
-        :library-id="library.id"
-        :media-type="library.mediaType"
-        @added="handleMediaAdded"
-        @close="closeAddSearch"
-      />
-    </Teleport>
 
     <!-- Match Mode Modal -->
     <Teleport to="body">

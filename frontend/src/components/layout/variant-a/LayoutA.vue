@@ -2,8 +2,11 @@
 import { ref } from 'vue'
 import SidebarA from './SidebarA.vue'
 import TopBarA from './TopBarA.vue'
+import GlobalSearchOverlay from '@/components/media/GlobalSearchOverlay.vue'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
 const collapsed = ref(false)
+const { searchOpen } = useGlobalSearch()
 </script>
 
 <template>
@@ -17,5 +20,9 @@ const collapsed = ref(false)
         <slot />
       </main>
     </div>
+
+    <Teleport to="body">
+      <GlobalSearchOverlay v-if="searchOpen" />
+    </Teleport>
   </div>
 </template>
