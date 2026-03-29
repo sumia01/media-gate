@@ -454,10 +454,16 @@ func scanMediaFolder(folderPath string) []scannedFile {
 
 	for _, e := range entries {
 		if e.IsDir() {
+			subPath := filepath.Join(folderPath, e.Name())
 			// Check if it's a season subfolder
 			if sn := fileparse.ParseSeasonFromDir(e.Name()); sn != nil {
-				seasonFiles := scanSeasonDir(filepath.Join(folderPath, e.Name()), sn)
+				seasonFiles := scanSeasonDir(subPath, sn)
 				files = append(files, seasonFiles...)
+			} else {
+				// Non-season subdirectory (e.g. release folder, show-name subfolder).
+				// Descend one level to pick up video files inside it.
+				subFiles := scanVideoDir(subPath, nil, true)
+				files = append(files, subFiles...)
 			}
 			continue
 		}

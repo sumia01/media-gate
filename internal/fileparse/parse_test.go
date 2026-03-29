@@ -67,6 +67,36 @@ func TestParse(t *testing.T) {
 			filename: "Show.S01E01.Web-Rip.mp4",
 			want:     FileInfo{SourceType: "webrip", SeasonNumber: intPtr(1), EpisodeNumber: intPtr(1)},
 		},
+		{
+			name:     "Hungarian évad rész",
+			filename: "Gordon Ramsay - 24 óra-Pokoli éttermek - 1. évad 02. rész.mkv",
+			want:     FileInfo{SeasonNumber: intPtr(1), EpisodeNumber: intPtr(2)},
+		},
+		{
+			name:     "Hungarian évad rész season 3",
+			filename: "Gordon Ramsay - 24 óra-Pokoli éttermek - 3. évad 10. rész.mkv",
+			want:     FileInfo{SeasonNumber: intPtr(3), EpisodeNumber: intPtr(10)},
+		},
+		{
+			name:     "standalone E### Dragon Ball Z",
+			filename: "Dragon.Ball.Z.E085.-.1080p.BluRay.2.0.x264.HUN.ENG.JAP-ClunkyChip.mkv",
+			want:     FileInfo{Resolution: "1080p", SourceType: "bluray", EpisodeNumber: intPtr(85)},
+		},
+		{
+			name:     "standalone E### Dragon Ball Super",
+			filename: "Dragon.Ball.Super.E043.mkv",
+			want:     FileInfo{EpisodeNumber: intPtr(43)},
+		},
+		{
+			name:     "dot episode Kacsamesek",
+			filename: "Kacsamesek.63.Minden.Kacsa.A.Fedelzetre.DVDRip.XviD.Hun-Coopter.avi",
+			want:     FileInfo{SourceType: "dvdrip", EpisodeNumber: intPtr(63)},
+		},
+		{
+			name:     "dot episode Kacsamesek single digit",
+			filename: "Kacsamesek.01.Hasonmasok.DVDRip.XviD.Hun-Coopter.avi",
+			want:     FileInfo{SourceType: "dvdrip", EpisodeNumber: intPtr(1)},
+		},
 	}
 
 	for _, tt := range tests {
@@ -148,6 +178,11 @@ func TestParseSeasonFromDir(t *testing.T) {
 		{"suffix with dots", "Show.Name.Season.3", intPtr(3)},
 		{"no season", "Breaking Bad", nil},
 		{"no season just year", "ShowName (2020)", nil},
+		{"suffix S## with trailing resolution", "Az Oroszlán őrség S01 1080p", intPtr(1)},
+		{"suffix S## with trailing resolution 720p", "A Büszke Birtok Oroszlán őrsége S02 720p", intPtr(2)},
+		{"dot-separated S## with metadata", "The.Lion.Guard.S03.720p.DSNP.WEBRip.DDP5.1.x264", intPtr(3)},
+		{"Hungarian évad", "Gordon Ramsay 24 óra. Pokoli éttermek 1. évad", intPtr(1)},
+		{"Hungarian évad season 3", "Gordon Ramsay 24 óra. Pokoli éttermek 3. évad", intPtr(3)},
 	}
 
 	for _, tt := range tests {
@@ -172,6 +207,9 @@ func TestStripSeasonSuffix(t *testing.T) {
 		{"no season", "Breaking Bad", "Breaking Bad"},
 		{"exact season dir", "Season 01", "Season 01"}, // exact match not stripped (no base title)
 		{"standalone S1", "S1", "S1"},                   // no base title
+		{"S## with trailing resolution", "Az Oroszlán őrség S01 1080p", "Az Oroszlán őrség"},
+		{"dot-separated S## with metadata", "The.Lion.Guard.S03.720p.DSNP.WEBRip.DDP5.1.x264", "The Lion Guard"},
+		{"Hungarian évad", "Gordon Ramsay 24 óra. Pokoli éttermek 1. évad", "Gordon Ramsay 24 óra. Pokoli éttermek"},
 	}
 
 	for _, tt := range tests {
