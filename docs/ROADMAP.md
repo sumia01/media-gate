@@ -54,6 +54,8 @@
 - [x] Quality profile selector on media detail page
 - [x] Cast & crew display on media detail page
 - [x] Collapsible files list on media detail page (collapsed by default)
+- [x] Season lists collapsed by default on media detail page
+- [x] Media detail top bar — actions, settings & quality profile moved to header row alongside back nav
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
 - [ ] Indexer configuration and management

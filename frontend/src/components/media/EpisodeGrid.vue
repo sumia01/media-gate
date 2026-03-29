@@ -20,10 +20,6 @@ async function fetchEpisodes() {
     params: { path: { id: props.mediaItemId } },
   })
   seasons.value = data?.seasons ?? []
-  // Auto-expand first season
-  if (seasons.value.length > 0) {
-    expandedSeasons.value = new Set([seasons.value[0]!.seasonNumber])
-  }
   loading.value = false
 }
 

@@ -203,15 +203,77 @@ watch(() => route.params.id, loadAll)
 
 <template>
   <div>
-    <!-- Back nav -->
-    <router-link
-      v-if="library"
-      :to="{ name: 'library-detail', params: { id: library.id } }"
-      class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-violet-300 transition-colors duration-200 mb-6"
-    >
-      <span class="text-base leading-none">&larr;</span>
-      Back to {{ library.name }}
-    </router-link>
+    <!-- Top bar: back nav + actions -->
+    <div class="flex items-center justify-between mb-6 gap-4">
+      <router-link
+        v-if="library"
+        :to="{ name: 'library-detail', params: { id: library.id } }"
+        class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-violet-300 transition-colors duration-200 flex-shrink-0"
+      >
+        <span class="text-base leading-none">&larr;</span>
+        Back to {{ library.name }}
+      </router-link>
+
+      <div v-if="item" class="flex items-center gap-3 flex-wrap justify-end">
+        <!-- Quality profile -->
+        <div class="flex items-center gap-2">
+          <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
+          <select
+            id="profile-select"
+            class="text-sm bg-[#161b2e] border border-violet-900/20 rounded-lg px-3 py-1.5 text-gray-200 focus:outline-none focus:border-violet-500/50"
+            :value="item.mediaProfileId ?? ''"
+            @change="onProfileChange"
+          >
+            <option value="">None</option>
+            <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </div>
+
+        <!-- Monitor new seasons -->
+        <label v-if="item.mediaType === 'series'" class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            class="w-4 h-4 rounded border-violet-900/20 bg-[#161b2e] text-violet-600 focus:ring-violet-500/50 focus:ring-offset-0"
+            :checked="item.monitorNewSeasons ?? false"
+            @change="onMonitorToggle"
+          />
+          <span class="text-xs text-gray-500">Monitor new seasons</span>
+        </label>
+
+        <!-- Divider -->
+        <div class="w-px h-6 bg-violet-900/30"></div>
+
+        <!-- Action buttons -->
+        <button
+          class="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors duration-200"
+          @click="openMatchPanel"
+        >
+          {{ metadata ? 'Re-match' : 'Match' }}
+        </button>
+        <button
+          v-if="item.source === 'disk'"
+          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+          :disabled="resyncing"
+          @click="handleResync"
+        >
+          {{ resyncing ? 'Rescanning...' : 'Rescan Files' }}
+        </button>
+        <button
+          v-if="metadata"
+          class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+          @click="handleUnmatch"
+        >
+          Unmatch
+        </button>
+        <button
+          v-if="item.source === 'request'"
+          class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+          @click="handleDelete"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
 
     <!-- Error -->
     <div
@@ -384,63 +446,6 @@ watch(() => route.params.id, loadAll)
                 View on {{ metadata.source.toUpperCase() }} &nearr;
               </a>
             </div>
-          </div>
-
-          <!-- Action buttons -->
-          <div class="flex items-center gap-3">
-            <button
-              class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
-              @click="openMatchPanel"
-            >
-              {{ metadata ? 'Re-match' : 'Match' }}
-            </button>
-            <button
-              v-if="item.source === 'disk'"
-              class="px-4 py-2 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-sm font-medium transition-colors duration-200"
-              :disabled="resyncing"
-              @click="handleResync"
-            >
-              {{ resyncing ? 'Rescanning...' : 'Rescan Files' }}
-            </button>
-            <button
-              v-if="metadata"
-              class="px-4 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors duration-200"
-              @click="handleUnmatch"
-            >
-              Unmatch
-            </button>
-            <button
-              v-if="item.source === 'request'"
-              class="px-4 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors duration-200"
-              @click="handleDelete"
-            >
-              Delete
-            </button>
-          </div>
-
-          <!-- Settings -->
-          <div class="flex items-center gap-6 mt-6">
-            <div class="flex items-center gap-2">
-              <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
-              <select
-                id="profile-select"
-                class="text-sm bg-[#161b2e] border border-violet-900/20 rounded-lg px-3 py-1.5 text-gray-200 focus:outline-none focus:border-violet-500/50"
-                :value="item.mediaProfileId ?? ''"
-                @change="onProfileChange"
-              >
-                <option value="">None</option>
-                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </select>
-            </div>
-            <label v-if="item.mediaType === 'series'" class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                class="w-4 h-4 rounded border-violet-900/20 bg-[#161b2e] text-violet-600 focus:ring-violet-500/50 focus:ring-offset-0"
-                :checked="item.monitorNewSeasons ?? false"
-                @change="onMonitorToggle"
-              />
-              <span class="text-xs text-gray-500">Monitor new seasons</span>
-            </label>
           </div>
         </div>
       </div>
