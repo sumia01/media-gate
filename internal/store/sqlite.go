@@ -50,6 +50,41 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// --- CRUD helpers ---
+
+func getByID[T any](db *gorm.DB, id uint) (*T, error) {
+	var result T
+	if err := db.First(&result, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &result, nil
+}
+
+func save(db *gorm.DB, model any) error {
+	result := db.Save(model)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func deleteByID(db *gorm.DB, model any, id uint) error {
+	result := db.Delete(model, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) Ping() error {
 	sqlDB, err := s.db.DB()
 	if err != nil {
@@ -81,36 +116,15 @@ func (s *SQLiteStore) ListLibraries() ([]Library, error) {
 }
 
 func (s *SQLiteStore) GetLibrary(id uint) (*Library, error) {
-	var lib Library
-	if err := s.db.First(&lib, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &lib, nil
+	return getByID[Library](s.db, id)
 }
 
 func (s *SQLiteStore) UpdateLibrary(lib *Library) error {
-	result := s.db.Save(lib)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, lib)
 }
 
 func (s *SQLiteStore) DeleteLibrary(id uint) error {
-	result := s.db.Delete(&Library{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleteByID(s.db, &Library{}, id)
 }
 
 // --- MediaItem ---
@@ -120,36 +134,15 @@ func (s *SQLiteStore) CreateMediaItem(item *MediaItem) error {
 }
 
 func (s *SQLiteStore) GetMediaItem(id uint) (*MediaItem, error) {
-	var item MediaItem
-	if err := s.db.First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &item, nil
+	return getByID[MediaItem](s.db, id)
 }
 
 func (s *SQLiteStore) UpdateMediaItem(item *MediaItem) error {
-	result := s.db.Save(item)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, item)
 }
 
 func (s *SQLiteStore) DeleteMediaItem(id uint) error {
-	result := s.db.Delete(&MediaItem{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleteByID(s.db, &MediaItem{}, id)
 }
 
 func (s *SQLiteStore) ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error) {
@@ -218,14 +211,7 @@ func (s *SQLiteStore) GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetad
 }
 
 func (s *SQLiteStore) UpdateMediaMetadata(meta *MediaMetadata) error {
-	result := s.db.Save(meta)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, meta)
 }
 
 func (s *SQLiteStore) DeleteMediaMetadataByMediaItem(mediaItemID uint) error {
@@ -234,7 +220,7 @@ func (s *SQLiteStore) DeleteMediaMetadataByMediaItem(mediaItemID uint) error {
 
 func (s *SQLiteStore) ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error) {
 	if len(ids) == 0 {
-		return nil, nil
+		return []MediaMetadata{}, nil
 	}
 	var metas []MediaMetadata
 	if err := s.db.Where("media_item_id IN ?", ids).Find(&metas).Error; err != nil {
@@ -250,14 +236,7 @@ func (s *SQLiteStore) CreateMediaProfile(profile *MediaProfile) error {
 }
 
 func (s *SQLiteStore) GetMediaProfile(id uint) (*MediaProfile, error) {
-	var profile MediaProfile
-	if err := s.db.First(&profile, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &profile, nil
+	return getByID[MediaProfile](s.db, id)
 }
 
 func (s *SQLiteStore) ListMediaProfiles() ([]MediaProfile, error) {
@@ -269,25 +248,11 @@ func (s *SQLiteStore) ListMediaProfiles() ([]MediaProfile, error) {
 }
 
 func (s *SQLiteStore) UpdateMediaProfile(profile *MediaProfile) error {
-	result := s.db.Save(profile)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, profile)
 }
 
 func (s *SQLiteStore) DeleteMediaProfile(id uint) error {
-	result := s.db.Delete(&MediaProfile{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleteByID(s.db, &MediaProfile{}, id)
 }
 
 // --- MediaFile ---
@@ -297,25 +262,11 @@ func (s *SQLiteStore) CreateMediaFile(file *MediaFile) error {
 }
 
 func (s *SQLiteStore) GetMediaFile(id uint) (*MediaFile, error) {
-	var file MediaFile
-	if err := s.db.First(&file, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &file, nil
+	return getByID[MediaFile](s.db, id)
 }
 
 func (s *SQLiteStore) UpdateMediaFile(file *MediaFile) error {
-	result := s.db.Save(file)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, file)
 }
 
 func (s *SQLiteStore) ListMediaFilesByMediaItem(mediaItemID uint) ([]MediaFile, error) {
@@ -338,14 +289,7 @@ func (s *SQLiteStore) ListMediaFilesByLibrary(libraryID uint) ([]MediaFile, erro
 }
 
 func (s *SQLiteStore) DeleteMediaFile(id uint) error {
-	result := s.db.Delete(&MediaFile{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return deleteByID(s.db, &MediaFile{}, id)
 }
 
 func (s *SQLiteStore) DeleteMediaFilesByMediaItem(mediaItemID uint) error {
@@ -357,12 +301,6 @@ func (s *SQLiteStore) DeleteMediaFilesByPaths(paths []string) error {
 		return nil
 	}
 	return s.db.Where("path IN ?", paths).Delete(&MediaFile{}).Error
-}
-
-func (s *SQLiteStore) MediaFileExistsByPath(path string) bool {
-	var count int64
-	s.db.Model(&MediaFile{}).Where("path = ?", path).Count(&count)
-	return count > 0
 }
 
 // --- SeasonMonitor ---
@@ -380,14 +318,7 @@ func (s *SQLiteStore) ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonM
 }
 
 func (s *SQLiteStore) UpdateSeasonMonitor(monitor *SeasonMonitor) error {
-	result := s.db.Save(monitor)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return save(s.db, monitor)
 }
 
 func (s *SQLiteStore) DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error {
@@ -470,12 +401,9 @@ func (s *SQLiteStore) DeleteOldJobRecords(keep int) error {
 }
 
 func (s *SQLiteStore) MaxJobRecordID() (uint, error) {
-	var maxID *uint
-	if err := s.db.Model(&JobRecord{}).Select("MAX(id)").Scan(&maxID).Error; err != nil {
+	var maxID uint
+	if err := s.db.Model(&JobRecord{}).Select("COALESCE(MAX(id), 0)").Scan(&maxID).Error; err != nil {
 		return 0, err
 	}
-	if maxID == nil {
-		return 0, nil
-	}
-	return *maxID, nil
+	return maxID, nil
 }

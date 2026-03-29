@@ -72,15 +72,20 @@ func (c *Client) TestConnection() error {
 	return c.authenticate()
 }
 
-func (c *Client) SearchSeries(query string, year *int) ([]SeriesResult, error) {
+// ensureAuthenticated acquires the lock, authenticates if needed, and unlocks.
+func (c *Client) ensureAuthenticated() error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.token == "" {
-		if err := c.authenticate(); err != nil {
-			c.mu.Unlock()
-			return nil, err
-		}
+		return c.authenticate()
 	}
-	c.mu.Unlock()
+	return nil
+}
+
+func (c *Client) SearchSeries(query string, year *int) ([]SeriesResult, error) {
+	if err := c.ensureAuthenticated(); err != nil {
+		return nil, err
+	}
 
 	params := url.Values{"query": {query}, "type": {"series"}}
 	if year != nil {
@@ -102,14 +107,9 @@ func (c *Client) SearchSeries(query string, year *int) ([]SeriesResult, error) {
 }
 
 func (c *Client) GetSeries(id int) (*SeriesDetails, error) {
-	c.mu.Lock()
-	if c.token == "" {
-		if err := c.authenticate(); err != nil {
-			c.mu.Unlock()
-			return nil, err
-		}
+	if err := c.ensureAuthenticated(); err != nil {
+		return nil, err
 	}
-	c.mu.Unlock()
 
 	body, err := c.get(fmt.Sprintf("/series/%d/extended", id), nil)
 	if err != nil {
@@ -126,14 +126,9 @@ func (c *Client) GetSeries(id int) (*SeriesDetails, error) {
 }
 
 func (c *Client) GetSeriesEpisodes(seriesID, seasonNumber int) ([]EpisodeEntry, error) {
-	c.mu.Lock()
-	if c.token == "" {
-		if err := c.authenticate(); err != nil {
-			c.mu.Unlock()
-			return nil, err
-		}
+	if err := c.ensureAuthenticated(); err != nil {
+		return nil, err
 	}
-	c.mu.Unlock()
 
 	params := url.Values{"season": {strconv.Itoa(seasonNumber)}}
 	body, err := c.get(fmt.Sprintf("/series/%d/episodes/default", seriesID), params)

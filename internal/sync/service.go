@@ -489,34 +489,12 @@ func scanMediaFolder(folderPath string) []scannedFile {
 // If a file doesn't have S##E## in its name, the subfolder's season number is used.
 // Also descends into episode wrapper directories (e.g. "Episode 01 - Title/video.mkv").
 func scanSeasonDir(dirPath string, seasonNumber *int) []scannedFile {
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return nil
-	}
-
-	var files []scannedFile
-	for _, e := range entries {
-		if e.IsDir() {
-			// Descend into episode wrapper dirs (any subdir inside a season dir)
-			subFiles := scanEpisodeDir(filepath.Join(dirPath, e.Name()), seasonNumber)
-			files = append(files, subFiles...)
-			continue
-		}
-		name := e.Name()
-		if !fileparse.IsVideoFile(name) {
-			continue
-		}
-
-		sf := buildScannedFile(filepath.Join(dirPath, name), name, seasonNumber)
-		files = append(files, sf)
-	}
-
-	return files
+	return scanVideoDir(dirPath, seasonNumber, true)
 }
 
-// scanEpisodeDir scans video files inside an episode wrapper directory
-// (one level below a season dir). Does not recurse further.
-func scanEpisodeDir(dirPath string, seasonNumber *int) []scannedFile {
+// scanVideoDir scans video files in a directory.
+// If recurse is true, it descends into subdirectories (one level).
+func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) []scannedFile {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil
@@ -525,6 +503,10 @@ func scanEpisodeDir(dirPath string, seasonNumber *int) []scannedFile {
 	var files []scannedFile
 	for _, e := range entries {
 		if e.IsDir() {
+			if recurse {
+				subFiles := scanVideoDir(filepath.Join(dirPath, e.Name()), fallbackSeason, false)
+				files = append(files, subFiles...)
+			}
 			continue
 		}
 		name := e.Name()
@@ -532,9 +514,10 @@ func scanEpisodeDir(dirPath string, seasonNumber *int) []scannedFile {
 			continue
 		}
 
-		sf := buildScannedFile(filepath.Join(dirPath, name), name, seasonNumber)
+		sf := buildScannedFile(filepath.Join(dirPath, name), name, fallbackSeason)
 		files = append(files, sf)
 	}
+
 	return files
 }
 

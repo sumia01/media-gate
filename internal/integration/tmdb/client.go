@@ -3,6 +3,7 @@ package tmdb
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -129,10 +130,9 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	var body []byte
-	body, err = readBody(resp)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -140,22 +140,6 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 	}
 
 	return body, nil
-}
-
-func readBody(resp *http.Response) ([]byte, error) {
-	var buf [2 << 20]byte // 2MB max
-	n := 0
-	for {
-		nn, err := resp.Body.Read(buf[n:])
-		n += nn
-		if err != nil {
-			break
-		}
-		if n >= len(buf) {
-			break
-		}
-	}
-	return buf[:n], nil
 }
 
 // Types

@@ -1,7 +1,6 @@
 package matching
 
 import (
-	"math"
 	"strings"
 	"unicode"
 )
@@ -81,5 +80,8 @@ func levenshtein(a, b string) int {
 }
 
 func abs(x int) int {
-	return int(math.Abs(float64(x)))
+	if x < 0 {
+		return -x
+	}
+	return x
 }
