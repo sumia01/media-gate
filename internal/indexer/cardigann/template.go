@@ -3,6 +3,7 @@ package cardigann
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/template"
 )
@@ -29,6 +30,15 @@ type SearchQuery struct {
 	Categories []string
 }
 
+// rewriteMapAccess converts .Config.key / .Result.key dot-access into
+// (index .Config "key") calls so that keys starting with digits or
+// containing special characters work with Go's text/template parser.
+var mapAccessRe = regexp.MustCompile(`\.(Config|Result)\.([a-zA-Z0-9_]+)`)
+
+func rewriteMapAccess(tmplStr string) string {
+	return mapAccessRe.ReplaceAllString(tmplStr, `(index .$1 "$2")`)
+}
+
 // RenderTemplate executes a single Cardigann template string.
 func RenderTemplate(tmplStr string, ctx *TemplateContext) (string, error) {
 	funcMap := template.FuncMap{
@@ -38,7 +48,7 @@ func RenderTemplate(tmplStr string, ctx *TemplateContext) (string, error) {
 		},
 	}
 
-	tmpl, err := template.New("").Funcs(funcMap).Parse(tmplStr)
+	tmpl, err := template.New("").Funcs(funcMap).Parse(rewriteMapAccess(tmplStr))
 	if err != nil {
 		return "", fmt.Errorf("parsing template %q: %w", tmplStr, err)
 	}
