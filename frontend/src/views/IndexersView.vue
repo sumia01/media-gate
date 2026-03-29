@@ -357,7 +357,7 @@ onMounted(fetchAll)
 
         <!-- Priority -->
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1.5">Priority</label>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Priority <span class="text-gray-600 font-normal">(lower number = higher preference)</span></label>
           <input
             v-model.number="formPriority"
             type="number"
