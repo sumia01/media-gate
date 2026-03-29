@@ -459,7 +459,7 @@ func (s *Service) searchTVDB(apiKey, query string, year *int) ([]Candidate, erro
 	for _, r := range results {
 		c := Candidate{
 			Source:     "tvdb",
-			ExternalID: r.ID,
+			ExternalID: r.ID(),
 			Title:      r.Name,
 			Overview:   r.Overview,
 			PosterURL:  r.ImageURL,

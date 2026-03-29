@@ -123,4 +123,4 @@ HTTP Request
 - **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
-- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series, get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection
+- **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection
