@@ -188,16 +188,7 @@ func (h *Handlers) ScanLibrary(_ context.Context, req ScanLibraryRequestObject) 
 		}, nil
 	}
 
-	apiEntries := make([]ScanEntry, len(entries))
-	for i, e := range entries {
-		apiEntries[i] = ScanEntry{
-			Name:        e.Name,
-			Path:        e.Path,
-			IsDirectory: e.IsDirectory,
-			Size:        e.Size,
-			ModifiedAt:  e.ModifiedAt,
-		}
-	}
+	apiEntries := scanEntriesToAPI(entries)
 
 	return ScanLibrary200JSONResponse{Entries: apiEntries}, nil
 }
@@ -216,16 +207,7 @@ func (h *Handlers) BrowseFolder(_ context.Context, req BrowseFolderRequestObject
 		}, nil
 	}
 
-	apiEntries := make([]ScanEntry, len(entries))
-	for i, e := range entries {
-		apiEntries[i] = ScanEntry{
-			Name:        e.Name,
-			Path:        e.Path,
-			IsDirectory: e.IsDirectory,
-			Size:        e.Size,
-			ModifiedAt:  e.ModifiedAt,
-		}
-	}
+	apiEntries := scanEntriesToAPI(entries)
 
 	return BrowseFolder200JSONResponse{
 		Path:    browsedPath,
@@ -442,12 +424,7 @@ func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandi
 		return nil, err
 	}
 
-	apiCandidates := make([]MatchCandidate, len(candidates))
-	for i, c := range candidates {
-		apiCandidates[i] = candidateToAPI(c)
-	}
-
-	return SearchMediaCandidates200JSONResponse{Candidates: apiCandidates}, nil
+	return SearchMediaCandidates200JSONResponse{Candidates: candidatesToAPI(candidates)}, nil
 }
 
 func (h *Handlers) ManualMatch(_ context.Context, req ManualMatchRequestObject) (ManualMatchResponseObject, error) {
@@ -574,12 +551,7 @@ func (h *Handlers) SearchMediaForLibrary(_ context.Context, req SearchMediaForLi
 		return nil, err
 	}
 
-	apiCandidates := make([]MatchCandidate, len(candidates))
-	for i, c := range candidates {
-		apiCandidates[i] = candidateToAPI(c)
-	}
-
-	return SearchMediaForLibrary200JSONResponse{Candidates: apiCandidates}, nil
+	return SearchMediaForLibrary200JSONResponse{Candidates: candidatesToAPI(candidates)}, nil
 }
 
 func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryRequestObject) (AddMediaToLibraryResponseObject, error) {
@@ -615,12 +587,7 @@ func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject
 		return nil, err
 	}
 
-	apiCandidates := make([]MatchCandidate, len(candidates))
-	for i, c := range candidates {
-		apiCandidates[i] = candidateToAPI(c)
-	}
-
-	return GlobalSearch200JSONResponse{Candidates: apiCandidates}, nil
+	return GlobalSearch200JSONResponse{Candidates: candidatesToAPI(candidates)}, nil
 }
 
 func (h *Handlers) GetExternalMediaDetail(_ context.Context, req GetExternalMediaDetailRequestObject) (GetExternalMediaDetailResponseObject, error) {
@@ -832,13 +799,9 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 	}
 
 	// Sort by season number
-	for i := 0; i < len(seasons); i++ {
-		for j := i + 1; j < len(seasons); j++ {
-			if seasons[j].SeasonNumber < seasons[i].SeasonNumber {
-				seasons[i], seasons[j] = seasons[j], seasons[i]
-			}
-		}
-	}
+	sort.Slice(seasons, func(i, j int) bool {
+		return seasons[i].SeasonNumber < seasons[j].SeasonNumber
+	})
 
 	return ListMediaEpisodes200JSONResponse{Seasons: seasons}, nil
 }
@@ -860,21 +823,7 @@ func (h *Handlers) ListMediaProfiles(_ context.Context, _ ListMediaProfilesReque
 }
 
 func (h *Handlers) CreateMediaProfile(_ context.Context, req CreateMediaProfileRequestObject) (CreateMediaProfileResponseObject, error) {
-	resJSON, _ := json.Marshal(req.Body.Resolutions)
-	langJSON, _ := json.Marshal(req.Body.Languages)
-	profile := &store.MediaProfile{
-		Name:        req.Body.Name,
-		Resolutions: string(resJSON),
-		Languages:   string(langJSON),
-	}
-	if req.Body.Sources != nil {
-		srcJSON, _ := json.Marshal(*req.Body.Sources)
-		profile.Sources = string(srcJSON)
-	}
-	if req.Body.ExcludeTags != nil {
-		tagJSON, _ := json.Marshal(*req.Body.ExcludeTags)
-		profile.ExcludeTags = string(tagJSON)
-	}
+	profile := mediaProfileFromAPI(req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.CreateMediaProfile(profile); err != nil {
 		return CreateMediaProfile400JSONResponse{
@@ -913,23 +862,7 @@ func (h *Handlers) UpdateMediaProfile(_ context.Context, req UpdateMediaProfileR
 		return nil, err
 	}
 
-	resJSON, _ := json.Marshal(req.Body.Resolutions)
-	langJSON, _ := json.Marshal(req.Body.Languages)
-	profile.Name = req.Body.Name
-	profile.Resolutions = string(resJSON)
-	profile.Languages = string(langJSON)
-	if req.Body.Sources != nil {
-		srcJSON, _ := json.Marshal(*req.Body.Sources)
-		profile.Sources = string(srcJSON)
-	} else {
-		profile.Sources = ""
-	}
-	if req.Body.ExcludeTags != nil {
-		tagJSON, _ := json.Marshal(*req.Body.ExcludeTags)
-		profile.ExcludeTags = string(tagJSON)
-	} else {
-		profile.ExcludeTags = ""
-	}
+	updateMediaProfileFromAPI(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.UpdateMediaProfile(profile); err != nil {
 		return nil, err
@@ -1169,4 +1102,62 @@ func derefInt(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+func scanEntriesToAPI(entries []library.ScanEntry) []ScanEntry {
+	result := make([]ScanEntry, len(entries))
+	for i, e := range entries {
+		result[i] = ScanEntry{
+			Name:        e.Name,
+			Path:        e.Path,
+			IsDirectory: e.IsDirectory,
+			Size:        e.Size,
+			ModifiedAt:  e.ModifiedAt,
+		}
+	}
+	return result
+}
+
+func candidatesToAPI(candidates []matching.Candidate) []MatchCandidate {
+	result := make([]MatchCandidate, len(candidates))
+	for i, c := range candidates {
+		result[i] = candidateToAPI(c)
+	}
+	return result
+}
+
+func marshalJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+func mediaProfileFromAPI(name string, resolutions, languages []string, sources, excludeTags *[]string) *store.MediaProfile {
+	p := &store.MediaProfile{
+		Name:        name,
+		Resolutions: marshalJSON(resolutions),
+		Languages:   marshalJSON(languages),
+	}
+	if sources != nil {
+		p.Sources = marshalJSON(*sources)
+	}
+	if excludeTags != nil {
+		p.ExcludeTags = marshalJSON(*excludeTags)
+	}
+	return p
+}
+
+func updateMediaProfileFromAPI(p *store.MediaProfile, name string, resolutions, languages []string, sources, excludeTags *[]string) {
+	p.Name = name
+	p.Resolutions = marshalJSON(resolutions)
+	p.Languages = marshalJSON(languages)
+	if sources != nil {
+		p.Sources = marshalJSON(*sources)
+	} else {
+		p.Sources = ""
+	}
+	if excludeTags != nil {
+		p.ExcludeTags = marshalJSON(*excludeTags)
+	} else {
+		p.ExcludeTags = ""
+	}
 }

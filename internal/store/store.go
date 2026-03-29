@@ -54,7 +54,6 @@ type Store interface {
 	DeleteMediaFile(id uint) error
 	DeleteMediaFilesByMediaItem(mediaItemID uint) error
 	DeleteMediaFilesByPaths(paths []string) error
-	MediaFileExistsByPath(path string) bool
 
 	// SeasonMonitor CRUD
 	CreateSeasonMonitor(monitor *SeasonMonitor) error

@@ -382,59 +382,83 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 	return nil
 }
 
+type episodeData struct {
+	seasonNumber  int
+	episodeNumber int
+	title         string
+	overview      string
+	airDate       string
+	runtime       int
+}
+
 func (s *Service) fetchAndStoreEpisodes(item *store.MediaItem, source, apiKey string, externalID, seasonCount int) {
-	// Clean slate: remove any existing episodes
 	_ = s.store.DeleteEpisodesByMediaItem(item.ID)
 
 	for season := 1; season <= seasonCount; season++ {
-		switch source {
-		case "tmdb":
-			client := tmdb.NewClient(apiKey)
-			details, err := client.GetTVSeason(externalID, season)
-			if err != nil {
-				slog.Warn("failed to fetch TMDB season", "item_id", item.ID, "season", season, "error", err)
-				continue
+		episodes, err := s.fetchEpisodesFromSource(source, apiKey, externalID, season)
+		if err != nil {
+			slog.Warn("failed to fetch episodes", "item_id", item.ID, "season", season, "source", source, "error", err)
+			continue
+		}
+		for _, ep := range episodes {
+			var runtime *int
+			if ep.runtime > 0 {
+				r := ep.runtime
+				runtime = &r
 			}
-			for _, ep := range details.Episodes {
-				var runtime *int
-				if ep.Runtime > 0 {
-					r := ep.Runtime
-					runtime = &r
-				}
-				_ = s.store.CreateEpisode(&store.Episode{
-					MediaItemID:   item.ID,
-					SeasonNumber:  ep.SeasonNumber,
-					EpisodeNumber: ep.EpisodeNumber,
-					Title:         ep.Name,
-					Overview:      ep.Overview,
-					AirDate:       ep.AirDate,
-					Runtime:       runtime,
-				})
-			}
-		case "tvdb":
-			client := tvdb.NewClient(apiKey)
-			episodes, err := client.GetSeriesEpisodes(externalID, season)
-			if err != nil {
-				slog.Warn("failed to fetch TVDB episodes", "item_id", item.ID, "season", season, "error", err)
-				continue
-			}
-			for _, ep := range episodes {
-				var runtime *int
-				if ep.Runtime > 0 {
-					r := ep.Runtime
-					runtime = &r
-				}
-				_ = s.store.CreateEpisode(&store.Episode{
-					MediaItemID:   item.ID,
-					SeasonNumber:  ep.SeasonNumber,
-					EpisodeNumber: ep.Number,
-					Title:         ep.Name,
-					Overview:      ep.Overview,
-					AirDate:       ep.Aired,
-					Runtime:       runtime,
-				})
+			_ = s.store.CreateEpisode(&store.Episode{
+				MediaItemID:   item.ID,
+				SeasonNumber:  ep.seasonNumber,
+				EpisodeNumber: ep.episodeNumber,
+				Title:         ep.title,
+				Overview:      ep.overview,
+				AirDate:       ep.airDate,
+				Runtime:       runtime,
+			})
+		}
+	}
+}
+
+func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, season int) ([]episodeData, error) {
+	switch source {
+	case "tmdb":
+		client := tmdb.NewClient(apiKey)
+		details, err := client.GetTVSeason(externalID, season)
+		if err != nil {
+			return nil, err
+		}
+		episodes := make([]episodeData, len(details.Episodes))
+		for i, ep := range details.Episodes {
+			episodes[i] = episodeData{
+				seasonNumber:  ep.SeasonNumber,
+				episodeNumber: ep.EpisodeNumber,
+				title:         ep.Name,
+				overview:      ep.Overview,
+				airDate:       ep.AirDate,
+				runtime:       ep.Runtime,
 			}
 		}
+		return episodes, nil
+	case "tvdb":
+		client := tvdb.NewClient(apiKey)
+		entries, err := client.GetSeriesEpisodes(externalID, season)
+		if err != nil {
+			return nil, err
+		}
+		episodes := make([]episodeData, len(entries))
+		for i, ep := range entries {
+			episodes[i] = episodeData{
+				seasonNumber:  ep.SeasonNumber,
+				episodeNumber: ep.Number,
+				title:         ep.Name,
+				overview:      ep.Overview,
+				airDate:       ep.Aired,
+				runtime:       ep.Runtime,
+			}
+		}
+		return episodes, nil
+	default:
+		return nil, fmt.Errorf("unknown source: %s", source)
 	}
 }
 
