@@ -36,16 +36,17 @@ type JobProgress struct {
 }
 
 type Job struct {
-	ID          string
-	Type        JobType
-	LibraryID   uint
-	LibraryName string
-	Status      JobStatus
-	Progress    *JobProgress
-	Error       string
-	CreatedAt   time.Time
-	StartedAt   *time.Time
-	CompletedAt *time.Time
+	ID           string
+	Type         JobType
+	LibraryID    uint
+	LibraryName  string
+	Status       JobStatus
+	Progress     *JobProgress
+	Error        string
+	FullRematch  bool
+	CreatedAt    time.Time
+	StartedAt    *time.Time
+	CompletedAt  *time.Time
 }
 
 type Queue struct {
@@ -87,7 +88,11 @@ func (q *Queue) Stop() {
 	close(q.done)
 }
 
-func (q *Queue) Enqueue(typ JobType, libID uint, libName string) (*Job, error) {
+type EnqueueOpts struct {
+	FullRematch bool
+}
+
+func (q *Queue) Enqueue(typ JobType, libID uint, libName string, opts ...EnqueueOpts) (*Job, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -106,6 +111,9 @@ func (q *Queue) Enqueue(typ JobType, libID uint, libName string) (*Job, error) {
 		LibraryName: libName,
 		Status:      JobStatusPending,
 		CreatedAt:   time.Now(),
+	}
+	if len(opts) > 0 {
+		job.FullRematch = opts[0].FullRematch
 	}
 
 	q.jobs[job.ID] = job
@@ -188,7 +196,7 @@ func (q *Queue) execute(job *Job) {
 			}
 			q.mu.Unlock()
 		}
-		matchErr := q.matchSvc.MatchLibrary(lib, progressFn)
+		matchErr := q.matchSvc.MatchLibrary(lib, job.FullRematch, progressFn)
 		if matchErr != nil {
 			q.finishJob(job, "", matchErr)
 			return

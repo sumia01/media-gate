@@ -210,6 +210,12 @@ type SeasonEntry struct {
 	Number int `json:"number"`
 }
 
+type RemoteID struct {
+	ID         string `json:"id"`
+	Type       int    `json:"type"`
+	SourceName string `json:"sourceName"`
+}
+
 type SeriesDetails struct {
 	ID         int           `json:"id"`
 	Name       string        `json:"name"`
@@ -219,6 +225,17 @@ type SeriesDetails struct {
 	Seasons    []SeasonEntry `json:"seasons"`
 	Characters []Character   `json:"characters"`
 	Status     Status        `json:"status"`
+	RemoteIds  []RemoteID    `json:"remoteIds"`
+}
+
+// ImdbID extracts the IMDb ID from the RemoteIds list, if present.
+func (d *SeriesDetails) ImdbID() string {
+	for _, r := range d.RemoteIds {
+		if r.SourceName == "IMDB" {
+			return r.ID
+		}
+	}
+	return ""
 }
 
 type Status struct {

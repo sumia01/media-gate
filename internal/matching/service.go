@@ -53,7 +53,7 @@ func NewService(s store.Store, set *settings.Service, posterDir string) *Service
 	}
 }
 
-func (s *Service) MatchLibrary(lib *store.Library, progressFn func(current, total int)) error {
+func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn func(current, total int)) error {
 	source := s.settings.GetWithDefault(settings.KeyMetadataPrimarySource, "tmdb")
 	apiKey, err := s.resolveAPIKey(source)
 	if err != nil {
@@ -66,9 +66,14 @@ func (s *Service) MatchLibrary(lib *store.Library, progressFn func(current, tota
 		rps = 4
 	}
 
-	items, err := s.store.ListNewMediaItemsByLibrary(lib.ID)
+	var items []store.MediaItem
+	if fullRematch {
+		items, err = s.store.ListMediaItemsByLibrary(lib.ID)
+	} else {
+		items, err = s.store.ListNewMediaItemsByLibrary(lib.ID)
+	}
 	if err != nil {
-		return fmt.Errorf("listing new items: %w", err)
+		return fmt.Errorf("listing items: %w", err)
 	}
 
 	if len(items) == 0 {
@@ -89,7 +94,7 @@ func (s *Service) MatchLibrary(lib *store.Library, progressFn func(current, tota
 			return err
 		}
 
-		if err := s.matchSingleItem(&item, source, apiKey, lib.MediaType); err != nil {
+		if err := s.matchSingleItem(&item, source, apiKey, lib.MediaType, fullRematch); err != nil {
 			slog.Warn("match failed for item", "item_id", item.ID, "title", item.Title, "error", err)
 		} else if item.Status == "available" {
 			matched++
@@ -104,7 +109,7 @@ func (s *Service) MatchLibrary(lib *store.Library, progressFn func(current, tota
 	return nil
 }
 
-func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaType string) error {
+func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaType string, fullRematch bool) error {
 	candidates, err := s.searchSource(item.Title, mediaType, item.Year, source, apiKey)
 	if err != nil {
 		return err
@@ -117,6 +122,12 @@ func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaTy
 	best := candidates[0]
 	if best.Confidence < autoMatchThreshold {
 		return nil
+	}
+
+	// For full rematch, clear existing metadata and episodes first
+	if fullRematch {
+		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
+		_ = s.store.DeleteEpisodesByMediaItem(item.ID)
 	}
 
 	// Fetch full details and save metadata
@@ -475,6 +486,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		meta.Overview = details.Overview
 		meta.PosterPath = details.PosterPath
 		meta.Status = details.Status
+		meta.ImdbID = details.ImdbID
 		if details.Runtime > 0 {
 			rt := details.Runtime
 			meta.Runtime = &rt
@@ -493,6 +505,9 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		meta.Overview = details.Overview
 		meta.PosterPath = details.PosterPath
 		meta.Status = details.Status
+		if details.ExternalIds != nil {
+			meta.ImdbID = details.ExternalIds.ImdbID
+		}
 		if details.NumberOfSeasons > 0 {
 			ns := details.NumberOfSeasons
 			meta.Seasons = &ns
@@ -516,6 +531,7 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 	meta.Overview = details.Overview
 	meta.PosterPath = details.Image
 	meta.Status = details.Status.Name
+	meta.ImdbID = details.ImdbID()
 	if len(details.Seasons) > 0 {
 		ns := len(details.Seasons)
 		meta.Seasons = &ns

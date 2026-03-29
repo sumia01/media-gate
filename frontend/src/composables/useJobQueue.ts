@@ -73,9 +73,12 @@ async function triggerSync(libraryId: number) {
   return data
 }
 
-async function triggerMatch(libraryId: number) {
+async function triggerMatch(libraryId: number, fullRematch = false) {
   const { data } = await client.POST('/libraries/{id}/match', {
-    params: { path: { id: libraryId } },
+    params: {
+      path: { id: libraryId },
+      query: fullRematch ? { fullRematch: true } : undefined,
+    },
   })
   if (data) {
     if (data.libraryId) {

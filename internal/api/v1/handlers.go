@@ -310,7 +310,12 @@ func (h *Handlers) TriggerMatch(_ context.Context, req TriggerMatchRequestObject
 		return nil, err
 	}
 
-	job, err := h.queue.Enqueue(jobqueue.JobTypeMatchLibrary, lib.ID, lib.Name)
+	opts := jobqueue.EnqueueOpts{}
+	if req.Params.FullRematch != nil && *req.Params.FullRematch {
+		opts.FullRematch = true
+	}
+
+	job, err := h.queue.Enqueue(jobqueue.JobTypeMatchLibrary, lib.ID, lib.Name, opts)
 	if err != nil {
 		return TriggerMatch409JSONResponse{
 			Code:    http.StatusConflict,
@@ -938,6 +943,9 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 		ExternalId: meta.ExternalID,
 		Title:      meta.Title,
 		Confidence: float32(meta.Confidence),
+	}
+	if meta.ImdbID != "" {
+		m.ImdbId = &meta.ImdbID
 	}
 	if meta.Overview != "" {
 		m.Overview = &meta.Overview

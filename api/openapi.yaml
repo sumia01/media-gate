@@ -320,6 +320,13 @@ paths:
     post:
       operationId: triggerMatch
       summary: Trigger metadata matching for a library
+      parameters:
+        - name: fullRematch
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: If true, re-matches all items (including already matched). Default is false (unmatched only).
       responses:
         "202":
           description: Match job accepted
@@ -991,6 +998,8 @@ components:
             - tvdb
         externalId:
           type: integer
+        imdbId:
+          type: string
         title:
           type: string
         overview:

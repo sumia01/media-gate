@@ -52,6 +52,11 @@ const externalUrl = computed(() => {
   return null
 })
 
+const imdbUrl = computed(() => {
+  if (!metadata.value?.imdbId) return null
+  return `https://www.imdb.com/title/${metadata.value.imdbId}/`
+})
+
 const credits = computed(() => metadata.value?.credits ?? [])
 const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
 const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
@@ -425,9 +430,10 @@ watch(() => route.params.id, loadAll)
             </div>
           </div>
 
-          <!-- Match source info -->
-          <div v-if="metadata" class="px-4 py-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 mb-6">
-            <div class="flex items-center gap-3">
+          <!-- Match source + IMDb cards -->
+          <div v-if="metadata" class="flex flex-wrap gap-3 mb-6">
+            <!-- Source card -->
+            <div class="inline-flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
               <span
                 class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
               >
@@ -441,9 +447,30 @@ watch(() => route.params.id, loadAll)
                 :href="externalUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-xs text-violet-400 hover:text-violet-300 transition-colors duration-200 ml-auto"
+                class="text-xs text-violet-400 hover:text-violet-300 transition-colors duration-200"
               >
                 View on {{ metadata.source.toUpperCase() }} &nearr;
+              </a>
+            </div>
+            <!-- IMDb card -->
+            <div
+              v-if="metadata.imdbId"
+              class="inline-flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-500/5 border border-amber-500/20"
+            >
+              <span
+                class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-600/20 text-amber-300"
+              >
+                IMDb
+              </span>
+              <span class="text-xs text-gray-400 font-mono">{{ metadata.imdbId }}</span>
+              <a
+                v-if="imdbUrl"
+                :href="imdbUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs text-amber-400 hover:text-amber-300 transition-colors duration-200"
+              >
+                View on IMDb &nearr;
               </a>
             </div>
           </div>

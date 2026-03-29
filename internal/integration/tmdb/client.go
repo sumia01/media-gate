@@ -81,7 +81,7 @@ func (c *Client) GetMovie(id int) (*MovieDetails, error) {
 }
 
 func (c *Client) GetTV(id int) (*TVDetails, error) {
-	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits"}})
+	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits,external_ids"}})
 	if err != nil {
 		return nil, err
 	}
@@ -204,18 +204,25 @@ type Credits struct {
 
 type MovieDetails struct {
 	MovieResult
+	ImdbID  string   `json:"imdb_id"`
 	Genres  []Genre  `json:"genres"`
 	Runtime int      `json:"runtime"`
 	Status  string   `json:"status"`
 	Credits *Credits `json:"credits,omitempty"`
 }
 
+type ExternalIds struct {
+	ImdbID string `json:"imdb_id"`
+	TvdbID int    `json:"tvdb_id"`
+}
+
 type TVDetails struct {
 	TVResult
-	Genres          []Genre  `json:"genres"`
-	NumberOfSeasons int      `json:"number_of_seasons"`
-	Status          string   `json:"status"`
-	Credits         *Credits `json:"credits,omitempty"`
+	Genres          []Genre      `json:"genres"`
+	NumberOfSeasons int          `json:"number_of_seasons"`
+	Status          string       `json:"status"`
+	Credits         *Credits     `json:"credits,omitempty"`
+	ExternalIds     *ExternalIds `json:"external_ids,omitempty"`
 }
 
 type TVEpisode struct {
