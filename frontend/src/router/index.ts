@@ -3,6 +3,7 @@ import HomeView from '@/views/HomeView.vue'
 import LibrariesView from '@/views/LibrariesView.vue'
 import LibraryDetailView from '@/views/LibraryDetailView.vue'
 import MediaDetailView from '@/views/MediaDetailView.vue'
+import MediaPreviewView from '@/views/MediaPreviewView.vue'
 import MediaProfilesView from '@/views/MediaProfilesView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 
@@ -29,6 +30,12 @@ const router = createRouter({
       path: '/media/:id',
       name: 'media-detail',
       component: MediaDetailView,
+      props: true,
+    },
+    {
+      path: '/search/:source/:externalId',
+      name: 'media-preview',
+      component: MediaPreviewView,
       props: true,
     },
     {

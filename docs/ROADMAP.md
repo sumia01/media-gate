@@ -49,6 +49,7 @@
 - [x] Add media to library — search TMDB/TVDB from library detail page, add as requested item with full metadata
 - [x] Delete requested media items (with metadata + poster cleanup)
 - [x] Global search bar in topbar triggers add-media panel on library pages
+- [x] Global search rework — search overlay with movie/series toggle, media preview page, "Add to Library" modal with library picker, Esc to close
 - [x] Entity model redesign — split logical media (MediaItem) from physical files (MediaFile), add QualityProfile and SeasonMonitor models, quality profile CRUD API
 - [x] Update media item endpoint (`PATCH /media/{id}`) — assign quality profile, toggle monitor new seasons
 - [x] Quality profile selector on media detail page

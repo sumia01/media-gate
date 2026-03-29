@@ -609,6 +609,66 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
+func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject) (GlobalSearchResponseObject, error) {
+	candidates, err := h.matchSvc.SearchCandidates(req.Params.Query, string(req.Params.MediaType), nil, "")
+	if err != nil {
+		return nil, err
+	}
+
+	apiCandidates := make([]MatchCandidate, len(candidates))
+	for i, c := range candidates {
+		apiCandidates[i] = candidateToAPI(c)
+	}
+
+	return GlobalSearch200JSONResponse{Candidates: apiCandidates}, nil
+}
+
+func (h *Handlers) GetExternalMediaDetail(_ context.Context, req GetExternalMediaDetailRequestObject) (GetExternalMediaDetailResponseObject, error) {
+	detail, err := h.matchSvc.GetExternalDetail(string(req.Source), string(req.Params.MediaType), req.ExternalId)
+	if err != nil {
+		return nil, err
+	}
+
+	apiDetail := ExternalMediaDetail{
+		Source:     ExternalMediaDetailSource(detail.Source),
+		ExternalId: detail.ExternalID,
+		Title:      detail.Title,
+		MediaType:  ExternalMediaDetailMediaType(detail.MediaType),
+	}
+	if detail.Overview != "" {
+		apiDetail.Overview = &detail.Overview
+	}
+	if detail.PosterURL != "" {
+		apiDetail.PosterUrl = &detail.PosterURL
+	}
+	if detail.Year != nil {
+		apiDetail.Year = detail.Year
+	}
+	if detail.Genres != "" {
+		apiDetail.Genres = &detail.Genres
+	}
+	if detail.Status != "" {
+		apiDetail.Status = &detail.Status
+	}
+	if detail.Runtime != nil {
+		apiDetail.Runtime = detail.Runtime
+	}
+	if detail.Seasons != nil {
+		apiDetail.Seasons = detail.Seasons
+	}
+	if detail.ImdbID != "" {
+		apiDetail.ImdbId = &detail.ImdbID
+	}
+	if detail.Credits != "" {
+		var credits []CreditPerson
+		if err := json.Unmarshal([]byte(detail.Credits), &credits); err == nil {
+			apiDetail.Credits = &credits
+		}
+	}
+
+	return GetExternalMediaDetail200JSONResponse(apiDetail), nil
+}
+
 // --- Resync handler ---
 
 func (h *Handlers) ResyncMediaItem(_ context.Context, req ResyncMediaItemRequestObject) (ResyncMediaItemResponseObject, error) {

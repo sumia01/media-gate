@@ -19,7 +19,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 - **Routing**: Vue Router
 - **API client**: Generated from the same OpenAPI spec via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) + [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch)
 - **SPA**: Served by the Go backend via `embed.FS`
-- **Key views**: Libraries list, Library detail (media grid + add media search), Media detail (poster, metadata, match/delete actions, quality profile selector), Settings
+- **Key views**: Libraries list, Library detail (media grid + add media search), Media detail (poster, metadata, match/delete actions, quality profile selector), Media preview (external media detail from search, Add to Library modal), Settings
 
 ### Data Layer
 - **Interface-based**: A `Store` interface in Go, with concrete implementations for:
@@ -120,7 +120,7 @@ HTTP Request
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
 - **sync.Service** — reads a library's directory, walks each media folder for video files (`.mkv`, `.mp4`, etc.), parses filenames for resolution/source/season/episode via the `fileparse` package. Supports three series layouts: season subfolders, flat mixed episodes, and split-season folders (grouped into one MediaItem). Creates MediaItem + MediaFile records per video file; detects removals; supports single-item resync.
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
-- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode
+- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode; provides external detail preview (GetExternalDetail) for search results without persisting data
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection

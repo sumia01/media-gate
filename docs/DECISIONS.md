@@ -387,3 +387,25 @@ The IMDb ID is stored as a string field on `MediaMetadata`, exposed in the API, 
 **Decision**: Append `?t={updatedAt timestamp}` to poster URLs on the frontend. When a re-match updates the MediaItem's `updatedAt`, the URL changes and the browser fetches the new image. The backend poster handler ignores the query parameter — `http.ServeContent` uses the file's `ModTime` for ETag/caching.
 
 **Rationale**: Zero backend changes needed. The `updatedAt` field is already present on every MediaItem and naturally changes on re-match. No need for random strings or version counters.
+
+---
+
+## ADR-031: Global search with preview page and Add to Library modal
+**Date**: 2026-03-29
+**Status**: Accepted (supersedes ADR-020 for search UX)
+
+**Context**: The original search-and-add flow (ADR-020) was tightly coupled to a library: the user could only search from a library detail page, clicking a result immediately added it, and there was no way to preview metadata before committing. Users wanted to: (1) search from any page, (2) toggle between movie/series, (3) preview full metadata before adding, (4) choose which library to add to.
+
+**Decision**: Reworked the search flow into three stages:
+- **Global search overlay** (`GlobalSearchOverlay.vue`) — mounted in the app layout, accessible from any page via topbar. Includes a movie/series toggle and calls a new `GET /search` endpoint (not library-scoped). Clicking a result navigates to a preview page instead of immediately adding.
+- **Media preview page** (`MediaPreviewView.vue`) — new route `/search/:source/:externalId` that calls `GET /search/{source}/{externalId}` to fetch full external metadata (poster, overview, genres, cast, crew, IMDb ID) without creating any DB records. Mirrors the existing `MediaDetailView` layout.
+- **Add to Library modal** (`AddToLibraryModal.vue`) — lists compatible libraries (filtered by mediaType), pre-selects the library if search was initiated from a library page. Calls the existing `POST /libraries/{id}/media` endpoint.
+
+Backend additions:
+- `GET /search` — global search endpoint with `query` + `mediaType` params, delegates to existing `matching.SearchCandidates()`
+- `GET /search/{source}/{externalId}` — preview endpoint, new `matching.GetExternalDetail()` method reuses existing `fetchTMDBDetails`/`fetchTVDBDetails` without persisting anything
+- `ExternalMediaDetail` schema in OpenAPI spec
+
+The `useGlobalSearch` composable was expanded with `activeLibraryId` and `searchMediaType` state. When search is opened from a library page, the library is pre-selected in the Add modal and the media type toggle is pre-set. The old `AddMediaSearch.vue` component was removed.
+
+**Rationale**: Decoupling search from a specific library enables browsing/discovery. The preview page gives users confidence in what they're adding (especially useful when multiple results share similar names). The three-stage flow (search → preview → add) matches the mental model of Sonarr/Radarr. Reusing existing backend methods (`SearchCandidates`, `fetchTMDBDetails`, `fetchTVDBDetails`, `posterURL`) meant the backend changes were minimal — two new thin endpoints and one new struct.

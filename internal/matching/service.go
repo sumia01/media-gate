@@ -145,6 +145,59 @@ func (s *Service) SearchCandidates(query, mediaType string, year *int, source st
 	return s.searchSource(query, mediaType, year, source, apiKey)
 }
 
+// ExternalDetail holds metadata fetched from an external source without persisting anything.
+type ExternalDetail struct {
+	Source     string
+	ExternalID int
+	Title      string
+	Overview   string
+	PosterURL  string
+	Year       *int
+	MediaType  string
+	Genres     string
+	Credits    string
+	Status     string
+	Runtime    *int
+	Seasons    *int
+	ImdbID     string
+}
+
+// GetExternalDetail fetches full metadata from TMDB/TVDB for preview without creating DB records.
+func (s *Service) GetExternalDetail(source, mediaType string, externalID int) (*ExternalDetail, error) {
+	apiKey, err := s.resolveAPIKey(source)
+	if err != nil {
+		return nil, fmt.Errorf("no API key configured for %s", source)
+	}
+
+	meta := &store.MediaMetadata{Source: source, ExternalID: externalID}
+
+	if source == "tvdb" {
+		if err := s.fetchTVDBDetails(apiKey, externalID, meta); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.fetchTMDBDetails(apiKey, mediaType, externalID, meta); err != nil {
+			return nil, err
+		}
+	}
+
+	return &ExternalDetail{
+		Source:     source,
+		ExternalID: externalID,
+		Title:      meta.Title,
+		Overview:   meta.Overview,
+		PosterURL:  s.posterURL(source, meta),
+		Year:       meta.Year,
+		MediaType:  mediaType,
+		Genres:     meta.Genres,
+		Credits:    meta.Credits,
+		Status:     meta.Status,
+		Runtime:    meta.Runtime,
+		Seasons:    meta.Seasons,
+		ImdbID:     meta.ImdbID,
+	}, nil
+}
+
 func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) error {
 	item, err := s.store.GetMediaItem(mediaItemID)
 	if err != nil {

@@ -707,6 +707,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
+  /search:
+    get:
+      operationId: globalSearch
+      summary: Search external sources for media
+      description: Searches TMDB/TVDB for movies or series globally (not scoped to a library)
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: mediaType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - movie
+              - series
+          description: Media type to search for
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - candidates
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MatchCandidate"
+
+  /search/{source}/{externalId}:
+    parameters:
+      - name: source
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+      - name: externalId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getExternalMediaDetail
+      summary: Get external media details for preview
+      description: Fetches full metadata from TMDB/TVDB for an external media item without creating any database records
+      parameters:
+        - name: mediaType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - movie
+              - series
+          description: Media type (needed to call the correct TMDB endpoint)
+      responses:
+        "200":
+          description: External media detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalMediaDetail"
+
   /media-profiles:
     get:
       operationId: listMediaProfiles
@@ -1282,6 +1355,49 @@ components:
             - tvdb
         externalId:
           type: integer
+
+    ExternalMediaDetail:
+      type: object
+      required:
+        - source
+        - externalId
+        - title
+        - mediaType
+      properties:
+        source:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+        externalId:
+          type: integer
+        title:
+          type: string
+        overview:
+          type: string
+        posterUrl:
+          type: string
+        year:
+          type: integer
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+        genres:
+          type: string
+        status:
+          type: string
+        runtime:
+          type: integer
+        seasons:
+          type: integer
+        imdbId:
+          type: string
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreditPerson"
 
     Job:
       type: object

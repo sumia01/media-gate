@@ -1,26 +1,18 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
 type MatchCandidate = components['schemas']['MatchCandidate']
 
-const props = defineProps<{
-  libraryId: number
-  mediaType: 'movie' | 'series'
-}>()
-
-const emit = defineEmits<{
-  added: []
-  close: []
-}>()
-
 const router = useRouter()
+const { searchMediaType, closeSearch } = useGlobalSearch()
+
 const query = ref('')
 const candidates = ref<MatchCandidate[]>([])
 const searching = ref(false)
-const adding = ref<number | null>(null)
 const searchError = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 const hasSearched = ref(false)
@@ -29,7 +21,18 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => {
   nextTick(() => searchInput.value?.focus())
+  document.addEventListener('keydown', onKeydown)
 })
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+})
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    closeSearch()
+  }
+}
 
 watch(query, (val) => {
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -41,12 +44,20 @@ watch(query, (val) => {
   debounceTimer = setTimeout(() => search(val.trim()), 300)
 })
 
+// Re-search when media type toggles
+watch(searchMediaType, () => {
+  if (query.value.trim()) {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    search(query.value.trim())
+  }
+})
+
 async function search(q: string) {
   searching.value = true
   searchError.value = ''
   hasSearched.value = true
-  const { data, error: err } = await client.GET('/libraries/{id}/search', {
-    params: { path: { id: props.libraryId }, query: { query: q } },
+  const { data, error: err } = await client.GET('/search', {
+    params: { query: { query: q, mediaType: searchMediaType.value } },
   })
   searching.value = false
   if (err) {
@@ -56,34 +67,18 @@ async function search(q: string) {
   candidates.value = data?.candidates ?? []
 }
 
-async function addMedia(candidate: MatchCandidate) {
-  adding.value = candidate.externalId
-  const { data, error: err } = await client.POST('/libraries/{id}/media', {
-    params: { path: { id: props.libraryId } },
-    body: { source: candidate.source, externalId: candidate.externalId },
+function navigateToPreview(candidate: MatchCandidate) {
+  closeSearch()
+  router.push({
+    name: 'media-preview',
+    params: { source: candidate.source, externalId: candidate.externalId },
+    query: { mediaType: searchMediaType.value },
   })
-  adding.value = null
-  if (err) return
-  // Mark candidate as existing
-  const idx = candidates.value.findIndex(
-    (c) => c.source === candidate.source && c.externalId === candidate.externalId,
-  )
-  if (idx >= 0 && data && candidates.value[idx]) {
-    candidates.value[idx].existingMediaId = data.id
-  }
-  emit('added')
-  emit('close')
-  router.push({ name: 'media-detail', params: { id: data.id } })
-}
-
-function navigateToMedia(id: number) {
-  emit('close')
-  router.push({ name: 'media-detail', params: { id } })
 }
 
 function handleBackdropClick(e: MouseEvent) {
   if (e.target === e.currentTarget) {
-    emit('close')
+    closeSearch()
   }
 }
 </script>
@@ -94,19 +89,40 @@ function handleBackdropClick(e: MouseEvent) {
     <!-- Dropdown panel -->
     <div class="fixed top-16 left-1/2 -translate-x-1/2 w-full max-w-2xl z-50" @click.stop>
       <div class="bg-[#0f1219] border border-violet-900/30 rounded-xl shadow-2xl shadow-black/50 overflow-hidden">
-        <!-- Search input -->
+        <!-- Media type toggle + search input -->
         <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-800/60">
+          <div class="flex-shrink-0 flex rounded-lg overflow-hidden border border-gray-700/50">
+            <button
+              class="px-2.5 py-1 text-xs font-medium transition-colors duration-150"
+              :class="searchMediaType === 'movie'
+                ? 'bg-violet-600 text-white'
+                : 'bg-transparent text-gray-400 hover:text-gray-200'"
+              @click="searchMediaType = 'movie'"
+            >
+              Movies
+            </button>
+            <button
+              class="px-2.5 py-1 text-xs font-medium transition-colors duration-150"
+              :class="searchMediaType === 'series'
+                ? 'bg-violet-600 text-white'
+                : 'bg-transparent text-gray-400 hover:text-gray-200'"
+              @click="searchMediaType = 'series'"
+            >
+              Series
+            </button>
+          </div>
+
           <span class="text-gray-500 text-lg">&#128269;</span>
           <input
             ref="searchInput"
             v-model="query"
             type="text"
-            :placeholder="mediaType === 'movie' ? 'Search for movies...' : 'Search for series...'"
+            :placeholder="searchMediaType === 'movie' ? 'Search for movies...' : 'Search for series...'"
             class="flex-1 bg-transparent text-gray-100 text-sm placeholder-gray-600 outline-none"
           />
           <button
             class="text-gray-500 hover:text-gray-300 text-lg transition-colors"
-            @click="emit('close')"
+            @click="closeSearch()"
           >
             &#x2715;
           </button>
@@ -126,7 +142,7 @@ function handleBackdropClick(e: MouseEvent) {
 
           <!-- Empty prompt -->
           <div v-else-if="!hasSearched" class="px-4 py-8 text-center text-gray-600 text-sm">
-            Start typing to search for {{ mediaType === 'movie' ? 'movies' : 'series' }}...
+            Start typing to search for {{ searchMediaType === 'movie' ? 'movies' : 'series' }}...
           </div>
 
           <!-- No results -->
@@ -139,9 +155,8 @@ function handleBackdropClick(e: MouseEvent) {
             <div
               v-for="candidate in candidates"
               :key="`${candidate.source}-${candidate.externalId}`"
-              class="flex items-start gap-3 px-4 py-3 border-b border-gray-800/40 last:border-0 hover:bg-violet-900/10 transition-colors duration-150"
-              :class="candidate.existingMediaId ? 'cursor-pointer' : ''"
-              @click="candidate.existingMediaId ? navigateToMedia(candidate.existingMediaId) : undefined"
+              class="flex items-start gap-3 px-4 py-3 border-b border-gray-800/40 last:border-0 hover:bg-violet-900/10 transition-colors duration-150 cursor-pointer"
+              @click="navigateToPreview(candidate)"
             >
               <!-- Poster thumbnail -->
               <div class="w-11 h-16 flex-shrink-0 rounded overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20">
@@ -153,7 +168,7 @@ function handleBackdropClick(e: MouseEvent) {
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
-                  <span class="text-gray-600 text-xs">{{ mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
+                  <span class="text-gray-600 text-xs">{{ searchMediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
                 </div>
               </div>
 
@@ -168,27 +183,9 @@ function handleBackdropClick(e: MouseEvent) {
                 </p>
               </div>
 
-              <!-- Action -->
-              <div class="flex-shrink-0 self-center">
-                <!-- Already in library -->
-                <span
-                  v-if="candidate.existingMediaId"
-                  class="flex items-center gap-1 text-xs text-emerald-400"
-                  title="Already in library"
-                >
-                  <span class="text-sm">&#10003;</span>
-                  In library
-                </span>
-                <!-- Add button -->
-                <button
-                  v-else
-                  class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                  :disabled="adding === candidate.externalId"
-                  @click.stop="addMedia(candidate)"
-                >
-                  <span v-if="adding === candidate.externalId" class="animate-spin">&#x21bb;</span>
-                  <template v-else>+&nbsp;Add</template>
-                </button>
+              <!-- Arrow icon -->
+              <div class="flex-shrink-0 self-center text-gray-600">
+                &#x203A;
               </div>
             </div>
           </div>
