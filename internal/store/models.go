@@ -31,6 +31,7 @@ type MediaMetadata struct {
 	MediaItemID uint    `gorm:"not null;uniqueIndex"`
 	Source      string  `gorm:"not null"`
 	ExternalID  int     `gorm:"not null"`
+	ImdbID      string
 	Title       string  `gorm:"not null"`
 	Overview    string
 	PosterPath  string

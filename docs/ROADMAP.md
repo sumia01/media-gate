@@ -56,6 +56,8 @@
 - [x] Collapsible files list on media detail page (collapsed by default)
 - [x] Season lists collapsed by default on media detail page
 - [x] Media detail top bar — actions, settings & quality profile moved to header row alongside back nav
+- [x] IMDb ID tracking — extracted from TMDB/TVDB during matching, stored on MediaMetadata, displayed on media detail page with link
+- [x] Match mode modal — library match button offers "unmatched only" or "full re-match all" via modal
 
 ## Phase 2: Indexer Integration (Prowlarr replacement) ⬜
 - [ ] Indexer configuration and management

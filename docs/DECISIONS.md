@@ -332,3 +332,32 @@ The grouping logic (`groupFolders`) only activates for series libraries. Movie l
 **Decision**: Episodes are stored in a dedicated `episodes` table with a composite unique index on `(media_item_id, season_number, episode_number)`. The matching service fetches episode lists from TMDB (`GET /tv/{id}/season/{n}`) or TVDB (`GET /series/{id}/episodes/default?season={n}`) and creates Episode records. The `GET /media/{id}/episodes` endpoint groups episodes by season and annotates each with a `hasFile` flag computed by cross-referencing against MediaFiles.
 
 **Rationale**: A proper table (vs JSON-in-column like credits/genres) is necessary because episodes are cross-referenced against MediaFiles, queried per-season, potentially hundreds per series, and updated independently. The `hasFile` flag is computed at query time rather than stored, keeping it always in sync with the actual files on disk.
+
+---
+
+## ADR-027: IMDb ID from existing TMDB/TVDB integrations
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: The target tracker for downloads searches most effectively by IMDb ID. IMDb has no free API, but TMDB and TVDB — already integrated — both return IMDb IDs in their responses.
+
+**Decision**: Extract IMDb IDs from existing integrations rather than adding a new service:
+- **TMDB movies**: `imdb_id` field already present in `GET /movie/{id}` response — just added to the `MovieDetails` struct.
+- **TMDB TV**: `append_to_response=external_ids` added to the existing `GetTV()` call — returns `imdb_id` with zero extra API calls.
+- **TVDB series**: `remoteIds` array already present in the `/series/{id}/extended` response — added `RemoteID` struct and helper method to filter by `sourceName == "IMDB"`.
+
+The IMDb ID is stored as a string field on `MediaMetadata`, exposed in the API, and displayed on the media detail page alongside a "View on IMDb" link.
+
+**Rationale**: No new integration, no new API key, no rate limit impact. All three sources were already returning this data — it was being silently discarded during JSON unmarshaling. Adding struct fields and one `append_to_response` parameter was sufficient.
+
+---
+
+## ADR-028: Match mode selection — unmatched only vs full re-match
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: The library-level "Match" button only matched items with `status = "new"` (no metadata). Users needed a way to re-match all items in a library — e.g., after switching metadata source, or to pick up IMDb IDs for items matched before that feature existed.
+
+**Decision**: The Match button now opens a modal with two options: "Unmatched only" (default behavior) and "Full re-match" (re-matches all items, replacing existing metadata and episodes). Implemented as a `fullRematch` query parameter on `POST /libraries/{id}/match`, propagated through the job queue to `matching.MatchLibrary()`. Full rematch uses `ListMediaItemsByLibrary` (all items) instead of `ListNewMediaItemsByLibrary` (unmatched only), and clears existing metadata/episodes before re-matching each item.
+
+**Rationale**: A modal is less error-prone than two separate buttons — the destructive option (replacing all metadata) requires an explicit choice. The query parameter approach avoids a new endpoint while keeping the default behavior unchanged for auto-match after sync.

@@ -21,6 +21,7 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 const showAddSearch = ref(false)
+const showMatchModal = ref(false)
 
 // Sync global search bar with local add-media panel
 watch(searchOpen, (open) => {
@@ -95,7 +96,13 @@ async function handleSync() {
 
 async function handleMatch() {
   if (!library.value) return
-  await triggerMatch(library.value.id)
+  showMatchModal.value = true
+}
+
+async function handleMatchChoice(fullRematch: boolean) {
+  showMatchModal.value = false
+  if (!library.value) return
+  await triggerMatch(library.value.id, fullRematch)
 }
 
 function posterUrl(itemId: number): string {
@@ -251,6 +258,41 @@ watch(() => route.params.id, loadAll)
         @added="handleMediaAdded"
         @close="closeAddSearch"
       />
+    </Teleport>
+
+    <!-- Match Mode Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showMatchModal"
+        class="fixed inset-0 z-50 flex items-center justify-center"
+      >
+        <div class="absolute inset-0 bg-black/60" @click="showMatchModal = false"></div>
+        <div class="relative bg-[#0f1225] border border-violet-900/30 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+          <h3 class="text-base font-semibold text-gray-100 mb-4">Match Mode</h3>
+          <div class="space-y-3">
+            <button
+              class="w-full text-left px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200"
+              @click="handleMatchChoice(false)"
+            >
+              <p class="text-sm font-medium text-gray-200">Unmatched only</p>
+              <p class="text-xs text-gray-500 mt-0.5">Match items that don't have metadata yet</p>
+            </button>
+            <button
+              class="w-full text-left px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200"
+              @click="handleMatchChoice(true)"
+            >
+              <p class="text-sm font-medium text-gray-200">Full re-match</p>
+              <p class="text-xs text-gray-500 mt-0.5">Re-match all items, replacing existing metadata</p>
+            </button>
+          </div>
+          <button
+            class="mt-4 w-full text-center text-xs text-gray-500 hover:text-gray-400 transition-colors duration-200"
+            @click="showMatchModal = false"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </Teleport>
   </div>
 </template>
