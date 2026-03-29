@@ -447,3 +447,51 @@ Also removed dead code: the unused `NavItem` interface and `navItems` constant f
 Built-in definitions are embedded via `go:embed` in `internal/indexer/definitions/`. Dropping a `.yml` file into this directory makes it available. The indexer service (`internal/indexer/service.go`) handles CRUD, engine lifecycle caching, credential masking, and parallel multi-indexer search.
 
 **Rationale**: Building a native engine keeps the "single binary" deployment model — no external Prowlarr instance needed. The Cardigann YAML format is a well-established standard with 700+ definitions maintained by the Prowlarr community. For ncore specifically, the format is simple: POST login + HTML scraping. The engine is ~600 lines of Go and uses only two new dependencies (`yaml.v3`, `goquery`). Future indexers can be added by dropping YAML files — no code changes needed.
+
+---
+
+## ADR-034: Download model and CRUD API
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: To track torrent downloads across their lifecycle (pending → downloading → seeding → completed), the system needs a persistent record linking a download to a media item, with optional episode/season scoping. qBittorrent integration is a later phase; this first step establishes the data model and API.
+
+**Decision**: A `Download` table tracks each download request with fields: MediaItemID (required), EpisodeID (optional, for episode-level), SeasonNumber (optional, for season packs), IndexerID/IndexerName (denormalized — indexer may be deleted), Title, DownloadURL, Status (7-state enum: pending/downloading/downloaded/importing/seeding/completed/failed), and future-proofing fields (ClientTorrentHash, SavePath, SeedingRequired, LinkedToLibrary). CRUD endpoints: `POST /downloads`, `GET /downloads` (with mediaItemId/status filters), `GET /downloads/{id}`, `PUT /downloads/{id}` (status update).
+
+**Rationale**: Persisting downloads server-side decouples the UI from the torrent client's state, enables retry/audit, and allows computing episode download status. The denormalized IndexerName survives indexer deletion. Future qBittorrent integration will update status via the existing PUT endpoint.
+
+---
+
+## ADR-035: Per-indexer seeding rules
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Different trackers have different seeding requirements. Some require a minimum ratio, others a minimum seed time. These need to be configurable per indexer rather than globally.
+
+**Decision**: Add `SeedMinRatio` (float64) and `SeedMinTime` (int, minutes) as dedicated fields on the Indexer model. Defaults are 0 (no requirement). These are exposed in the API and the indexer management UI. When a download is created from an indexer, these rules will be enforced during the seeding phase (qBittorrent integration — future).
+
+**Rationale**: Dedicated DB fields (not JSON settings) enable querying and make the rules visible in the UI. Per-indexer granularity matches how trackers actually work — a ratio of 1.0 on one tracker and 0.5 on another.
+
+---
+
+## ADR-036: IndexerSearchModal on media detail page
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: Users need to search for torrents from the media detail page at three levels: entire item (movie or series), a specific season, or a specific episode. The existing IndexerTryModal was designed for the indexer settings page (single indexer, two-step meta search flow) and doesn't fit this use case.
+
+**Decision**: A new `IndexerSearchModal` component with a single-step flow (no meta search needed — IMDb ID is already known from metadata). Features: indexer dropdown (all enabled indexers or a specific one), editable season/episode filter inputs (pre-filled from the search level), results table with Indexer column (multi-indexer results), and a Download button that calls `POST /downloads`. Search buttons are added at three levels: action bar on the media detail page (item-level), season headers in EpisodeGrid (season-level, `@click.stop`), and episode rows in EpisodeGrid (episode-level).
+
+**Rationale**: Separate component from IndexerTryModal avoids conditional complexity — the two modals serve fundamentally different flows (known IMDb ID vs. discovery). The three-level search hierarchy matches how users think about missing content: "I need this whole series", "I need season 3", "I need S03E07".
+
+---
+
+## ADR-037: Computed episode download status
+**Date**: 2026-03-29
+**Status**: Accepted
+
+**Context**: After adding a download, the episode list should reflect that a download is in progress — not just show "missing". The Episode model has no status field in the DB; status is computed from `hasFile` and `airDate`.
+
+**Decision**: The `ListMediaEpisodes` handler now also fetches Download records for the media item and computes a per-episode `downloadStatus` field (added to the Episode API schema as an optional enum). The resolution order: episode-level download (by EpisodeID) takes precedence, then season-level download (by SeasonNumber, applied to all episodes in that season), then item-level download (applied to all episodes). When multiple downloads target the same episode, the highest-priority active status wins (downloading > pending > downloaded > importing > seeding). Completed and failed downloads are excluded from the computation (they don't override the "missing" state).
+
+**Rationale**: Computing status at query time rather than storing it keeps the Episode table clean and avoids sync issues between Download and Episode records. The cascade logic (episode → season → item) correctly handles the three download scopes. The frontend EpisodeGrid shows download statuses with a distinct sky-blue color scheme to differentiate from file-based states.

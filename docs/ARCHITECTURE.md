@@ -19,7 +19,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 - **Routing**: Vue Router
 - **API client**: Generated from the same OpenAPI spec via [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) + [openapi-fetch](https://github.com/openapi-ts/openapi-typescript/tree/main/packages/openapi-fetch)
 - **SPA**: Served by the Go backend via `embed.FS`
-- **Key views**: Libraries list, Library detail (media grid + add media search), Media detail (poster, metadata, match/delete actions, quality profile selector), Media preview (external media detail from search, Add to Library modal), Settings
+- **Key views**: Libraries list, Library detail (media grid + add media search), Media detail (poster, metadata, match/delete actions, quality profile selector, IndexerSearchModal with download support at item/season/episode level), Media preview (external media detail from search, Add to Library modal), Indexers (CRUD + Try it out modal), Settings
 
 ### Data Layer
 - **Interface-based**: A `Store` interface in Go, with concrete implementations for:
@@ -57,7 +57,7 @@ media-gate/
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
 │   ├── fileparse/       # Filename parser (resolution, source type, season/episode extraction)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, Episode, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, Episode, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer, Download)
 │   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
 │   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
 │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
@@ -106,7 +106,8 @@ media-gate/
 | `SeasonMonitor` | `season_monitors` | Per-season monitoring toggle for series MediaItems (unique per media item + season number) |
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
-| `Indexer` | `indexers` | Configured indexer instance (name, definition ID, credentials as JSON, priority, enabled) |
+| `Indexer` | `indexers` | Configured indexer instance (name, definition ID, credentials as JSON, priority, enabled, per-indexer seeding rules: seedMinRatio, seedMinTime) |
+| `Download` | `downloads` | Tracks download lifecycle (links to MediaItem + optional Episode/Season, indexer info, status: pending/downloading/downloaded/importing/seeding/completed/failed, qBittorrent fields for future integration) |
 
 ## Backend Service Layer
 
@@ -129,4 +130,5 @@ HTTP Request
 - **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection
-- **indexer.Service** — manages indexer CRUD (configurations stored in DB with JSON credentials); loads Cardigann YAML definitions from embedded filesystem; lazy-creates and caches engine instances per indexer; parallel multi-indexer search with semaphore; credential masking in API responses. The Cardigann engine (`internal/indexer/cardigann/`) supports POST login with cookie sessions, HTML scraping via goquery, Go template rendering for dynamic inputs, and a filter pipeline (querystring, replace, dateparse, regexp, append, etc.)
+- **indexer.Service** — manages indexer CRUD (configurations stored in DB with JSON credentials); loads Cardigann YAML definitions from embedded filesystem; lazy-creates and caches engine instances per indexer; parallel multi-indexer search with semaphore; credential masking in API responses; per-indexer seeding rules (seedMinRatio, seedMinTime). The Cardigann engine (`internal/indexer/cardigann/`) supports POST login with cookie sessions, HTML scraping via goquery, Go template rendering for dynamic inputs, and a filter pipeline (querystring, replace, dateparse, regexp, append, etc.)
+- **Download CRUD** — download records managed directly through store (no separate service yet); `ListMediaEpisodes` handler computes per-episode `downloadStatus` from linked Downloads (episode-level → season-level → item-level fallback)

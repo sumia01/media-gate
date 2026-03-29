@@ -25,7 +25,7 @@ media-gate/
 │   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
 │   ├── settings/        # Settings service (CRUD, masking, connection tests)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer)
+│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer, Download)
 │   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
 │   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
 │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
@@ -100,4 +100,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI), and is progressing through **Phase 1b** (core media management). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.

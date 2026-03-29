@@ -68,12 +68,19 @@
 - [x] Indexer connection testing
 - [x] Indexer management UI (frontend)
 - [x] Search results UI (frontend)
+- [x] Per-indexer seeding rules (seedMinRatio, seedMinTime)
+- [x] "Try it out" modal — meta search + indexer search from indexer management page
 
 ## Phase 3: Download Management (Sonarr/Radarr replacement) ⬜
-- [ ] qBittorrent API integration
-- [ ] Download queue management
+- [x] Download model + CRUD API (persistent Download records, POST/GET/PUT /downloads)
+- [x] IndexerSearchModal — search indexers from media detail page with indexer dropdown
+- [x] Search buttons at item, season, and episode level (EpisodeGrid)
+- [x] Episode download status display (computed from Download records, shown in EpisodeGrid)
+- [x] Auto-refresh episode list when closing search modal after adding downloads
+- [ ] qBittorrent API integration (client adapter)
+- [ ] Download queue management (server worker)
 - [ ] Auto-download based on watchlist
-- [ ] Download status monitoring
+- [ ] Download status monitoring (poll qBittorrent, update Download records)
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
 - [x] Requested media items (source: request, status: requested) — foundation
