@@ -1,0 +1,15 @@
+import type { components } from '@/api/schema'
+
+export type Library = components['schemas']['Library']
+export type LibraryCreate = components['schemas']['LibraryCreate']
+export type MediaItem = components['schemas']['MediaItem']
+export type MediaFile = components['schemas']['MediaFile']
+export type MediaProfile = components['schemas']['MediaProfile']
+export type MediaProfileCreate = components['schemas']['MediaProfileCreate']
+export type MatchCandidate = components['schemas']['MatchCandidate']
+export type ExternalMediaDetail = components['schemas']['ExternalMediaDetail']
+export type Setting = components['schemas']['Setting']
+export type ScanEntry = components['schemas']['ScanEntry']
+export type Job = components['schemas']['Job']
+export type SeasonSummary = components['schemas']['SeasonSummary']
+export type Episode = components['schemas']['Episode']

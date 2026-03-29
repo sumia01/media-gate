@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type Setting = components['schemas']['Setting']
+import ErrorBanner from '@/components/ErrorBanner.vue'
 
 const tmdbKey = ref('')
 const tvdbKey = ref('')
@@ -151,13 +149,7 @@ onMounted(fetchSettings)
   <div>
     <h1 class="text-xl font-semibold text-gray-100 tracking-tight mb-6">Settings</h1>
 
-    <!-- Error banner -->
-    <div
-      v-if="error"
-      class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-    >
-      {{ error }}
-    </div>
+    <ErrorBanner :message="error" />
 
     <!-- Loading -->
     <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>

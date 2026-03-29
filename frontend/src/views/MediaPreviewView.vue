@@ -2,10 +2,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
+import type { ExternalMediaDetail } from '@/types/api'
+import { parseGenres, profileImageUrl } from '@/utils/media'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
-
-type ExternalMediaDetail = components['schemas']['ExternalMediaDetail']
 
 const route = useRoute()
 const router = useRouter()
@@ -15,16 +15,7 @@ const loading = ref(false)
 const error = ref('')
 const showAddModal = ref(false)
 
-const genres = computed<string[]>(() => {
-  if (!detail.value?.genres) return []
-  try {
-    const parsed = JSON.parse(detail.value.genres)
-    if (Array.isArray(parsed)) return parsed
-  } catch {
-    return detail.value.genres.split(',').map((g: string) => g.trim()).filter(Boolean)
-  }
-  return []
-})
+const genres = computed(() => parseGenres(detail.value?.genres))
 
 const externalUrl = computed(() => {
   if (!detail.value) return null
@@ -46,17 +37,6 @@ const imdbUrl = computed(() => {
 const credits = computed(() => detail.value?.credits ?? [])
 const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
 const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
-
-function profileImageUrl(person: { image?: string }): string | null {
-  if (!person.image) return null
-  if (person.image.startsWith('/')) {
-    return `https://image.tmdb.org/t/p/w185${person.image}`
-  }
-  if (person.image.startsWith('http')) {
-    return person.image
-  }
-  return null
-}
 
 async function fetchDetail() {
   const source = route.params.source as string
@@ -111,13 +91,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
       </button>
     </div>
 
-    <!-- Error -->
-    <div
-      v-if="error"
-      class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-    >
-      {{ error }}
-    </div>
+    <ErrorBanner :message="error" />
 
     <!-- Loading -->
     <div v-if="loading && !detail" class="text-gray-500 text-sm">Loading...</div>

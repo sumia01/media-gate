@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
+import type { Library, LibraryCreate, ScanEntry } from '@/types/api'
 import FolderBrowser from '@/components/FolderBrowser.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
-
-type Library = components['schemas']['Library']
-type LibraryCreate = components['schemas']['LibraryCreate']
-type ScanEntry = components['schemas']['ScanEntry']
 
 const { refreshLibraries: refreshSidebar } = useSidebarLibraries()
 
@@ -127,13 +125,7 @@ onMounted(fetchLibraries)
       </button>
     </div>
 
-    <!-- Error banner -->
-    <div
-      v-if="error"
-      class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-    >
-      {{ error }}
-    </div>
+    <ErrorBanner :message="error" />
 
     <!-- Loading -->
     <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>
@@ -232,80 +224,76 @@ onMounted(fetchLibraries)
     </div>
 
     <!-- Add/Edit form modal -->
-    <Teleport to="body">
-      <div
-        v-if="showForm"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-        @click.self="cancelForm"
-      >
-        <div class="w-full max-w-xl bg-[#0c0f1a] border border-violet-900/20 rounded-xl p-6 shadow-2xl">
-          <h2 class="text-lg font-semibold text-gray-100 mb-5">
-            {{ editing ? 'Edit Library' : 'Add Library' }}
-          </h2>
+    <BaseModal
+      v-if="showForm"
+      max-width="max-w-xl"
+      @close="cancelForm"
+    >
+      <h2 class="text-lg font-semibold text-gray-100 mb-5">
+        {{ editing ? 'Edit Library' : 'Add Library' }}
+      </h2>
 
-          <form class="space-y-4" @submit.prevent="submitForm">
-            <!-- Name -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Name</label>
-              <input
-                v-model="form.name"
-                type="text"
-                required
-                placeholder="e.g. Movies"
-                class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-              />
-            </div>
-
-            <!-- Path -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Path</label>
-              <FolderBrowser v-model="form.path" />
-            </div>
-
-            <!-- Media type -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Media Type</label>
-              <div class="flex gap-3">
-                <label
-                  class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors duration-200"
-                  :class="form.mediaType === 'movie'
-                    ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
-                    : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
-                >
-                  <input v-model="form.mediaType" type="radio" value="movie" class="sr-only" />
-                  <span>Movie</span>
-                </label>
-                <label
-                  class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors duration-200"
-                  :class="form.mediaType === 'series'
-                    ? 'bg-fuchsia-600/20 border-fuchsia-500/50 text-fuchsia-300'
-                    : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
-                >
-                  <input v-model="form.mediaType" type="radio" value="series" class="sr-only" />
-                  <span>Series</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Buttons -->
-            <div class="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors duration-200"
-                @click="cancelForm"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
-              >
-                {{ editing ? 'Save' : 'Add' }}
-              </button>
-            </div>
-          </form>
+      <form class="space-y-4" @submit.prevent="submitForm">
+        <!-- Name -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Name</label>
+          <input
+            v-model="form.name"
+            type="text"
+            required
+            placeholder="e.g. Movies"
+            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+          />
         </div>
-      </div>
-    </Teleport>
+
+        <!-- Path -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Path</label>
+          <FolderBrowser v-model="form.path" />
+        </div>
+
+        <!-- Media type -->
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Media Type</label>
+          <div class="flex gap-3">
+            <label
+              class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors duration-200"
+              :class="form.mediaType === 'movie'
+                ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+            >
+              <input v-model="form.mediaType" type="radio" value="movie" class="sr-only" />
+              <span>Movie</span>
+            </label>
+            <label
+              class="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors duration-200"
+              :class="form.mediaType === 'series'
+                ? 'bg-fuchsia-600/20 border-fuchsia-500/50 text-fuchsia-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+            >
+              <input v-model="form.mediaType" type="radio" value="series" class="sr-only" />
+              <span>Series</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors duration-200"
+            @click="cancelForm"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
+          >
+            {{ editing ? 'Save' : 'Add' }}
+          </button>
+        </div>
+      </form>
+    </BaseModal>
   </div>
 </template>

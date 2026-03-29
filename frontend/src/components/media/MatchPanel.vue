@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import client from '@/api/client'
-import type { components } from '@/api/schema'
-
-type MediaItem = components['schemas']['MediaItem']
-type MatchCandidate = components['schemas']['MatchCandidate']
+import type { MediaItem, MatchCandidate } from '@/types/api'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 
 const props = defineProps<{
   item: MediaItem
@@ -149,13 +147,7 @@ onMounted(search)
         </div>
       </div>
 
-      <!-- Error -->
-      <div
-        v-if="searchError"
-        class="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
-      >
-        {{ searchError }}
-      </div>
+      <ErrorBanner :message="searchError" />
 
       <!-- Loading -->
       <div v-if="searching" class="text-gray-500 text-sm py-8 text-center">Searching...</div>
