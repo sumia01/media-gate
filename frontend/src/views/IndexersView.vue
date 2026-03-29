@@ -17,6 +17,8 @@ const formName = ref('')
 const formDefinitionId = ref('')
 const formEnabled = ref(true)
 const formPriority = ref(0)
+const formSeedMinRatio = ref(0)
+const formSeedMinTime = ref(0)
 const formSettings = ref<Record<string, string>>({})
 
 const testingId = ref<number | null>(null)
@@ -32,6 +34,8 @@ function resetForm() {
   formDefinitionId.value = ''
   formEnabled.value = true
   formPriority.value = 0
+  formSeedMinRatio.value = 0
+  formSeedMinTime.value = 0
   formSettings.value = {}
   testResult.value = null
 }
@@ -88,6 +92,8 @@ function openEdit(indexer: Indexer) {
   formDefinitionId.value = indexer.definitionId
   formEnabled.value = indexer.enabled
   formPriority.value = indexer.priority
+  formSeedMinRatio.value = indexer.seedMinRatio ?? 0
+  formSeedMinTime.value = indexer.seedMinTime ?? 0
   formSettings.value = { ...(indexer.settings ?? {}) }
   testResult.value = null
   showForm.value = true
@@ -117,6 +123,8 @@ async function submitForm() {
         settings,
         enabled: formEnabled.value,
         priority: formPriority.value,
+        seedMinRatio: formSeedMinRatio.value || undefined,
+        seedMinTime: formSeedMinTime.value || undefined,
       },
     })
     if (err) {
@@ -131,6 +139,8 @@ async function submitForm() {
         settings,
         enabled: formEnabled.value,
         priority: formPriority.value,
+        seedMinRatio: formSeedMinRatio.value || undefined,
+        seedMinTime: formSeedMinTime.value || undefined,
       },
     })
     if (err) {
@@ -248,6 +258,12 @@ onMounted(fetchAll)
             </span>
             <span v-if="indexer.priority" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-600/20 text-sky-300">
               Priority: {{ indexer.priority }}
+            </span>
+            <span v-if="indexer.seedMinRatio" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-600/20 text-amber-300">
+              Min ratio: {{ indexer.seedMinRatio }}
+            </span>
+            <span v-if="indexer.seedMinTime" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-600/20 text-amber-300">
+              Min seed: {{ indexer.seedMinTime }}m
             </span>
           </div>
 
@@ -372,6 +388,29 @@ onMounted(fetchAll)
             min="0"
             class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
           />
+        </div>
+
+        <!-- Seeding rules -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">Seed Min Ratio <span class="text-gray-600 font-normal">(0 = no limit)</span></label>
+            <input
+              v-model.number="formSeedMinRatio"
+              type="number"
+              min="0"
+              step="0.1"
+              class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">Seed Min Time <span class="text-gray-600 font-normal">(minutes, 0 = no limit)</span></label>
+            <input
+              v-model.number="formSeedMinTime"
+              type="number"
+              min="0"
+              class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            />
+          </div>
         </div>
 
         <!-- Enabled -->

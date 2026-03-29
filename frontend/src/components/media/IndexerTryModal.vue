@@ -8,6 +8,7 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 const props = defineProps<{
   indexerId: number
   indexerName: string
+  mediaItemId?: number
 }>()
 
 const emit = defineEmits<{

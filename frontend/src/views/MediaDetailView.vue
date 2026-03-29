@@ -8,6 +8,7 @@ import { parseGenres, profileImageUrl, posterUrl } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
+import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,11 @@ const error = ref('')
 const showMatchPanel = ref(false)
 const resyncing = ref(false)
 const filesExpanded = ref(false)
+const showIndexerSearch = ref(false)
+const indexerSearchSeason = ref<number | undefined>()
+const indexerSearchEpisode = ref<number | undefined>()
+const indexerSearchEpisodeId = ref<number | undefined>()
+const episodeRefreshKey = ref(0)
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
@@ -159,6 +165,21 @@ async function onMatchDone() {
   }
 }
 
+function openIndexerSearch(season?: number, episode?: number, episodeId?: number) {
+  indexerSearchSeason.value = season
+  indexerSearchEpisode.value = episode
+  indexerSearchEpisodeId.value = episodeId
+  showIndexerSearch.value = true
+}
+
+function closeIndexerSearch() {
+  showIndexerSearch.value = false
+  indexerSearchSeason.value = undefined
+  indexerSearchEpisode.value = undefined
+  indexerSearchEpisodeId.value = undefined
+  episodeRefreshKey.value++
+}
+
 const removeJobDoneListener = onJobDone((libraryId) => {
   if (item.value && item.value.libraryId === libraryId) {
     fetchItem(item.value.id)
@@ -224,6 +245,13 @@ watch(() => route.params.id, loadAll)
           @click="openMatchPanel"
         >
           {{ metadata ? 'Re-match' : 'Match' }}
+        </button>
+        <button
+          v-if="metadata?.imdbId"
+          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+          @click="openIndexerSearch()"
+        >
+          Search Indexers
         </button>
         <button
           v-if="item.source === 'disk'"
@@ -445,6 +473,9 @@ watch(() => route.params.id, loadAll)
       <EpisodeGrid
         v-if="item.mediaType === 'series' && metadata"
         :mediaItemId="item.id"
+        :refreshKey="episodeRefreshKey"
+        @search-season="(sn: number) => openIndexerSearch(sn)"
+        @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
         class="mt-8"
       />
 
@@ -517,6 +548,19 @@ watch(() => route.params.id, loadAll)
       :item="item"
       @close="closeMatchPanel"
       @matched="onMatchDone"
+    />
+
+    <!-- Indexer Search Modal -->
+    <IndexerSearchModal
+      v-if="showIndexerSearch && item && metadata?.imdbId"
+      :mediaItemId="item.id"
+      :imdbId="metadata.imdbId"
+      :mediaType="item.mediaType as 'movie' | 'series'"
+      :title="`${item.title}${item.year ? ` (${item.year})` : ''}`"
+      :seasonNumber="indexerSearchSeason"
+      :episodeNumber="indexerSearchEpisode"
+      :episodeId="indexerSearchEpisodeId"
+      @close="closeIndexerSearch"
     />
   </div>
 </template>
