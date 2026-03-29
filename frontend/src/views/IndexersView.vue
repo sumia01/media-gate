@@ -4,6 +4,7 @@ import client from '@/api/client'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import IndexerTryModal from '@/components/media/IndexerTryModal.vue'
 
 const indexers = ref<Indexer[]>([])
 const definitions = ref<IndexerDefinition[]>([])
@@ -20,6 +21,7 @@ const formSettings = ref<Record<string, string>>({})
 
 const testingId = ref<number | null>(null)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
+const tryingIndexer = ref<Indexer | null>(null)
 
 const selectedDefinition = computed(() =>
   definitions.value.find((d) => d.id === formDefinitionId.value),
@@ -267,6 +269,12 @@ onMounted(fetchAll)
         <div class="flex items-center gap-1 flex-shrink-0">
           <button
             class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
+            @click="tryingIndexer = indexer"
+          >
+            Try it out
+          </button>
+          <button
+            class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
             :disabled="testingId === indexer.id"
             @click="testConnection(indexer)"
           >
@@ -400,5 +408,13 @@ onMounted(fetchAll)
         </div>
       </form>
     </BaseModal>
+
+    <!-- Try it out modal -->
+    <IndexerTryModal
+      v-if="tryingIndexer"
+      :indexer-id="tryingIndexer.id"
+      :indexer-name="tryingIndexer.name"
+      @close="tryingIndexer = null"
+    />
   </div>
 </template>
