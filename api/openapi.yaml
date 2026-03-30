@@ -2156,6 +2156,7 @@ components:
             - seeding
             - completed
             - failed
+            - import_failed
         clientTorrentHash:
           type: string
         savePath:
@@ -2234,6 +2235,7 @@ components:
             - seeding
             - completed
             - failed
+            - import_failed
 
     TorrentFile:
       type: object
