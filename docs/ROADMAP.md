@@ -77,8 +77,9 @@
 - [x] Search buttons at item, season, and episode level (EpisodeGrid)
 - [x] Episode download status display (computed from Download records, shown in EpisodeGrid)
 - [x] Auto-refresh episode list when closing search modal after adding downloads
-- [ ] qBittorrent API integration (client adapter)
-- [ ] Download queue management (server worker)
+- [x] qBittorrent API integration (client adapter, settings UI, connection test)
+- [x] Download path setting (FolderBrowser selection, mutual exclusion with library paths)
+- [x] Download queue management (server worker: send pending → qBit, poll status, seeding rules)
 - [ ] Auto-download based on watchlist
 - [ ] Download status monitoring (poll qBittorrent, update Download records)
 

@@ -495,3 +495,69 @@ Built-in definitions are embedded via `go:embed` in `internal/indexer/definition
 **Decision**: The `ListMediaEpisodes` handler now also fetches Download records for the media item and computes a per-episode `downloadStatus` field (added to the Episode API schema as an optional enum). The resolution order: episode-level download (by EpisodeID) takes precedence, then season-level download (by SeasonNumber, applied to all episodes in that season), then item-level download (applied to all episodes). When multiple downloads target the same episode, the highest-priority active status wins (downloading > pending > downloaded > importing > seeding). Completed and failed downloads are excluded from the computation (they don't override the "missing" state).
 
 **Rationale**: Computing status at query time rather than storing it keeps the Episode table clean and avoids sync issues between Download and Episode records. The cascade logic (episode → season → item) correctly handles the three download scopes. The frontend EpisodeGrid shows download statuses with a distinct sky-blue color scheme to differentiate from file-based states.
+
+---
+
+## ADR-038: qBittorrent client adapter with cookie-based auth
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: Phase 3 requires sending torrents to a download client and tracking their progress. qBittorrent is already running in the homelab (ADR-006). The Web API v2 uses cookie-based authentication (SID cookie from POST `/api/v2/auth/login`).
+
+**Decision**: Build a native Go client in `internal/integration/qbittorrent/` following the TVDB client pattern — mutex-guarded session, lazy authentication, auto-retry on 403 (session expiry). The SID cookie is managed as a plain string field (no `http.CookieJar`). Methods: `TestConnection`, `AddTorrent` (magnet/URL via multipart POST), `GetTorrent`/`GetTorrents` (status polling), and `MapState` (maps qBit's 17+ states to simplified categories). Settings stored as `qbit_url`, `qbit_username`, `qbit_password` with connection test endpoint `POST /settings/test-qbittorrent`.
+
+**Rationale**: Manual SID management keeps the pattern identical to TVDB's bearer token handling — one string field, one mutex, clear invalidation. A separate `QbittorrentTestRequest` schema (url + username + password) avoids overloading the existing `ConnectionTestRequest` (which only has apiKey). The `MapState` helper is included in the client package for immediate use by the download worker.
+
+---
+
+## ADR-039: Download path setting with mutual exclusion from library paths
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: qBittorrent needs a directory to save downloaded files. This directory must be within `LIBRARY_BASEPATH` (same filesystem boundary as libraries) but cannot overlap with any library path — otherwise the sync service would pick up incomplete downloads.
+
+**Decision**: A `qbit_download_path` setting selectable via the existing FolderBrowser component on the Settings page. Two-way validation enforces mutual exclusion:
+1. **Settings side**: When saving `qbit_download_path`, the settings service validates the path is within `basePath` and does not match any existing library path (`store.ListLibraries()`).
+2. **Library side**: When creating or updating a library, the library service reads `qbit_download_path` from settings and rejects if the library path matches.
+
+The library service accepts a `SettingsGetter` interface (just `Get(key) (string, error)`) to avoid circular imports with the settings package.
+
+**Rationale**: Two-way validation is bombproof — neither side can create a conflict regardless of operation order. The interface-based dependency keeps the packages decoupled. Using the existing FolderBrowser component means zero new frontend components.
+
+---
+
+## ADR-040: Download queue worker with ticker-based polling
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: Download records are created with status "pending" when users click Download in the IndexerSearchModal. Something needs to pick these up, send them to qBittorrent, and track their progress through the download lifecycle.
+
+**Decision**: A `download.Service` runs a background goroutine with a 30-second ticker. On each tick it:
+1. **Sends pending**: Queries downloads with status "pending", calls `qbittorrent.AddTorrent` for each, updates status to "downloading" and stores the torrent hash and save path.
+2. **Polls active**: Queries downloads with status "downloading" or "seeding", calls `qbittorrent.GetTorrent` for each by hash, maps qBit state via `MapState`, and updates status accordingly.
+3. **Enforces seeding rules**: When a torrent enters the "seeding" state, looks up the indexer's `SeedMinRatio` and `SeedMinTime`. Transitions to "completed" only when both thresholds are met (or if both are 0). If the indexer has been deleted, seeding is considered complete.
+
+The qBittorrent client is lazily created from settings on first use — if settings aren't configured yet, the tick is silently skipped.
+
+**Rationale**: Ticker-based polling is simple and sufficient for a single-user homelab app. 30 seconds balances responsiveness with qBittorrent API load. Lazy client creation means the server starts without errors even if qBittorrent isn't configured yet. Failed torrents are marked immediately so users see the error in the UI.
+
+---
+
+## ADR-041: GORM FK CASCADE constraints replace manual cascade deletes
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: Deleting a Library or MediaItem required explicit handler code to cascade-delete all child records (MediaFiles, MediaMetadata, Episodes, SeasonMonitors, Downloads). This was error-prone — the Downloads table was missed initially, leaving orphaned records.
+
+**Decision**: Use GORM's `constraint:OnDelete:CASCADE` tag on all foreign key fields that reference a parent entity:
+- `MediaItem.LibraryID` → CASCADE (Library deletion cascades to all its MediaItems)
+- `MediaMetadata.MediaItemID` → CASCADE
+- `MediaFile.MediaItemID` → CASCADE
+- `SeasonMonitor.MediaItemID` → CASCADE
+- `Episode.MediaItemID` → CASCADE
+- `Download.MediaItemID` → CASCADE
+- `Download.EpisodeID` → SET NULL (nullable FK — preserve download record when episode is deleted)
+
+SQLite requires `PRAGMA foreign_keys = ON` to enforce FK constraints, enabled at connection time. Manual cascade delete code removed from handlers; unused `DeleteXxxByMediaItem` methods removed from the Store interface (except those still used by matching/sync services).
+
+**Rationale**: Database-level constraints are more reliable than application-level cascade logic — they can't be forgotten when new child tables are added. Simplifies handler code and reduces the Store interface surface. The DB can be safely deleted and recreated since AutoMigrate rebuilds the schema.

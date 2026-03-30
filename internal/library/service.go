@@ -21,14 +21,21 @@ type ScanEntry struct {
 }
 
 var ErrPathOutsideBase = errors.New("path must be within the configured base path")
+var ErrPathIsDownloadDir = errors.New("path is reserved for downloads")
+
+// SettingsGetter provides read access to settings without importing the settings package.
+type SettingsGetter interface {
+	Get(key string) (string, error)
+}
 
 type Service struct {
 	store    store.Store
 	basePath string
+	settings SettingsGetter
 }
 
-func NewService(s store.Store, basePath string) *Service {
-	return &Service{store: s, basePath: filepath.Clean(basePath)}
+func NewService(s store.Store, basePath string, sg SettingsGetter) *Service {
+	return &Service{store: s, basePath: filepath.Clean(basePath), settings: sg}
 }
 
 // BasePath returns the configured base path for libraries.
@@ -49,6 +56,9 @@ func (s *Service) Create(lib *store.Library) error {
 	if err := s.validatePath(lib.Path); err != nil {
 		return err
 	}
+	if err := s.checkNotDownloadPath(lib.Path); err != nil {
+		return err
+	}
 	return s.store.CreateLibrary(lib)
 }
 
@@ -62,6 +72,9 @@ func (s *Service) Get(id uint) (*store.Library, error) {
 
 func (s *Service) Update(lib *store.Library) error {
 	if err := s.validatePath(lib.Path); err != nil {
+		return err
+	}
+	if err := s.checkNotDownloadPath(lib.Path); err != nil {
 		return err
 	}
 	return s.store.UpdateLibrary(lib)
@@ -131,4 +144,20 @@ func (s *Service) Browse(path string) (string, []ScanEntry, error) {
 		})
 	}
 	return path, result, nil
+}
+
+// checkNotDownloadPath rejects the path if it matches the configured download directory.
+func (s *Service) checkNotDownloadPath(p string) error {
+	if s.settings == nil {
+		return nil
+	}
+	dlPath, err := s.settings.Get("qbit_download_path")
+	if err != nil {
+		// No download path configured — no conflict possible.
+		return nil
+	}
+	if filepath.Clean(p) == filepath.Clean(dlPath) {
+		return ErrPathIsDownloadDir
+	}
+	return nil
 }

@@ -36,7 +36,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
 
 | Service       | Role                        | Status  |
 |---------------|-----------------------------|---------|
-| qBittorrent   | Torrent download client     | Planned |
+| qBittorrent   | Torrent download client     | Integrated |
 | TMDB          | Movie & TV metadata (API v3) | Integrated |
 | TVDB          | TV series metadata (API v4)  | Integrated |
 | Indexers       | Torrent/NZB search (Cardigann engine) | Integrated |
@@ -63,7 +63,9 @@ media-gate/
 │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client
-│   │   └── tvdb/        # TVDB API v4 client (JWT auth)
+│   │   ├── tvdb/        # TVDB API v4 client (JWT auth)
+│   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth)
+│   ├── download/        # Download queue worker (sends pending → qBit, polls status, seeding rules)
 │   └── logging/         # slog setup, handler config
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
@@ -114,8 +116,8 @@ media-gate/
 ```
 HTTP Request
   → api/v1/handlers.go (generated interface, hand-written handlers)
-    → library.Service (CRUD, path validation, folder browsing)
-    → settings.Service (settings CRUD, masking, TMDB/TVDB connection tests)
+    → library.Service (CRUD, path validation, folder browsing, download path conflict check)
+    → settings.Service (settings CRUD, masking, TMDB/TVDB/qBittorrent connection tests)
     → store.Store (GORM → SQLite/Postgres)
     → indexer.Service (indexer CRUD, Cardigann engine orchestration, multi-indexer search)
     → jobqueue.Queue (enqueue background work, persist history to SQLite)
@@ -123,12 +125,14 @@ HTTP Request
       → matching.Service (auto-match MediaItems to TMDB/TVDB)
 ```
 
-- **library.Service** — manages Library CRUD with basePath validation (prevents path traversal)
+- **library.Service** — manages Library CRUD with basePath validation (prevents path traversal); rejects library paths that match the configured download directory
 - **sync.Service** — reads a library's directory, walks each media folder for video files (`.mkv`, `.mp4`, etc.), parses filenames for resolution/source/season/episode via the `fileparse` package. Supports three series layouts: season subfolders, flat mixed episodes, and split-season folders (grouped into one MediaItem). Creates MediaItem + MediaFile records per video file; detects removals; supports single-item resync.
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
 - **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode; provides external detail preview (GetExternalDetail) for search results without persisting data
-- **settings.Service** — manages DB-backed settings (API keys etc.); masks sensitive values in list responses; delegates to TMDB/TVDB clients for connection testing
+- **settings.Service** — manages DB-backed settings (API keys, download path, etc.); masks sensitive values in list responses; delegates to TMDB/TVDB/qBittorrent clients for connection testing; validates download path against basePath and existing library paths on save
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection
 - **indexer.Service** — manages indexer CRUD (configurations stored in DB with JSON credentials); loads Cardigann YAML definitions from embedded filesystem; lazy-creates and caches engine instances per indexer; parallel multi-indexer search with semaphore; credential masking in API responses; per-indexer seeding rules (seedMinRatio, seedMinTime). The Cardigann engine (`internal/indexer/cardigann/`) supports POST login with cookie sessions, HTML scraping via goquery, Go template rendering for dynamic inputs, and a filter pipeline (querystring, replace, dateparse, regexp, append, etc.)
 - **Download CRUD** — download records managed directly through store (no separate service yet); `ListMediaEpisodes` handler computes per-episode `downloadStatus` from linked Downloads (episode-level → season-level → item-level fallback)
+- **qbittorrent.Client** — qBittorrent Web API v2 client; cookie-based SID auth with mutex-guarded session; auto-retry on 403 (session expiry); methods: AddTorrent (magnet/URL), GetTorrent/GetTorrents (status polling), TestConnection; MapState helper maps qBit's 17+ states to simplified categories
+- **download.Service** — background worker (30s polling interval); picks up pending downloads from DB and sends to qBittorrent with configured download path; polls active downloads for status changes; enforces per-indexer seeding rules (SeedMinRatio/SeedMinTime); lazily creates qBittorrent client from settings

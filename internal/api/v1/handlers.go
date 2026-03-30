@@ -143,19 +143,14 @@ func (h *Handlers) UpdateLibrary(_ context.Context, req UpdateLibraryRequestObje
 func (h *Handlers) DeleteLibrary(_ context.Context, req DeleteLibraryRequestObject) (DeleteLibraryResponseObject, error) {
 	id := uint(req.Id)
 
-	// Delete media files for all items in this library
+	// Clean up poster files before cascade-deleting the library
 	items, err := h.store.ListMediaItemsByLibrary(id)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range items {
-		_ = h.store.DeleteMediaFilesByMediaItem(item.ID)
-		_ = h.store.DeleteEpisodesByMediaItem(item.ID)
-		_ = h.store.DeleteMediaMetadataByMediaItem(item.ID)
-	}
-
-	if err := h.store.DeleteMediaItemsByLibrary(id); err != nil {
-		return nil, err
+		posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
+		_ = os.Remove(posterPath)
 	}
 
 	if err := h.lib.Delete(id); err != nil {
@@ -384,12 +379,7 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 		}, nil
 	}
 
-	// Delete media files, metadata, episodes, and poster
-	_ = h.store.DeleteMediaFilesByMediaItem(item.ID)
-	_ = h.store.DeleteMediaMetadataByMediaItem(item.ID)
-	_ = h.store.DeleteEpisodesByMediaItem(item.ID)
-
-	// Delete poster file
+	// Delete poster file (not in DB, so not handled by CASCADE)
 	posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
 	_ = os.Remove(posterPath)
 
@@ -535,6 +525,14 @@ func (h *Handlers) TestTvdbConnection(_ context.Context, req TestTvdbConnectionR
 		return nil, err
 	}
 	return TestTvdbConnection200JSONResponse{Success: success, Message: &msg}, nil
+}
+
+func (h *Handlers) TestQbittorrentConnection(_ context.Context, req TestQbittorrentConnectionRequestObject) (TestQbittorrentConnectionResponseObject, error) {
+	success, msg, err := h.settings.TestQBit(req.Body.Url, req.Body.Username, req.Body.Password)
+	if err != nil {
+		return nil, err
+	}
+	return TestQbittorrentConnection200JSONResponse{Success: success, Message: &msg}, nil
 }
 
 func (h *Handlers) SearchMediaForLibrary(_ context.Context, req SearchMediaForLibraryRequestObject) (SearchMediaForLibraryResponseObject, error) {

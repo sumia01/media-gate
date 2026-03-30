@@ -28,7 +28,6 @@ type Store interface {
 	ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
-	DeleteMediaItemsByLibrary(libraryID uint) error
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
 	MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error)
 
@@ -52,14 +51,12 @@ type Store interface {
 	ListMediaFilesByMediaItem(mediaItemID uint) ([]MediaFile, error)
 	ListMediaFilesByLibrary(libraryID uint) ([]MediaFile, error)
 	DeleteMediaFile(id uint) error
-	DeleteMediaFilesByMediaItem(mediaItemID uint) error
 	DeleteMediaFilesByPaths(paths []string) error
 
 	// SeasonMonitor CRUD
 	CreateSeasonMonitor(monitor *SeasonMonitor) error
 	ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonMonitor, error)
 	UpdateSeasonMonitor(monitor *SeasonMonitor) error
-	DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error
 
 	// Episode CRUD
 	CreateEpisode(episode *Episode) error
