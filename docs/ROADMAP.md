@@ -95,6 +95,7 @@
 - [x] FK constraint rebuild migration — startup detects missing FK constraints and rebuilds tables
 - [x] Startup integrity checks — orphan record cleanup, torrent hash reconciliation with qBit client
 - [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
+- [x] Release folder isolation — each import creates a release subfolder, companion files (subtitles, NFO, images) imported alongside video
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
