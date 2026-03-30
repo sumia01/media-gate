@@ -39,7 +39,7 @@ media-gate/
 │   └── src/
 │       ├── api/         # Generated TypeScript API client
 │       ├── types/       # Shared API type re-exports from schema
-│       ├── utils/       # Shared utility functions (parseGenres, posterUrl, etc.)
+│       ├── utils/       # Shared utility functions (parseGenres, posterUrl, formatSize, formatBytes)
 │       ├── composables/ # Shared reactive state (useJobQueue)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout

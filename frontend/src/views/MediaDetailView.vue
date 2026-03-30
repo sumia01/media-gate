@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { Library, MediaItem, MediaFile, MediaProfile } from '@/types/api'
 import { useJobQueue } from '@/composables/useJobQueue'
-import { parseGenres, profileImageUrl, posterUrl } from '@/utils/media'
+import { parseGenres, profileImageUrl, posterUrl, formatBytes } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
@@ -111,16 +111,6 @@ async function onProfileChange(event: Event) {
 async function onMonitorToggle(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
   await updateMediaItem({ monitorNewSeasons: checked })
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  const kb = bytes / 1024
-  if (kb < 1024) return kb.toFixed(1) + ' KB'
-  const mb = kb / 1024
-  if (mb < 1024) return mb.toFixed(1) + ' MB'
-  const gb = mb / 1024
-  return gb.toFixed(1) + ' GB'
 }
 
 async function handleResync() {
@@ -562,7 +552,7 @@ watch(() => route.params.id, loadAll)
                     {{ file.sourceType }}
                   </span>
                   <span v-if="file.size" class="text-xs text-gray-500">
-                    {{ formatSize(file.size) }}
+                    {{ formatBytes(file.size) }}
                   </span>
                 </div>
               </div>

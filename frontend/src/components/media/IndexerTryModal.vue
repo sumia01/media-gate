@@ -4,6 +4,7 @@ import client from '@/api/client'
 import type { MatchCandidate, TorrentResult } from '@/types/api'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import { formatSize } from '@/utils/media'
 
 const props = defineProps<{
   indexerId: number
@@ -150,14 +151,6 @@ function dummyDownload(title: string) {
 }
 
 // --- Helpers ---
-function formatSize(size: string): string {
-  const bytes = parseFloat(size)
-  if (isNaN(bytes) || bytes === 0) return size
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i]
-}
-
 function formatDate(unix: number): string {
   if (!unix) return ''
   return new Date(unix * 1000).toLocaleDateString('hu-HU', {

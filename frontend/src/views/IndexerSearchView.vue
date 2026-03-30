@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import client from '@/api/client'
 import type { TorrentResult } from '@/types/api'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import { formatSize } from '@/utils/media'
 
 const query = ref('')
 const searchType = ref('search')
@@ -38,14 +39,6 @@ async function search() {
     return
   }
   results.value = data?.results ?? []
-}
-
-function formatSize(size: string): string {
-  const bytes = parseFloat(size)
-  if (isNaN(bytes) || bytes === 0) return size
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i]
 }
 
 function formatDate(unix: number): string {

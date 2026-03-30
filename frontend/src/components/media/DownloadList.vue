@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import client from '@/api/client'
 import type { Download, TorrentFile } from '@/types/api'
+import { formatSize, formatBytes } from '@/utils/media'
 
 const props = defineProps<{
   mediaItemId: number
@@ -123,27 +124,6 @@ function statusColor(status: string) {
     case 'failed': return 'bg-red-600/20 text-red-300'
     default: return 'bg-gray-600/20 text-gray-400'
   }
-}
-
-function formatSize(sizeStr?: string): string {
-  if (!sizeStr) return ''
-  const bytes = parseInt(sizeStr, 10)
-  if (isNaN(bytes) || bytes === 0) return sizeStr
-  if (bytes < 1024) return bytes + ' B'
-  const kb = bytes / 1024
-  if (kb < 1024) return kb.toFixed(1) + ' KB'
-  const mb = kb / 1024
-  if (mb < 1024) return mb.toFixed(1) + ' MB'
-  return (mb / 1024).toFixed(1) + ' GB'
-}
-
-function formatSizeNum(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  const kb = bytes / 1024
-  if (kb < 1024) return kb.toFixed(1) + ' KB'
-  const mb = kb / 1024
-  if (mb < 1024) return mb.toFixed(1) + ' MB'
-  return (mb / 1024).toFixed(1) + ' GB'
 }
 
 function formatSpeed(bytesPerSec?: number): string {
@@ -314,7 +294,7 @@ watch(() => props.refreshKey, fetchDownloads)
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span v-if="file.progress < 1" class="text-[10px] text-gray-500">{{ (file.progress * 100).toFixed(0) }}%</span>
-              <span class="text-[10px] text-gray-500">{{ formatSizeNum(file.size) }}</span>
+              <span class="text-[10px] text-gray-500">{{ formatBytes(file.size) }}</span>
             </div>
           </div>
         </div>
