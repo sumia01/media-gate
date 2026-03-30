@@ -90,6 +90,7 @@
 - [x] Real-time progress/speed enrichment on download list (server-side qBit polling)
 - [x] Import worker — hardlink/copy completed downloads into library, create MediaFile records
 - [x] Seed cleanup worker — monitor seeding obligations, remove torrents from qBit when met
+- [x] Full delete — remove torrents from qBit, imported library files, empty dirs, poster, and cascade DB records
 - [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
 - [ ] Auto-download based on watchlist
 

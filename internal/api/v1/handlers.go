@@ -377,22 +377,61 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 		return nil, err
 	}
 
-	if item.Source != "request" {
-		return DeleteMediaItem409JSONResponse{
-			Code:    http.StatusConflict,
-			Message: "only requested media items can be deleted",
-		}, nil
+	// Collect file paths before DB cascade deletes the records.
+	mediaFiles, _ := h.store.ListMediaFilesByMediaItem(item.ID)
+
+	// Remove torrents from qBittorrent (best-effort).
+	itemID := item.ID
+	downloads, _ := h.store.ListDownloads(&itemID, nil)
+	if client, err := h.getQBitClient(); err == nil {
+		for _, dl := range downloads {
+			if dl.ClientTorrentHash == "" {
+				continue
+			}
+			if err := client.DeleteTorrent(dl.ClientTorrentHash, true); err != nil {
+				slog.Warn("failed to remove torrent from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
+			}
+		}
+	} else if len(downloads) > 0 {
+		slog.Warn("qBittorrent not available, skipping torrent cleanup", "error", err)
 	}
 
-	// Delete poster file (not in DB, so not handled by CASCADE)
+	// Determine library root to stop empty-dir cleanup.
+	var libraryRoot string
+	if lib, err := h.store.GetLibrary(item.LibraryID); err == nil {
+		libraryRoot = lib.Path
+	}
+
+	// Delete imported library files from disk.
+	for _, mf := range mediaFiles {
+		if err := os.Remove(mf.Path); err != nil && !os.IsNotExist(err) {
+			slog.Warn("failed to remove library file", "path", mf.Path, "error", err)
+		}
+		if libraryRoot != "" {
+			removeEmptyParents(filepath.Dir(mf.Path), libraryRoot)
+		}
+	}
+
+	// Delete poster file.
 	posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
 	_ = os.Remove(posterPath)
 
+	// Delete DB record (CASCADE removes MediaFile, Download, Episode, etc.).
 	if err := h.store.DeleteMediaItem(item.ID); err != nil {
 		return nil, err
 	}
 
 	return DeleteMediaItem204Response{}, nil
+}
+
+// removeEmptyParents removes empty directories from dir up to (but not including) stopAt.
+func removeEmptyParents(dir, stopAt string) {
+	for dir != stopAt && strings.HasPrefix(dir, stopAt) {
+		if err := os.Remove(dir); err != nil {
+			break // not empty or permission error
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandidatesRequestObject) (SearchMediaCandidatesResponseObject, error) {
