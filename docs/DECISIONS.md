@@ -561,3 +561,27 @@ The qBittorrent client is lazily created from settings on first use — if setti
 SQLite requires `PRAGMA foreign_keys = ON` to enforce FK constraints, enabled at connection time. Manual cascade delete code removed from handlers; unused `DeleteXxxByMediaItem` methods removed from the Store interface (except those still used by matching/sync services).
 
 **Rationale**: Database-level constraints are more reliable than application-level cascade logic — they can't be forgotten when new child tables are added. Simplifies handler code and reduces the Store interface surface. The DB can be safely deleted and recreated since AutoMigrate rebuilds the schema.
+
+---
+
+## ADR-042: Authenticated torrent fetch via indexer engine + two-step download resolution
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: Private trackers require authentication (cookies) to download .torrent files. Passing the download URL directly to qBittorrent's `urls` field fails silently because qBit has no session cookies. Additionally, some trackers (e.g., nCore) return an HTML page at the download URL containing the real .torrent link — a standard Cardigann `download.selectors` pattern.
+
+**Decision**: Fetch .torrent files through the Cardigann engine's authenticated HTTP client (`FetchDownload` on Engine, `FetchTorrent` on indexer.Service), then upload the raw bytes to qBittorrent via multipart file upload (`AddTorrentFile`). If the response is HTML instead of bencode, parse it with the definition's `download.selectors` to extract the real download link and fetch again. Compute info hash locally from the .torrent bytes using a minimal bencode parser + SHA1.
+
+**Rationale**: This is the standard Cardigann flow — `download.selectors` exist exactly for two-step resolution. Fetching through the engine reuses the existing authenticated session. Local hash computation avoids the unreliable `extractHash` (magnet-only) approach.
+
+---
+
+## ADR-043: Downloads section on media detail page with server-side qBit enrichment
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: Users had no visibility into download status from the media detail page, and no way to retry, delete, or replace downloads.
+
+**Decision**: Add a `DownloadList` component on the media detail page showing all downloads for the media item. The backend enriches `GET /downloads?mediaItemId=X` with real-time progress/speed from qBittorrent. Added `DELETE /downloads/{id}` (with optional `deleteFiles` query param) and `GET /downloads/{id}/files` (proxies qBit's torrent file listing). The frontend polls every 5s while active downloads exist, supports retry (set status back to pending), delete (removes from DB + qBit), and replace (delete old after new download created via IndexerSearchModal).
+
+**Rationale**: Server-side enrichment avoids exposing qBit credentials to the frontend and reduces round-trips. The replace flow deletes the old download only after the user picks a new one (not immediately), preventing accidental data loss. Torrent file listing is on-demand (user clicks a button) rather than auto-polled.

@@ -1,30 +1,34 @@
 package download
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
-const pollInterval = 30 * time.Second
+const pollInterval = 5 * time.Second
 
 type Service struct {
-	store    store.Store
-	settings *settings.Service
-	client   *qbittorrent.Client
-	mu       sync.Mutex
-	stopCh   chan struct{}
+	store      store.Store
+	settings   *settings.Service
+	indexerSvc *indexer.Service
+	client     *qbittorrent.Client
+	mu         sync.Mutex
+	stopCh     chan struct{}
 }
 
-func NewService(s store.Store, settingsSvc *settings.Service) *Service {
+func NewService(s store.Store, settingsSvc *settings.Service, indexerSvc *indexer.Service) *Service {
 	return &Service{
-		store:    s,
-		settings: settingsSvc,
-		stopCh:   make(chan struct{}),
+		store:      s,
+		settings:   settingsSvc,
+		indexerSvc: indexerSvc,
+		stopCh:     make(chan struct{}),
 	}
 }
 
@@ -105,23 +109,52 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 	}
 
 	downloadPath := s.settings.GetWithDefault(settings.KeyQBitDownloadPath, "")
+	category := s.settings.GetWithDefault(settings.KeyQBitCategory, "media-gate-dl")
+
+	if category != "" {
+		if err := client.EnsureCategory(category); err != nil {
+			slog.Error("download worker: failed to ensure category", "category", category, "error", err)
+		}
+	}
 
 	for i := range downloads {
 		dl := &downloads[i]
 
 		opts := qbittorrent.AddTorrentOptions{
 			SavePath: downloadPath,
+			Category: category,
 		}
 
-		hash, err := client.AddTorrent(dl.DownloadURL, opts)
+		// Fetch .torrent file via the indexer's authenticated session
+		ctx := context.Background()
+		torrentData, err := s.indexerSvc.FetchTorrent(ctx, dl.IndexerID, dl.DownloadURL)
 		if err != nil {
-			slog.Error("download worker: failed to add torrent",
+			slog.Error("download worker: failed to fetch torrent",
 				"download_id", dl.ID, "title", dl.Title, "error", err)
 			dl.Status = "failed"
-			if err := s.store.UpdateDownload(dl); err != nil {
-				slog.Error("download worker: failed to update download status", "download_id", dl.ID, "error", err)
-			}
+			_ = s.store.UpdateDownload(dl)
 			continue
+		}
+
+		// Upload .torrent file to qBittorrent (also computes info hash)
+		hash, err := client.AddTorrentFile(dl.Title+".torrent", torrentData, opts)
+		if err != nil {
+			// If qBit rejected it, the torrent may already exist — check by hash
+			if checkHash, hashErr := qbittorrent.InfoHash(torrentData); hashErr == nil && checkHash != "" {
+				if _, getErr := client.GetTorrent(checkHash); getErr == nil {
+					slog.Info("download worker: torrent already in qBittorrent, reusing",
+						"download_id", dl.ID, "hash", checkHash)
+					hash = checkHash
+					err = nil
+				}
+			}
+			if err != nil {
+				slog.Error("download worker: failed to add torrent",
+					"download_id", dl.ID, "title", dl.Title, "error", err)
+				dl.Status = "failed"
+				_ = s.store.UpdateDownload(dl)
+				continue
+			}
 		}
 
 		dl.Status = "downloading"

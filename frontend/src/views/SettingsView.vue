@@ -40,12 +40,14 @@ const qbTesting = ref(false)
 
 const qbDownloadPath = ref('')
 const qbDownloadPathDirty = ref(false)
+const qbCategory = ref('')
+const qbCategoryDirty = ref(false)
 
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
-  qbDownloadPathDirty.value
+  qbDownloadPathDirty.value || qbCategoryDirty.value
 )
 
 async function fetchSettings() {
@@ -68,6 +70,7 @@ async function fetchSettings() {
     if (s.key === 'qbit_username') qbUsername.value = s.value
     if (s.key === 'qbit_password') qbPassword.value = s.value
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
+    if (s.key === 'qbit_category') qbCategory.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -78,6 +81,7 @@ async function fetchSettings() {
   qbUsernameDirty.value = false
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
+  qbCategoryDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -117,6 +121,9 @@ async function saveSettings() {
   if (qbDownloadPathDirty.value) {
     items.push({ key: 'qbit_download_path', value: qbDownloadPath.value })
   }
+  if (qbCategoryDirty.value) {
+    items.push({ key: 'qbit_category', value: qbCategory.value })
+  }
 
   if (items.length === 0) {
     saving.value = false
@@ -146,6 +153,7 @@ async function saveSettings() {
     if (s.key === 'qbit_username') qbUsername.value = s.value
     if (s.key === 'qbit_password') qbPassword.value = s.value
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
+    if (s.key === 'qbit_category') qbCategory.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -156,6 +164,7 @@ async function saveSettings() {
   qbUsernameDirty.value = false
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
+  qbCategoryDirty.value = false
 }
 
 async function testTmdb() {
@@ -407,6 +416,19 @@ onMounted(fetchSettings)
               <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Path</label>
               <p class="text-[10px] text-gray-500 mb-2">Folder where qBittorrent saves downloaded files. Must be within the base path and cannot be a library folder.</p>
               <FolderBrowser v-model="qbDownloadPath" @update:model-value="qbDownloadPathDirty = true" />
+            </div>
+
+            <!-- Category -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Category</label>
+              <p class="text-[10px] text-gray-500 mb-2">qBittorrent category for downloads. Defaults to media-gate-dl if empty.</p>
+              <input
+                v-model="qbCategory"
+                type="text"
+                placeholder="media-gate-dl"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="qbCategoryDirty = true"
+              />
             </div>
           </div>
         </div>

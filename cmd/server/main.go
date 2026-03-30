@@ -61,7 +61,7 @@ func main() {
 	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
 	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
 
-	downloadSvc := download.NewService(db, settingsSvc)
+	downloadSvc := download.NewService(db, settingsSvc, indexerSvc)
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)

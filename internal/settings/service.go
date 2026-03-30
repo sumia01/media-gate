@@ -22,6 +22,7 @@ const (
 	KeyQBitUsername           = "qbit_username"
 	KeyQBitPassword           = "qbit_password"
 	KeyQBitDownloadPath       = "qbit_download_path"
+	KeyQBitCategory           = "qbit_category"
 )
 
 var sensitiveKeys = map[string]bool{

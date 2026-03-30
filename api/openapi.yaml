@@ -1252,6 +1252,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDownload
+      summary: Delete a download
+      parameters:
+        - name: deleteFiles
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Also delete downloaded files from disk
+      responses:
+        "204":
+          description: Download deleted
+        "404":
+          description: Download not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /downloads/{id}/files:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: listDownloadFiles
+      summary: List files in a download's torrent
+      responses:
+        "200":
+          description: Torrent file list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - files
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TorrentFile"
+        "404":
+          description: Download not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -2121,6 +2173,18 @@ components:
         completedAt:
           type: string
           format: date-time
+        progress:
+          type: number
+          format: float
+          description: Real-time download progress (0.0 to 1.0)
+        downloadSpeed:
+          type: integer
+          format: int64
+          description: Current download speed in bytes/sec
+        uploadSpeed:
+          type: integer
+          format: int64
+          description: Current upload speed in bytes/sec
 
     DownloadCreate:
       type: object
@@ -2170,3 +2234,22 @@ components:
             - seeding
             - completed
             - failed
+
+    TorrentFile:
+      type: object
+      required:
+        - name
+        - size
+        - progress
+      properties:
+        name:
+          type: string
+          description: File path within the torrent
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        progress:
+          type: number
+          format: float
+          description: Download progress (0.0 to 1.0)

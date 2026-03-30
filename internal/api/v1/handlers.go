@@ -5,20 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
-	"github.com/sumia01/media-gate/internal/sync"
+	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
 // Ensure Handlers implements the generated StrictServerInterface.
@@ -30,12 +33,14 @@ type Handlers struct {
 	queue      *jobqueue.Queue
 	settings   *settings.Service
 	matchSvc   *matching.Service
-	syncSvc    *sync.Service
+	syncSvc    *mediasync.Service
 	indexerSvc *indexer.Service
 	posterDir  string
+	qbitClient *qbittorrent.Client
+	qbitMu     sync.Mutex
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *sync.Service, indexerSvc *indexer.Service, posterDir string) *Handlers {
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string) *Handlers {
 	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir}
 }
 
@@ -1194,6 +1199,26 @@ func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObje
 		apiDownloads[i] = downloadToAPI(&downloads[i])
 	}
 
+	// Enrich with real-time progress data when filtering by media item
+	if mediaItemID != nil {
+		if client, err := h.getQBitClient(); err == nil {
+			for i := range apiDownloads {
+				hash := apiDownloads[i].ClientTorrentHash
+				if hash == nil || *hash == "" {
+					continue
+				}
+				info, err := client.GetTorrent(*hash)
+				if err != nil {
+					continue
+				}
+				p := float32(info.Progress)
+				apiDownloads[i].Progress = &p
+				apiDownloads[i].DownloadSpeed = &info.DownloadSpeed
+				apiDownloads[i].UploadSpeed = &info.UploadSpeed
+			}
+		}
+	}
+
 	return ListDownloads200JSONResponse{Downloads: apiDownloads}, nil
 }
 
@@ -1229,6 +1254,99 @@ func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadSta
 	}
 
 	return UpdateDownloadStatus200JSONResponse(downloadToAPI(dl)), nil
+}
+
+func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestObject) (DeleteDownloadResponseObject, error) {
+	dl, err := h.store.GetDownload(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return DeleteDownload404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "download not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if dl.ClientTorrentHash != "" {
+		if client, err := h.getQBitClient(); err == nil {
+			deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
+			if err := client.DeleteTorrent(dl.ClientTorrentHash, deleteFiles); err != nil {
+				slog.Warn("failed to remove torrent from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
+			}
+		}
+	}
+
+	if err := h.store.DeleteDownload(dl.ID); err != nil {
+		return nil, err
+	}
+
+	return DeleteDownload204Response{}, nil
+}
+
+func (h *Handlers) ListDownloadFiles(_ context.Context, req ListDownloadFilesRequestObject) (ListDownloadFilesResponseObject, error) {
+	dl, err := h.store.GetDownload(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ListDownloadFiles404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "download not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if dl.ClientTorrentHash == "" {
+		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
+	}
+
+	client, err := h.getQBitClient()
+	if err != nil {
+		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
+	}
+
+	qFiles, err := client.GetTorrentFiles(dl.ClientTorrentHash)
+	if err != nil {
+		slog.Warn("failed to get torrent files from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
+		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
+	}
+
+	apiFiles := make([]TorrentFile, len(qFiles))
+	for i, f := range qFiles {
+		apiFiles[i] = TorrentFile{
+			Name:     f.Name,
+			Size:     f.Size,
+			Progress: float32(f.Progress),
+		}
+	}
+
+	return ListDownloadFiles200JSONResponse{Files: apiFiles}, nil
+}
+
+// getQBitClient returns a cached qBittorrent client, creating one from settings on first call.
+func (h *Handlers) getQBitClient() (*qbittorrent.Client, error) {
+	h.qbitMu.Lock()
+	defer h.qbitMu.Unlock()
+
+	if h.qbitClient != nil {
+		return h.qbitClient, nil
+	}
+
+	url, err := h.settings.Get(settings.KeyQBitURL)
+	if err != nil {
+		return nil, err
+	}
+	username, err := h.settings.Get(settings.KeyQBitUsername)
+	if err != nil {
+		return nil, err
+	}
+	password, err := h.settings.Get(settings.KeyQBitPassword)
+	if err != nil {
+		return nil, err
+	}
+
+	h.qbitClient = qbittorrent.NewClient(url, username, password)
+	return h.qbitClient, nil
 }
 
 // --- Conversion helpers ---

@@ -235,6 +235,77 @@ func (e *Engine) Caps() *Caps {
 	return &e.def.Caps
 }
 
+// FetchDownload fetches a download URL using the engine's authenticated session.
+// If the response is HTML instead of a torrent file, it uses the definition's
+// download selectors to extract the real download link and fetches that.
+func (e *Engine) FetchDownload(ctx context.Context, downloadURL string) ([]byte, error) {
+	if !e.loggedIn {
+		if err := e.Login(ctx); err != nil {
+			return nil, fmt.Errorf("auto-login: %w", err)
+		}
+	}
+
+	data, err := e.fetchURL(ctx, downloadURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Torrent files start with 'd' (bencode dict). If not, it's likely HTML.
+	if len(data) > 0 && data[0] == 'd' {
+		return data, nil
+	}
+
+	// Try to extract the real download link from the HTML using download selectors.
+	if len(e.def.Download.Selectors) == 0 {
+		return nil, fmt.Errorf("response is not a torrent file and no download selectors defined")
+	}
+
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(data)))
+	if err != nil {
+		return nil, fmt.Errorf("parsing download page: %w", err)
+	}
+
+	for _, sel := range e.def.Download.Selectors {
+		node := doc.Find(sel.Selector)
+		if node.Length() == 0 {
+			continue
+		}
+		link, exists := node.Attr(sel.Attribute)
+		if !exists || link == "" {
+			continue
+		}
+
+		realURL := e.resolveURL(link)
+		return e.fetchURL(ctx, realURL)
+	}
+
+	return nil, fmt.Errorf("download selectors did not match any link in the response")
+}
+
+func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating download request: %w", err)
+	}
+
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return nil, fmt.Errorf("reading download response: %w", err)
+	}
+
+	return data, nil
+}
+
 func (e *Engine) parseRows(doc *goquery.Document, tmplCtx *TemplateContext) ([]SearchResult, error) {
 	rowSelector := e.def.Search.Rows.Selector
 	if rowSelector == "" {
