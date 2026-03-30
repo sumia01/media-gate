@@ -109,7 +109,9 @@ media-gate/
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
 | `Indexer` | `indexers` | Configured indexer instance (name, definition ID, credentials as JSON, priority, enabled, per-indexer seeding rules: seedMinRatio, seedMinTime) |
-| `Download` | `downloads` | Tracks download lifecycle (links to MediaItem + optional Episode/Season, indexer info, status: pending/downloading/downloaded/importing/seeding/completed/failed, qBittorrent fields for future integration) |
+| `Download` | `downloads` | Tracks download lifecycle (links to MediaItem + optional Episode/Season, indexer info, status: pending/downloading/downloaded/importing/seeding/completed/failed, qBittorrent torrent hash + save path) |
+
+All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for nullable FKs like `Download.EpisodeID`), so deleting a Library cascades through MediaItems → MediaFiles, Episodes, SeasonMonitors, Downloads, MediaMetadata. SQLite FK enforcement is enabled via `PRAGMA foreign_keys = ON` at connection time.
 
 ## Backend Service Layer
 
