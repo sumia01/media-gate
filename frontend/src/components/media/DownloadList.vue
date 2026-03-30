@@ -32,6 +32,7 @@ const statusOrder: Record<string, number> = {
   importing: 4,
   completed: 5,
   failed: 6,
+  import_failed: 7,
 }
 
 const sortedDownloads = computed(() =>
@@ -39,7 +40,13 @@ const sortedDownloads = computed(() =>
 )
 
 const hasActiveDownloads = computed(() =>
-  downloads.value.some(d => d.status === 'pending' || d.status === 'downloading' || d.status === 'seeding')
+  downloads.value.some(d =>
+    d.status === 'pending' ||
+    d.status === 'downloading' ||
+    d.status === 'downloaded' ||
+    d.status === 'importing' ||
+    d.status === 'seeding'
+  )
 )
 
 async function fetchDownloads() {
@@ -122,6 +129,7 @@ function statusColor(status: string) {
     case 'seeding': return 'bg-emerald-600/20 text-emerald-300'
     case 'completed': return 'bg-emerald-600/20 text-emerald-300'
     case 'failed': return 'bg-red-600/20 text-red-300'
+    case 'import_failed': return 'bg-red-600/20 text-red-300'
     default: return 'bg-gray-600/20 text-gray-400'
   }
 }
@@ -236,7 +244,7 @@ watch(() => props.refreshKey, fetchDownloads)
 
               <!-- Retry button (failed only) -->
               <button
-                v-if="dl.status === 'failed'"
+                v-if="dl.status === 'failed' || dl.status === 'import_failed'"
                 class="text-[10px] px-2 py-1 rounded border border-violet-800/30 text-gray-400 hover:text-emerald-300 hover:border-emerald-500/50 transition-colors duration-200"
                 @click="retryDownload(dl.id)"
               >

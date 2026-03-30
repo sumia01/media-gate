@@ -65,7 +65,8 @@ media-gate/
 │   │   ├── tmdb/        # TMDB API v3 client
 │   │   ├── tvdb/        # TVDB API v4 client (JWT auth)
 │   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth)
-│   ├── download/        # Download queue worker (sends pending → qBit, polls status, seeding rules)
+│   ├── download/        # Download queue worker (sends pending → qBit, polls status)
+│   ├── importer/        # Import worker (hardlink/copy to library, seed cleanup)
 │   └── logging/         # slog setup, handler config
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
@@ -109,7 +110,7 @@ media-gate/
 | `Setting` | `settings` | Key-value config stored in DB (API keys, etc.; sensitive flag for masking) |
 | `JobRecord` | `job_records` | Persisted completed/failed job history (type, status, timestamps) |
 | `Indexer` | `indexers` | Configured indexer instance (name, definition ID, credentials as JSON, priority, enabled, per-indexer seeding rules: seedMinRatio, seedMinTime) |
-| `Download` | `downloads` | Tracks download lifecycle (links to MediaItem + optional Episode/Season, indexer info, status: pending/downloading/downloaded/importing/seeding/completed/failed, qBittorrent torrent hash + save path) |
+| `Download` | `downloads` | Tracks download lifecycle (links to MediaItem + optional Episode/Season, indexer info, status: pending/downloading/downloaded/importing/seeding/completed/failed/import_failed, qBittorrent torrent hash + save path, linkedToLibrary flag) |
 
 All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for nullable FKs like `Download.EpisodeID`), so deleting a Library cascades through MediaItems → MediaFiles, Episodes, SeasonMonitors, Downloads, MediaMetadata. SQLite FK enforcement is enabled via `PRAGMA foreign_keys = ON` at connection time.
 
@@ -137,4 +138,5 @@ HTTP Request
 - **indexer.Service** — manages indexer CRUD (configurations stored in DB with JSON credentials); loads Cardigann YAML definitions from embedded filesystem; lazy-creates and caches engine instances per indexer; parallel multi-indexer search with semaphore; credential masking in API responses; per-indexer seeding rules (seedMinRatio, seedMinTime). The Cardigann engine (`internal/indexer/cardigann/`) supports POST login with cookie sessions, HTML scraping via goquery, Go template rendering for dynamic inputs, and a filter pipeline (querystring, replace, dateparse, regexp, append, etc.)
 - **Download CRUD** — download records managed directly through store (no separate service yet); `ListMediaEpisodes` handler computes per-episode `downloadStatus` from linked Downloads (episode-level → season-level → item-level fallback)
 - **qbittorrent.Client** — qBittorrent Web API v2 client; cookie-based SID auth with mutex-guarded session; auto-retry on 403 (session expiry); methods: AddTorrent (magnet/URL), AddTorrentFile (multipart .torrent upload with savepath/downloadPath/useAutoTMM/category), GetTorrent/GetTorrents (status polling), GetTorrentFiles (per-torrent file listing), DeleteTorrent (remove torrent + optional file deletion), EnsureCategory (auto-create), TestConnection; InfoHash helper computes SHA1 from .torrent bencode; MapState helper maps qBit's 17+ states to simplified categories
-- **download.Service** — background worker (5s polling interval); picks up pending downloads from DB, fetches .torrent via indexer engine's authenticated session (two-step resolution for HTML intermediaries), uploads to qBittorrent with configured download path and category; handles duplicate torrents by reusing existing qBit entries; polls active downloads for status changes; enforces per-indexer seeding rules (SeedMinRatio/SeedMinTime); lazily creates qBittorrent client from settings
+- **download.Service** — background worker (5s polling interval); picks up pending downloads from DB, fetches .torrent via indexer engine's authenticated session (two-step resolution for HTML intermediaries), uploads to qBittorrent with configured download path and category; handles duplicate torrents by reusing existing qBit entries; polls active downloads for status changes; transitions to "downloaded" when qBit reports completion; lazily creates qBittorrent client from settings
+- **importer.Service** — background worker (10s polling interval); picks up "downloaded" downloads, hardlinks (or copies on cross-device) torrent video files into library folder structure (`Title (Year)/` for movies, `Title (Year)/Season XX/` for series), creates MediaFile records; checks per-indexer seeding rules — if no seeding needed, removes torrent and completes immediately; otherwise transitions to "seeding" and a cleanup worker monitors obligations, removing torrents from qBit when met

@@ -88,6 +88,9 @@
 - [x] Downloads section on media detail page (list, progress, retry/delete/replace, torrent file tree)
 - [x] DELETE /downloads/{id} endpoint (removes from DB + qBit, optional deleteFiles param)
 - [x] Real-time progress/speed enrichment on download list (server-side qBit polling)
+- [x] Import worker — hardlink/copy completed downloads into library, create MediaFile records
+- [x] Seed cleanup worker — monitor seeding obligations, remove torrents from qBit when met
+- [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
@@ -98,7 +101,7 @@
 - [x] MediaFile model for multi-copy/multi-quality file tracking
 - [x] SeasonMonitor model for per-season monitoring
 - [ ] Quality profile UI (list/create/edit)
-- [ ] Multi-copy handling (same media in different qualities)
+- [x] Multi-copy handling (same media in different qualities)
 - [x] Series episode tracking (which seasons/episodes are present/missing)
 - [ ] Season bundles vs standalone episodes vs complete series downloads
 - [ ] Request approval / auto-approve rules

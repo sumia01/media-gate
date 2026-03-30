@@ -168,40 +168,40 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 	}
 }
 
-// pollActive checks downloads in "downloading" or "seeding" status against qBittorrent.
+// pollActive checks downloads in "downloading" status against qBittorrent.
 func (s *Service) pollActive(client *qbittorrent.Client) {
-	for _, status := range []string{"downloading", "seeding"} {
-		st := status
-		downloads, err := s.store.ListDownloads(nil, &st)
-		if err != nil {
-			slog.Error("download worker: failed to list active downloads", "status", status, "error", err)
+	status := "downloading"
+	downloads, err := s.store.ListDownloads(nil, &status)
+	if err != nil {
+		slog.Error("download worker: failed to list active downloads", "status", status, "error", err)
+		return
+	}
+
+	for i := range downloads {
+		dl := &downloads[i]
+		if dl.ClientTorrentHash == "" {
 			continue
 		}
 
-		for i := range downloads {
-			dl := &downloads[i]
-			if dl.ClientTorrentHash == "" {
-				continue
+		info, err := client.GetTorrent(dl.ClientTorrentHash)
+		if err != nil {
+			if err == qbittorrent.ErrTorrentNotFound {
+				slog.Warn("download worker: torrent not found in qBittorrent",
+					"download_id", dl.ID, "hash", dl.ClientTorrentHash)
+			} else {
+				slog.Error("download worker: failed to get torrent info",
+					"download_id", dl.ID, "error", err)
 			}
-
-			info, err := client.GetTorrent(dl.ClientTorrentHash)
-			if err != nil {
-				if err == qbittorrent.ErrTorrentNotFound {
-					slog.Warn("download worker: torrent not found in qBittorrent",
-						"download_id", dl.ID, "hash", dl.ClientTorrentHash)
-				} else {
-					slog.Error("download worker: failed to get torrent info",
-						"download_id", dl.ID, "error", err)
-				}
-				continue
-			}
-
-			s.updateFromTorrent(dl, info)
+			continue
 		}
+
+		s.updateFromTorrent(dl, info)
 	}
 }
 
-// updateFromTorrent maps qBittorrent state to download status and enforces seeding rules.
+// updateFromTorrent maps qBittorrent state to download status.
+// When qBit reports download is complete (seeding/pausedUP), transitions to "downloaded"
+// so the import worker can pick it up.
 func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.TorrentInfo) {
 	mapped := qbittorrent.MapState(info.State)
 
@@ -209,19 +209,9 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 	switch mapped {
 	case "downloading":
 		newStatus = "downloading"
-	case "seeding":
-		if s.seedingComplete(dl, info) {
-			newStatus = "completed"
-		} else {
-			newStatus = "seeding"
-		}
-	case "completed":
-		// qBit reports pausedUP — torrent is done seeding
-		if s.seedingComplete(dl, info) {
-			newStatus = "completed"
-		} else {
-			newStatus = "seeding"
-		}
+	case "seeding", "completed":
+		// qBit says files are complete — hand off to import worker
+		newStatus = "downloaded"
 	case "error":
 		newStatus = "failed"
 	default:
@@ -234,10 +224,6 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 	}
 
 	dl.Status = newStatus
-	if newStatus == "completed" {
-		now := time.Now()
-		dl.CompletedAt = &now
-	}
 
 	if err := s.store.UpdateDownload(dl); err != nil {
 		slog.Error("download worker: failed to update download",
@@ -247,18 +233,4 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 
 	slog.Info("download worker: status updated",
 		"download_id", dl.ID, "title", dl.Title, "status", newStatus)
-}
-
-// seedingComplete checks if the indexer's seeding requirements have been met.
-func (s *Service) seedingComplete(dl *store.Download, info *qbittorrent.TorrentInfo) bool {
-	indexer, err := s.store.GetIndexer(dl.IndexerID)
-	if err != nil {
-		// Indexer may have been deleted — consider seeding complete
-		return true
-	}
-
-	ratioMet := indexer.SeedMinRatio <= 0 || info.Ratio >= indexer.SeedMinRatio
-	timeMet := indexer.SeedMinTime <= 0 || info.SeedingTime >= indexer.SeedMinTime*60 // SeedMinTime is minutes, SeedingTime is seconds
-
-	return ratioMet && timeMet
 }

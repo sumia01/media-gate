@@ -12,6 +12,7 @@ import (
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
 	"github.com/sumia01/media-gate/internal/config"
 	"github.com/sumia01/media-gate/internal/download"
+	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -64,6 +65,11 @@ func main() {
 	downloadSvc := download.NewService(db, settingsSvc, indexerSvc)
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
+
+	importerSvc := importer.NewService(db, settingsSvc)
+	importerSvc.Start()
+	defer importerSvc.Stop()
+
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()
