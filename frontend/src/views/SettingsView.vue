@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import FolderBrowser from '@/components/FolderBrowser.vue'
 
 const tmdbKey = ref('')
 const tvdbKey = ref('')
@@ -27,9 +28,24 @@ const tvdbTest = ref<{ success: boolean; message: string } | null>(null)
 const tmdbTesting = ref(false)
 const tvdbTesting = ref(false)
 
+const qbUrl = ref('')
+const qbUsername = ref('')
+const qbPassword = ref('')
+const qbUrlDirty = ref(false)
+const qbUsernameDirty = ref(false)
+const qbPasswordDirty = ref(false)
+const showQbPassword = ref(false)
+const qbTest = ref<{ success: boolean; message: string } | null>(null)
+const qbTesting = ref(false)
+
+const qbDownloadPath = ref('')
+const qbDownloadPathDirty = ref(false)
+
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
-  primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value
+  primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
+  qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
+  qbDownloadPathDirty.value
 )
 
 async function fetchSettings() {
@@ -48,12 +64,20 @@ async function fetchSettings() {
     if (s.key === 'metadata_primary_source') primarySource.value = s.value
     if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
     if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
+    if (s.key === 'qbit_url') qbUrl.value = s.value
+    if (s.key === 'qbit_username') qbUsername.value = s.value
+    if (s.key === 'qbit_password') qbPassword.value = s.value
+    if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
   primarySourceDirty.value = false
   tmdbRateLimitDirty.value = false
   tvdbRateLimitDirty.value = false
+  qbUrlDirty.value = false
+  qbUsernameDirty.value = false
+  qbPasswordDirty.value = false
+  qbDownloadPathDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -81,6 +105,18 @@ async function saveSettings() {
   if (tvdbRateLimitDirty.value) {
     items.push({ key: 'tvdb_rate_limit', value: tvdbRateLimit.value })
   }
+  if (qbUrlDirty.value) {
+    items.push({ key: 'qbit_url', value: qbUrl.value })
+  }
+  if (qbUsernameDirty.value) {
+    items.push({ key: 'qbit_username', value: qbUsername.value })
+  }
+  if (qbPasswordDirty.value && !isMasked(qbPassword.value)) {
+    items.push({ key: 'qbit_password', value: qbPassword.value })
+  }
+  if (qbDownloadPathDirty.value) {
+    items.push({ key: 'qbit_download_path', value: qbDownloadPath.value })
+  }
 
   if (items.length === 0) {
     saving.value = false
@@ -106,12 +142,20 @@ async function saveSettings() {
     if (s.key === 'metadata_primary_source') primarySource.value = s.value
     if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
     if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
+    if (s.key === 'qbit_url') qbUrl.value = s.value
+    if (s.key === 'qbit_username') qbUsername.value = s.value
+    if (s.key === 'qbit_password') qbPassword.value = s.value
+    if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
   primarySourceDirty.value = false
   tmdbRateLimitDirty.value = false
   tvdbRateLimitDirty.value = false
+  qbUrlDirty.value = false
+  qbUsernameDirty.value = false
+  qbPasswordDirty.value = false
+  qbDownloadPathDirty.value = false
 }
 
 async function testTmdb() {
@@ -140,6 +184,22 @@ async function testTvdb() {
     return
   }
   tvdbTest.value = { success: data!.success, message: data!.message ?? '' }
+}
+
+async function testQbittorrent() {
+  qbTesting.value = true
+  qbTest.value = null
+  const body: Record<string, string> = {}
+  if (qbUrlDirty.value) body.url = qbUrl.value
+  if (qbUsernameDirty.value) body.username = qbUsername.value
+  if (qbPasswordDirty.value) body.password = qbPassword.value
+  const { data, error: err } = await client.POST('/settings/test-qbittorrent', { body })
+  qbTesting.value = false
+  if (err) {
+    qbTest.value = { success: false, message: 'Request failed' }
+    return
+  }
+  qbTest.value = { success: data!.success, message: data!.message ?? '' }
 }
 
 onMounted(fetchSettings)
@@ -259,6 +319,94 @@ onMounted(fetchSettings)
                 <span>{{ tvdbTest.success ? '\u2713' : '\u2717' }}</span>
                 {{ tvdbTest.message }}
               </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download Client section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Download Client</h2>
+
+      <div class="space-y-4">
+        <!-- qBittorrent -->
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-sm font-semibold text-gray-200">qBittorrent</span>
+            <span class="text-[10px] text-gray-500">Torrent Client</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- URL -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
+              <input
+                v-model="qbUrl"
+                type="text"
+                placeholder="http://localhost:8080"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                @input="qbUrlDirty = true"
+              />
+            </div>
+
+            <!-- Username & Password -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
+                <input
+                  v-model="qbUsername"
+                  type="text"
+                  placeholder="admin"
+                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                  @input="qbUsernameDirty = true"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                <div class="relative">
+                  <input
+                    v-model="qbPassword"
+                    :type="showQbPassword ? 'text' : 'password'"
+                    placeholder="Enter password"
+                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                    @input="qbPasswordDirty = true"
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
+                    @click="showQbPassword = !showQbPassword"
+                  >
+                    {{ showQbPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Test Connection -->
+            <div class="flex items-center gap-3">
+              <button
+                class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
+                :disabled="qbTesting"
+                @click="testQbittorrent"
+              >
+                {{ qbTesting ? 'Testing...' : 'Test Connection' }}
+              </button>
+              <span
+                v-if="qbTest"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                :class="qbTest.success
+                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
+              >
+                <span>{{ qbTest.success ? '\u2713' : '\u2717' }}</span>
+                {{ qbTest.message }}
+              </span>
+            </div>
+
+            <!-- Download Path -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Path</label>
+              <p class="text-[10px] text-gray-500 mb-2">Folder where qBittorrent saves downloaded files. Must be within the base path and cannot be a library folder.</p>
+              <FolderBrowser v-model="qbDownloadPath" @update:model-value="qbDownloadPathDirty = true" />
             </div>
           </div>
         </div>

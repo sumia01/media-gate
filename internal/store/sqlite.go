@@ -23,8 +23,13 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	// Pre-migration renames for existing databases (ignore errors for fresh installs)
+	// Enable foreign key enforcement (required for CASCADE constraints in SQLite)
 	sqlDB, _ := db.DB()
+	if sqlDB != nil {
+		sqlDB.Exec("PRAGMA foreign_keys = ON")
+	}
+
+	// Pre-migration renames for existing databases (ignore errors for fresh installs)
 	if sqlDB != nil {
 		sqlDB.Exec("ALTER TABLE quality_profiles RENAME TO media_profiles")
 		sqlDB.Exec("ALTER TABLE media_profiles ADD COLUMN languages TEXT DEFAULT ''")
@@ -171,10 +176,6 @@ func (s *SQLiteStore) ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, e
 	return items, nil
 }
 
-func (s *SQLiteStore) DeleteMediaItemsByLibrary(libraryID uint) error {
-	return s.db.Where("library_id = ?", libraryID).Delete(&MediaItem{}).Error
-}
-
 func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 	var count int64
 	if err := s.db.Model(&MediaItem{}).Where("library_id = ?", libraryID).Count(&count).Error; err != nil {
@@ -294,10 +295,6 @@ func (s *SQLiteStore) DeleteMediaFile(id uint) error {
 	return deleteByID(s.db, &MediaFile{}, id)
 }
 
-func (s *SQLiteStore) DeleteMediaFilesByMediaItem(mediaItemID uint) error {
-	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&MediaFile{}).Error
-}
-
 func (s *SQLiteStore) DeleteMediaFilesByPaths(paths []string) error {
 	if len(paths) == 0 {
 		return nil
@@ -321,10 +318,6 @@ func (s *SQLiteStore) ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonM
 
 func (s *SQLiteStore) UpdateSeasonMonitor(monitor *SeasonMonitor) error {
 	return save(s.db, monitor)
-}
-
-func (s *SQLiteStore) DeleteSeasonMonitorsByMediaItem(mediaItemID uint) error {
-	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&SeasonMonitor{}).Error
 }
 
 // --- Episode ---

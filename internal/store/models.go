@@ -13,9 +13,9 @@ type Library struct {
 }
 
 type MediaItem struct {
-	ID               uint   `gorm:"primarykey"`
-	LibraryID        uint   `gorm:"not null;index"`
-	Title            string `gorm:"not null"`
+	ID                uint   `gorm:"primarykey"`
+	LibraryID         uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	Title             string `gorm:"not null"`
 	MediaType        string `gorm:"not null"`
 	Status           string `gorm:"not null;default:new"`
 	Source           string `gorm:"not null;default:disk"`
@@ -28,7 +28,7 @@ type MediaItem struct {
 
 type MediaMetadata struct {
 	ID          uint    `gorm:"primarykey"`
-	MediaItemID uint    `gorm:"not null;uniqueIndex"`
+	MediaItemID uint    `gorm:"not null;uniqueIndex;constraint:OnDelete:CASCADE"`
 	Source      string  `gorm:"not null"`
 	ExternalID  int     `gorm:"not null"`
 	ImdbID      string
@@ -61,7 +61,7 @@ type MediaProfile struct {
 
 type MediaFile struct {
 	ID            uint   `gorm:"primarykey"`
-	MediaItemID   uint   `gorm:"not null;index"`
+	MediaItemID   uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
 	Path          string `gorm:"not null;uniqueIndex"`
 	FileName      string `gorm:"not null"`
 	Size          int64
@@ -76,7 +76,7 @@ type MediaFile struct {
 
 type SeasonMonitor struct {
 	ID           uint `gorm:"primarykey"`
-	MediaItemID  uint `gorm:"not null;uniqueIndex:idx_media_season"`
+	MediaItemID  uint `gorm:"not null;uniqueIndex:idx_media_season;constraint:OnDelete:CASCADE"`
 	SeasonNumber int  `gorm:"not null;uniqueIndex:idx_media_season"`
 	Monitored    bool `gorm:"not null;default:true"`
 	CreatedAt    time.Time
@@ -85,7 +85,7 @@ type SeasonMonitor struct {
 
 type Episode struct {
 	ID            uint   `gorm:"primarykey"`
-	MediaItemID   uint   `gorm:"not null;index;uniqueIndex:idx_episode_unique"`
+	MediaItemID   uint   `gorm:"not null;index;uniqueIndex:idx_episode_unique;constraint:OnDelete:CASCADE"`
 	SeasonNumber  int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
 	EpisodeNumber int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
 	Title         string
@@ -132,8 +132,8 @@ type Indexer struct {
 
 type Download struct {
 	ID                uint   `gorm:"primarykey"`
-	MediaItemID       uint   `gorm:"not null;index"`
-	EpisodeID         *uint  `gorm:"index"`
+	MediaItemID       uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	EpisodeID         *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
 	SeasonNumber      *int
 	IndexerID         uint   `gorm:"not null"`
 	IndexerName       string `gorm:"not null"`

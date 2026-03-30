@@ -11,6 +11,7 @@ import (
 	"github.com/sumia01/media-gate/frontend"
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
 	"github.com/sumia01/media-gate/internal/config"
+	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -43,7 +44,7 @@ func main() {
 	}
 
 	posterDir := ".cache/posters"
-	settingsSvc := settings.NewService(db)
+	settingsSvc := settings.NewService(db, cfg.Library.BasePath)
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
 
@@ -57,7 +58,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	handlers := apiv1.NewHandlers(library.NewService(db, cfg.Library.BasePath), db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
+	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
+
+	downloadSvc := download.NewService(db, settingsSvc)
+	downloadSvc.Start()
+	defer downloadSvc.Stop()
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()

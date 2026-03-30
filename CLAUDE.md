@@ -20,18 +20,20 @@ media-gate/
 ├── internal/
 │   ├── api/v1/          # Generated oapi-codegen server + handlers (package apiv1)
 │   ├── config/          # koanf configuration loading
-│   ├── library/         # Library service (CRUD, path validation, folder browsing)
+│   ├── library/         # Library service (CRUD, path validation, folder browsing, download path conflict check)
 │   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
 │   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
 │   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
-│   ├── settings/        # Settings service (CRUD, masking, connection tests)
+│   ├── settings/        # Settings service (CRUD, masking, connection tests, download path validation)
 │   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Setting, JobRecord, Indexer, Download)
 │   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
 │   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
 │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
+│   ├── download/        # Download queue worker (sends pending → qBit, polls status, seeding rules)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client (search, get, test)
-│   │   └── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
+│   │   ├── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
+│   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth, add/poll torrents)
 │   └── logging/         # slog setup
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
@@ -100,4 +102,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter, download path setting with library conflict prevention, download queue worker with seeding rules). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
