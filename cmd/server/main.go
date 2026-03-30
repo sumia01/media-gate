@@ -14,6 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/logging"
@@ -62,11 +63,14 @@ func main() {
 	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
 	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
 
+	// Startup check: reconcile download hashes with torrent client.
+	reconcileDownloadsWithTorrentClient(db, settingsSvc)
+
 	downloadSvc := download.NewService(db, settingsSvc, indexerSvc)
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	importerSvc := importer.NewService(db, settingsSvc)
+	importerSvc := importer.NewService(db, settingsSvc, syncSvc)
 	importerSvc.Start()
 	defer importerSvc.Stop()
 
@@ -97,6 +101,57 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
+	}
+}
+
+// reconcileDownloadsWithTorrentClient checks that active download hashes
+// still exist in the torrent client. Downloads whose torrents have been
+// removed externally are marked as failed. Best-effort — skipped if qBit
+// is not configured or unreachable.
+func reconcileDownloadsWithTorrentClient(db *store.SQLiteStore, settingsSvc *settings.Service) {
+	url, err := settingsSvc.Get(settings.KeyQBitURL)
+	if err != nil || url == "" {
+		return // qBit not configured
+	}
+	username, _ := settingsSvc.Get(settings.KeyQBitUsername)
+	password, _ := settingsSvc.Get(settings.KeyQBitPassword)
+
+	client := qbittorrent.NewClient(url, username, password)
+	if err := client.TestConnection(); err != nil {
+		slog.Warn("startup: qBittorrent not reachable, skipping torrent reconciliation", "error", err)
+		return
+	}
+
+	// Get all torrents from qBit in one call for efficiency.
+	torrents, err := client.GetTorrents()
+	if err != nil {
+		slog.Warn("startup: failed to list torrents from qBittorrent", "error", err)
+		return
+	}
+	hashSet := make(map[string]struct{}, len(torrents))
+	for _, t := range torrents {
+		hashSet[strings.ToLower(t.Hash)] = struct{}{}
+	}
+
+	// Check downloads that should have an active torrent.
+	for _, status := range []string{"downloading", "seeding"} {
+		downloads, err := db.ListDownloads(nil, &status)
+		if err != nil {
+			continue
+		}
+		for i := range downloads {
+			dl := &downloads[i]
+			if dl.ClientTorrentHash == "" {
+				continue
+			}
+			if _, ok := hashSet[strings.ToLower(dl.ClientTorrentHash)]; !ok {
+				slog.Warn("startup: torrent missing from client, marking download as failed",
+					"download_id", dl.ID, "title", dl.Title, "hash", dl.ClientTorrentHash)
+				dl.Status = "failed"
+				dl.ClientTorrentHash = ""
+				_ = db.UpdateDownload(dl)
+			}
+		}
 	}
 }
 

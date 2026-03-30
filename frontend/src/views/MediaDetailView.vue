@@ -189,6 +189,12 @@ function onDownloadReplace(downloadId: number, seasonNumber?: number, episodeNum
   openIndexerSearch(seasonNumber, episodeNumber, episodeId)
 }
 
+function onDownloadsChanged() {
+  if (item.value) {
+    fetchFiles(item.value.id)
+  }
+}
+
 const removeJobDoneListener = onJobDone((libraryId) => {
   if (item.value && item.value.libraryId === libraryId) {
     fetchItem(item.value.id)
@@ -496,6 +502,7 @@ watch(() => route.params.id, loadAll)
         :title="`${item.title}${item.year ? ` (${item.year})` : ''}`"
         :refreshKey="downloadRefreshKey"
         @replace="onDownloadReplace"
+        @downloadsChanged="onDownloadsChanged"
         class="mt-8"
       />
 

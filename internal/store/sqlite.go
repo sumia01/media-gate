@@ -1,8 +1,11 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -16,18 +19,15 @@ type SQLiteStore struct {
 }
 
 func NewSQLite(dbPath string) (*SQLiteStore, error) {
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	dsn := dbPath + "?_foreign_keys=ON"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
 
-	// Enable foreign key enforcement (required for CASCADE constraints in SQLite)
 	sqlDB, _ := db.DB()
-	if sqlDB != nil {
-		sqlDB.Exec("PRAGMA foreign_keys = ON")
-	}
 
 	// Pre-migration renames for existing databases (ignore errors for fresh installs)
 	if sqlDB != nil {
@@ -54,7 +54,242 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
+	// Rebuild tables that are missing FK constraints (AutoMigrate can't add FKs to existing SQLite tables).
+	if sqlDB != nil {
+		rebuildTablesWithForeignKeys(sqlDB)
+		cleanupOrphans(sqlDB)
+	}
+
 	return &SQLiteStore{db: db}, nil
+}
+
+// rebuildTablesWithForeignKeys checks each table for missing FK constraints
+// and rebuilds them using SQLite's recommended 12-step ALTER TABLE procedure.
+// This is needed because GORM AutoMigrate cannot add FKs to existing SQLite tables.
+func rebuildTablesWithForeignKeys(db *sql.DB) {
+	type fkDef struct {
+		table   string
+		newDDL  string
+		columns string // column list for INSERT INTO ... SELECT
+	}
+
+	migrations := []fkDef{
+		{
+			table: "media_items",
+			newDDL: `CREATE TABLE "media_items" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"library_id" integer NOT NULL REFERENCES "libraries"("id") ON DELETE CASCADE,
+				"title" text NOT NULL,
+				"media_type" text NOT NULL,
+				"status" text NOT NULL DEFAULT "new",
+				"source" text NOT NULL DEFAULT "disk",
+				"year" integer,
+				"media_profile_id" integer,
+				"monitor_new_seasons" numeric NOT NULL DEFAULT false,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,library_id,title,media_type,status,source,year,media_profile_id,monitor_new_seasons,created_at,updated_at",
+		},
+		{
+			table: "media_metadata",
+			newDDL: `CREATE TABLE "media_metadata" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+				"source" text NOT NULL,
+				"external_id" integer NOT NULL,
+				"imdb_id" text,
+				"title" text NOT NULL,
+				"overview" text,
+				"poster_path" text,
+				"genres" text,
+				"credits" text,
+				"year" integer,
+				"rating" real,
+				"status" text,
+				"runtime" integer,
+				"seasons" integer,
+				"confidence" real,
+				"matched_at" datetime,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,media_item_id,source,external_id,imdb_id,title,overview,poster_path,genres,credits,year,rating,status,runtime,seasons,confidence,matched_at,created_at,updated_at",
+		},
+		{
+			table: "media_files",
+			newDDL: `CREATE TABLE "media_files" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+				"path" text NOT NULL,
+				"file_name" text NOT NULL,
+				"size" integer,
+				"resolution" text,
+				"source_type" text,
+				"season_number" integer,
+				"episode_number" integer,
+				"added_at" datetime,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,media_item_id,path,file_name,size,resolution,source_type,season_number,episode_number,added_at,created_at,updated_at",
+		},
+		{
+			table: "season_monitors",
+			newDDL: `CREATE TABLE "season_monitors" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+				"season_number" integer NOT NULL,
+				"monitored" numeric NOT NULL DEFAULT true,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,media_item_id,season_number,monitored,created_at,updated_at",
+		},
+		{
+			table: "episodes",
+			newDDL: `CREATE TABLE "episodes" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+				"season_number" integer NOT NULL,
+				"episode_number" integer NOT NULL,
+				"title" text,
+				"overview" text,
+				"air_date" text,
+				"runtime" integer,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,media_item_id,season_number,episode_number,title,overview,air_date,runtime,created_at,updated_at",
+		},
+		{
+			table: "downloads",
+			newDDL: `CREATE TABLE "downloads" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+				"episode_id" integer REFERENCES "episodes"("id") ON DELETE SET NULL,
+				"season_number" integer,
+				"indexer_id" integer NOT NULL,
+				"indexer_name" text NOT NULL,
+				"title" text NOT NULL,
+				"download_url" text NOT NULL,
+				"details_url" text,
+				"size" text,
+				"imdb_id" text,
+				"status" text NOT NULL DEFAULT "pending",
+				"client_torrent_hash" text,
+				"save_path" text,
+				"seeding_required" numeric NOT NULL DEFAULT false,
+				"linked_to_library" numeric NOT NULL DEFAULT false,
+				"created_at" datetime,
+				"updated_at" datetime,
+				"completed_at" datetime
+			)`,
+			columns: "id,media_item_id,episode_id,season_number,indexer_id,indexer_name,title,download_url,details_url,size,imdb_id,status,client_torrent_hash,save_path,seeding_required,linked_to_library,created_at,updated_at,completed_at",
+		},
+	}
+
+	for _, m := range migrations {
+		if tableHasForeignKeys(db, m.table) {
+			continue
+		}
+		slog.Info("rebuilding table to add FK constraints", "table", m.table)
+
+		if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+			slog.Error("failed to disable foreign_keys for migration", "table", m.table, "error", err)
+			continue
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			slog.Error("failed to begin migration transaction", "table", m.table, "error", err)
+			db.Exec("PRAGMA foreign_keys = ON")
+			continue
+		}
+
+		tmpTable := m.table + "_migration_new"
+		stmts := []string{
+			m.newDDL,
+			fmt.Sprintf(`INSERT INTO "%s" (%s) SELECT %s FROM "%s"`, tmpTable, m.columns, m.columns, m.table),
+			fmt.Sprintf(`DROP TABLE "%s"`, m.table),
+			fmt.Sprintf(`ALTER TABLE "%s" RENAME TO "%s"`, tmpTable, m.table),
+		}
+		// Rewrite the CREATE TABLE to use the temp name
+		stmts[0] = strings.Replace(stmts[0], fmt.Sprintf(`CREATE TABLE "%s"`, m.table), fmt.Sprintf(`CREATE TABLE "%s"`, tmpTable), 1)
+
+		failed := false
+		for _, stmt := range stmts {
+			if _, err := tx.Exec(stmt); err != nil {
+				slog.Error("FK migration step failed", "table", m.table, "error", err)
+				tx.Rollback()
+				failed = true
+				break
+			}
+		}
+
+		if !failed {
+			if err := tx.Commit(); err != nil {
+				slog.Error("FK migration commit failed", "table", m.table, "error", err)
+			}
+		}
+
+		db.Exec("PRAGMA foreign_keys = ON")
+	}
+
+	// Recreate indexes that were dropped with the old tables.
+	indexDDLs := []string{
+		`CREATE INDEX IF NOT EXISTS "idx_media_items_library_id" ON "media_items"("library_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_media_metadata_media_item_id" ON "media_metadata"("media_item_id")`,
+		`CREATE INDEX IF NOT EXISTS "idx_media_files_media_item_id" ON "media_files"("media_item_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_media_files_path" ON "media_files"("path")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_media_season" ON "season_monitors"("media_item_id","season_number")`,
+		`CREATE INDEX IF NOT EXISTS "idx_episodes_media_item_id" ON "episodes"("media_item_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_episode_unique" ON "episodes"("media_item_id","season_number","episode_number")`,
+		`CREATE INDEX IF NOT EXISTS "idx_downloads_media_item_id" ON "downloads"("media_item_id")`,
+		`CREATE INDEX IF NOT EXISTS "idx_downloads_episode_id" ON "downloads"("episode_id")`,
+	}
+	for _, ddl := range indexDDLs {
+		if _, err := db.Exec(ddl); err != nil {
+			slog.Warn("failed to recreate index", "ddl", ddl, "error", err)
+		}
+	}
+}
+
+// tableHasForeignKeys checks if a table has any foreign key constraints defined.
+func tableHasForeignKeys(db *sql.DB, table string) bool {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA foreign_key_list('%s')", table))
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
+}
+
+// cleanupOrphans removes child records whose parent no longer exists.
+// This catches leftovers from before FK constraints were enforced.
+func cleanupOrphans(db *sql.DB) {
+	orphanQueries := []struct {
+		label string
+		query string
+	}{
+		{"media_metadata", `DELETE FROM media_metadata WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"media_files", `DELETE FROM media_files WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"season_monitors", `DELETE FROM season_monitors WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"episodes", `DELETE FROM episodes WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"downloads", `DELETE FROM downloads WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"downloads.episode_id", `UPDATE downloads SET episode_id = NULL WHERE episode_id IS NOT NULL AND episode_id NOT IN (SELECT id FROM episodes)`},
+		{"media_items", `DELETE FROM media_items WHERE library_id NOT IN (SELECT id FROM libraries)`},
+	}
+	for _, oq := range orphanQueries {
+		res, err := db.Exec(oq.query)
+		if err != nil {
+			slog.Warn("orphan cleanup failed", "table", oq.label, "error", err)
+			continue
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			slog.Info("cleaned up orphan records", "table", oq.label, "deleted", n)
+		}
+	}
 }
 
 // --- CRUD helpers ---

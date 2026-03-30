@@ -23,6 +23,7 @@ const expanded = ref(true)
 const torrentFiles = ref<Map<number, TorrentFile[]>>(new Map())
 const loadingFiles = ref<Set<number>>(new Set())
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
+const previousStatuses = ref<Map<number, string>>(new Map())
 
 const statusOrder: Record<string, number> = {
   downloading: 0,
@@ -53,8 +54,29 @@ async function fetchDownloads() {
   const { data } = await client.GET('/downloads', {
     params: { query: { mediaItemId: props.mediaItemId } },
   })
-  downloads.value = data?.downloads ?? []
+  const newDownloads = data?.downloads ?? []
+
+  // Detect if any download transitioned to "seeding" or "completed" (import just finished).
+  let importFinished = false
+  for (const dl of newDownloads) {
+    const prev = previousStatuses.value.get(dl.id)
+    if (prev && prev !== dl.status && (dl.status === 'seeding' || dl.status === 'completed')) {
+      importFinished = true
+    }
+  }
+
+  const newMap = new Map<number, string>()
+  for (const dl of newDownloads) {
+    newMap.set(dl.id, dl.status)
+  }
+  previousStatuses.value = newMap
+
+  downloads.value = newDownloads
   managePolling()
+
+  if (importFinished) {
+    emit('downloadsChanged')
+  }
 }
 
 async function fetchFiles(id: number) {
@@ -263,7 +285,7 @@ watch(() => props.refreshKey, fetchDownloads)
               <!-- Delete button -->
               <button
                 class="text-[10px] px-2 py-1 rounded border border-violet-800/30 text-gray-400 hover:text-red-300 hover:border-red-500/50 transition-colors duration-200"
-                @click="deleteDownload(dl.id)"
+                @click="deleteDownload(dl.id, true)"
               >
                 Delete
               </button>

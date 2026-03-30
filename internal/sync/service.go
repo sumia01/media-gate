@@ -200,45 +200,40 @@ func (s *Service) ResyncMediaItem(itemID uint) (updated, added, removed int, err
 		return 0, 0, 0, fmt.Errorf("listing files: %w", err)
 	}
 
-	// Derive the set of top-level folders this item's files live in.
-	// A file at /lib/ShowName/Season 01/ep.mkv → top folder = parent or grandparent
-	// We collect all unique parent dirs (could be the media folder itself,
-	// a season dir, or an episode wrapper dir).
-	folderSet := make(map[string]struct{})
+	// Get the library path to use as a boundary — never scan above it.
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("getting media item: %w", err)
+	}
+	lib, err := s.store.GetLibrary(item.LibraryID)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("getting library: %w", err)
+	}
+	libraryRoot := lib.Path
+
+	// Find the media item's top-level folder(s) — the first directory level
+	// below the library root. For a file at /lib/ShowName/Season 01/ep.mkv
+	// the top-level folder is /lib/ShowName/. We only scan within these.
+	topFolders := make(map[string]struct{})
 	for _, f := range existingFiles {
-		dir := filepath.Dir(f.Path)
-		folderSet[dir] = struct{}{}
-	}
-
-	// Walk up to find the top-level media folder(s) and re-scan from there.
-	// We need the root folder(s) to pick up new season dirs or new files at any level.
-	rootFolders := make(map[string]struct{})
-	for dir := range folderSet {
-		rootFolders[dir] = struct{}{}
-		// Also include parent — covers season dirs and episode wrapper dirs
-		parent := filepath.Dir(dir)
-		rootFolders[parent] = struct{}{}
-		grandparent := filepath.Dir(parent)
-		rootFolders[grandparent] = struct{}{}
-	}
-
-	// Re-scan all candidate root folders and collect video files
-	var freshFiles []scannedFile
-	scannedRoots := make(map[string]bool)
-	for dir := range rootFolders {
-		if scannedRoots[dir] {
+		rel, err := filepath.Rel(libraryRoot, f.Path)
+		if err != nil {
 			continue
 		}
-		// Only scan directories that actually exist and are directories
+		parts := strings.SplitN(rel, string(filepath.Separator), 2)
+		if len(parts) > 0 {
+			topFolders[filepath.Join(libraryRoot, parts[0])] = struct{}{}
+		}
+	}
+
+	// Re-scan only the top-level media folder(s) and collect video files
+	var freshFiles []scannedFile
+	for dir := range topFolders {
 		fi, err := os.Stat(dir)
 		if err != nil || !fi.IsDir() {
 			continue
 		}
-		scanned := scanMediaFolder(dir)
-		if len(scanned) > 0 {
-			scannedRoots[dir] = true
-			freshFiles = append(freshFiles, scanned...)
-		}
+		freshFiles = append(freshFiles, scanMediaFolder(dir)...)
 	}
 
 	// Deduplicate scanned files by path (multiple root scans may overlap)

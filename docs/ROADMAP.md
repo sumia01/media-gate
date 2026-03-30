@@ -91,6 +91,9 @@
 - [x] Import worker — hardlink/copy completed downloads into library, create MediaFile records
 - [x] Seed cleanup worker — monitor seeding obligations, remove torrents from qBit when met
 - [x] Full delete — remove torrents from qBit, imported library files, empty dirs, poster, and cascade DB records
+- [x] Post-import resync — trigger ResyncMediaItem after import, frontend auto-refreshes file list on status transition
+- [x] FK constraint rebuild migration — startup detects missing FK constraints and rebuilds tables
+- [x] Startup integrity checks — orphan record cleanup, torrent hash reconciliation with qBit client
 - [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
 - [ ] Auto-download based on watchlist
 
