@@ -9,6 +9,7 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
+import DownloadList from '@/components/media/DownloadList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +29,8 @@ const indexerSearchSeason = ref<number | undefined>()
 const indexerSearchEpisode = ref<number | undefined>()
 const indexerSearchEpisodeId = ref<number | undefined>()
 const episodeRefreshKey = ref(0)
+const downloadRefreshKey = ref(0)
+const replacingDownloadId = ref<number | null>(null)
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
@@ -172,12 +175,27 @@ function openIndexerSearch(season?: number, episode?: number, episodeId?: number
   showIndexerSearch.value = true
 }
 
-function closeIndexerSearch() {
+async function closeIndexerSearch() {
+  const oldId = replacingDownloadId.value
   showIndexerSearch.value = false
   indexerSearchSeason.value = undefined
   indexerSearchEpisode.value = undefined
   indexerSearchEpisodeId.value = undefined
+  replacingDownloadId.value = null
   episodeRefreshKey.value++
+
+  // If replacing, delete old download after modal closes (new download was already created in modal)
+  if (oldId) {
+    await client.DELETE('/downloads/{id}', {
+      params: { path: { id: oldId } },
+    })
+  }
+  downloadRefreshKey.value++
+}
+
+function onDownloadReplace(downloadId: number, seasonNumber?: number, episodeNumber?: number, episodeId?: number) {
+  replacingDownloadId.value = downloadId
+  openIndexerSearch(seasonNumber, episodeNumber, episodeId)
 }
 
 const removeJobDoneListener = onJobDone((libraryId) => {
@@ -476,6 +494,18 @@ watch(() => route.params.id, loadAll)
         :refreshKey="episodeRefreshKey"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
+        class="mt-8"
+      />
+
+      <!-- Downloads section -->
+      <DownloadList
+        v-if="item"
+        :mediaItemId="item.id"
+        :imdbId="metadata?.imdbId"
+        :mediaType="(item.mediaType as 'movie' | 'series')"
+        :title="`${item.title}${item.year ? ` (${item.year})` : ''}`"
+        :refreshKey="downloadRefreshKey"
+        @replace="onDownloadReplace"
         class="mt-8"
       />
 

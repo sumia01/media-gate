@@ -81,6 +81,13 @@
 - [x] Download path setting (FolderBrowser selection, mutual exclusion with library paths)
 - [x] Download queue management (server worker: send pending → qBit, poll status, seeding rules)
 - [x] Download status monitoring (poll qBittorrent, update Download records)
+- [x] Authenticated torrent fetch (indexer session cookies, two-step download.selectors resolution)
+- [x] qBittorrent category setting (auto-create, defaults to media-gate-dl)
+- [x] Download path fix (savepath + downloadPath + useAutoTMM=false for qBit 4.4+)
+- [x] Duplicate torrent handling (reuse existing torrent in qBit on retry)
+- [x] Downloads section on media detail page (list, progress, retry/delete/replace, torrent file tree)
+- [x] DELETE /downloads/{id} endpoint (removes from DB + qBit, optional deleteFiles param)
+- [x] Real-time progress/speed enrichment on download list (server-side qBit polling)
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜

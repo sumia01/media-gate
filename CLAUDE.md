@@ -33,7 +33,7 @@ media-gate/
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client (search, get, test)
 │   │   ├── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
-│   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth, add/poll torrents)
+│   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth, add/upload/poll/delete torrents, file listing)
 │   └── logging/         # slog setup
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
@@ -103,4 +103,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter, download path setting with library conflict prevention, download queue worker with seeding rules, download status monitoring). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter with authenticated torrent fetch and file upload, download path + category settings, download queue worker with seeding rules and duplicate handling, downloads section on media detail page with progress/retry/delete/replace and torrent file listing). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.

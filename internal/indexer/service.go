@@ -402,6 +402,29 @@ func (s *Service) invalidateEngine(id uint) {
 	s.mu.Unlock()
 }
 
+// FetchTorrent downloads a .torrent file using the indexer's authenticated session.
+func (s *Service) FetchTorrent(ctx context.Context, indexerID uint, downloadURL string) ([]byte, error) {
+	indexer, err := s.store.GetIndexer(indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("getting indexer: %w", err)
+	}
+
+	entry, err := s.getOrCreateEngine(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("creating engine: %w", err)
+	}
+
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	data, err := entry.engine.FetchDownload(ctx, downloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching torrent from %s: %w", indexer.Name, err)
+	}
+
+	return data, nil
+}
+
 func (s *Service) mergeSettings(indexer *store.Indexer, overrides map[string]string) (map[string]string, error) {
 	settings, err := parseSettings(indexer.Settings)
 	if err != nil {
