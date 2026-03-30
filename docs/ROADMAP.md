@@ -80,8 +80,8 @@
 - [x] qBittorrent API integration (client adapter, settings UI, connection test)
 - [x] Download path setting (FolderBrowser selection, mutual exclusion with library paths)
 - [x] Download queue management (server worker: send pending → qBit, poll status, seeding rules)
+- [x] Download status monitoring (poll qBittorrent, update Download records)
 - [ ] Auto-download based on watchlist
-- [ ] Download status monitoring (poll qBittorrent, update Download records)
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
 - [x] Requested media items (source: request, status: requested) — foundation

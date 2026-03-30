@@ -94,6 +94,7 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 ## Key Architecture Decisions
 
 - **Store interface pattern**: All data access goes through a Go `Store` interface with GORM implementations. Business logic never touches the database directly.
+- **FK CASCADE at DB level**: All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for nullable FKs). SQLite FK enforcement via `PRAGMA foreign_keys = ON`. No manual cascade delete code in handlers.
 - **OpenAPI-first**: Change the spec in `api/openapi.yaml`, then run `make generate`. Never hand-edit generated code (`internal/api/v1/gen.go`, `frontend/src/api/schema.d.ts`).
 - **Versioned API**: Routes under `/api/v1`, Go code in `internal/api/v1/` (package `apiv1`). Future versions get their own package.
 - **Single binary**: The Vue SPA builds into `frontend/dist/`, gets embedded into the Go binary via `frontend/embed.go`. No separate web server needed.
@@ -102,4 +103,4 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter, download path setting with library conflict prevention, download queue worker with seeding rules). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management) and **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter, download path setting with library conflict prevention, download queue worker with seeding rules, download status monitoring). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
