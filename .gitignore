@@ -18,6 +18,7 @@ frontend/src/api/schema.d.ts
 
 # Plans
 .plans/
+.claude/plans/
 
 # Environment
 .env

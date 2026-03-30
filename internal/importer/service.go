@@ -11,6 +11,7 @@ import (
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
+	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
 const pollInterval = 10 * time.Second
@@ -20,16 +21,18 @@ const pollInterval = 10 * time.Second
 type Service struct {
 	store    store.Store
 	settings *settings.Service
+	syncSvc  *mediasync.Service
 	client   *qbittorrent.Client
 	mu       sync.Mutex
 	stopCh   chan struct{}
 }
 
 // NewService creates a new importer service.
-func NewService(s store.Store, settingsSvc *settings.Service) *Service {
+func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync.Service) *Service {
 	return &Service{
 		store:    s,
 		settings: settingsSvc,
+		syncSvc:  syncSvc,
 		stopCh:   make(chan struct{}),
 	}
 }
@@ -234,6 +237,11 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 
 	if err := s.store.UpdateDownload(dl); err != nil {
 		slog.Error("importer: failed to update download after import", "download_id", dl.ID, "error", err)
+	}
+
+	// Resync the media item to pick up fresh file metadata.
+	if _, _, _, err := s.syncSvc.ResyncMediaItem(dl.MediaItemID); err != nil {
+		slog.Warn("importer: resync after import failed", "download_id", dl.ID, "media_item_id", dl.MediaItemID, "error", err)
 	}
 
 	slog.Info("importer: import complete",
