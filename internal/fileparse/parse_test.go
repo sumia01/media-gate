@@ -163,6 +163,40 @@ func ptrStr(p *int) string {
 	return string(rune('0' + *p))
 }
 
+func TestIsJunkFile(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"setup.exe", true},
+		{"install.msi", true},
+		{"run.bat", true},
+		{"script.cmd", true},
+		{"shortcut.lnk", true},
+		{"RARBG.txt", true},
+		{"RARBG_DO_NOT_MIRROR.exe", true},
+		{"WWW.YTS.MX.txt", true},
+		{"WWW.TORRENTS.ORG.txt", true},
+		{"movie.mkv", false},
+		{"movie.srt", false},
+		{"movie.nfo", false},
+		{"movie.jpg", false},
+		{"Subs/english.srt", false},
+		{"movie.ass", false},
+		{"movie.sub", false},
+		{"movie.idx", false},
+		{"readme.txt", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsJunkFile(tt.name); got != tt.want {
+				t.Errorf("IsJunkFile(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseSeasonFromDir(t *testing.T) {
 	tests := []struct {
 		name string

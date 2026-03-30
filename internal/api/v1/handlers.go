@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
@@ -403,12 +404,24 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 	}
 
 	// Delete imported library files from disk.
+	// Phase 1: Remove tracked video files and collect their parent directories.
+	releaseDirs := map[string]bool{}
 	for _, mf := range mediaFiles {
 		if err := os.Remove(mf.Path); err != nil && !os.IsNotExist(err) {
 			slog.Warn("failed to remove library file", "path", mf.Path, "error", err)
 		}
+		releaseDirs[filepath.Dir(mf.Path)] = true
+	}
+
+	// Phase 2: Clean up release folders that now contain only companion files.
+	for dir := range releaseDirs {
+		if onlyCompanionsLeft(dir) {
+			if err := os.RemoveAll(dir); err != nil {
+				slog.Warn("failed to remove release dir", "path", dir, "error", err)
+			}
+		}
 		if libraryRoot != "" {
-			removeEmptyParents(filepath.Dir(mf.Path), libraryRoot)
+			removeEmptyParents(filepath.Dir(dir), libraryRoot)
 		}
 	}
 
@@ -432,6 +445,28 @@ func removeEmptyParents(dir, stopAt string) {
 		}
 		dir = filepath.Dir(dir)
 	}
+}
+
+// onlyCompanionsLeft returns true if a directory contains no video files —
+// only companion files (subtitles, NFO, images) or is empty/already removed.
+// It recurses into subdirectories.
+func onlyCompanionsLeft(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if !onlyCompanionsLeft(filepath.Join(dir, e.Name())) {
+				return false
+			}
+			continue
+		}
+		if fileparse.IsVideoFile(e.Name()) {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandidatesRequestObject) (SearchMediaCandidatesResponseObject, error) {

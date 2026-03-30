@@ -43,6 +43,16 @@ var (
 		".flv": true,
 	}
 
+	junkExts = map[string]bool{
+		".exe": true,
+		".bat": true,
+		".cmd": true,
+		".msi": true,
+		".lnk": true,
+	}
+
+	junkNameRe = regexp.MustCompile(`(?i)^(?:RARBG|WWW\..+\.txt$)`)
+
 	sourceAliases = map[string]string{
 		"bluray":  "bluray",
 		"blu-ray": "bluray",
@@ -112,6 +122,17 @@ func Parse(filename string) FileInfo {
 func IsVideoFile(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	return videoExts[ext]
+}
+
+// IsJunkFile returns true for files that should never be imported
+// (executables, torrent spam). Subtitles, NFO, images etc. are NOT junk.
+func IsJunkFile(name string) bool {
+	base := filepath.Base(name)
+	ext := strings.ToLower(filepath.Ext(base))
+	if junkExts[ext] {
+		return true
+	}
+	return junkNameRe.MatchString(base)
 }
 
 // ParseSeasonFromDir extracts a season number from a directory name.

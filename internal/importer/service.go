@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,6 +150,15 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		return
 	}
 
+	// Create release subfolder to isolate this download's files
+	releaseName := buildReleaseFolderName(dl.Title)
+	releaseDir := filepath.Join(targetDir, releaseName)
+	if err := os.MkdirAll(releaseDir, 0755); err != nil {
+		slog.Error("importer: failed to create release dir", "download_id", dl.ID, "path", releaseDir, "error", err)
+		s.failImport(dl, "failed to create release directory")
+		return
+	}
+
 	// Get torrent files from qBittorrent
 	if dl.ClientTorrentHash == "" {
 		slog.Error("importer: no torrent hash", "download_id", dl.ID)
@@ -163,52 +173,78 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		return
 	}
 
-	// Filter video files and import each
+	// Detect common root folder in torrent (multi-file torrents wrap files in a root dir)
+	rootFolder := torrentRootFolder(files)
+
+	// Import all non-junk files: video files get MediaFile records, companions are just linked
 	imported := 0
 	for _, f := range files {
-		fileName := filepath.Base(f.Name)
-		if !fileparse.IsVideoFile(fileName) {
+		if fileparse.IsJunkFile(f.Name) {
 			continue
 		}
 
+		// Strip torrent root folder to avoid double-nesting (release dir already isolates)
+		relPath := f.Name
+		if rootFolder != "" {
+			relPath = strings.TrimPrefix(f.Name, rootFolder+"/")
+		}
+
 		srcPath := filepath.Join(dl.SavePath, f.Name)
-		dstPath := uniquePath(filepath.Join(targetDir, fileName))
+		dstPath := filepath.Join(releaseDir, relPath)
 
-		if err := hardlinkOrCopy(srcPath, dstPath); err != nil {
-			slog.Error("importer: failed to import file",
-				"download_id", dl.ID, "src", srcPath, "dst", dstPath, "error", err)
-			s.failImport(dl, "failed to hardlink/copy file: "+fileName)
-			return
+		// Ensure subdirectories exist (e.g., Subs/)
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+			slog.Warn("importer: failed to create subdir", "download_id", dl.ID, "path", filepath.Dir(dstPath), "error", err)
+			continue
 		}
 
-		// Parse file metadata
-		info := fileparse.Parse(fileName)
+		fileName := filepath.Base(relPath)
 
-		// Use download's season number as fallback for series
-		seasonNum := info.SeasonNumber
-		if seasonNum == nil && dl.SeasonNumber != nil {
-			seasonNum = dl.SeasonNumber
-		}
+		if fileparse.IsVideoFile(fileName) {
+			dstPath = uniquePath(dstPath)
+			if err := hardlinkOrCopy(srcPath, dstPath); err != nil {
+				slog.Error("importer: failed to import video file",
+					"download_id", dl.ID, "src", srcPath, "dst", dstPath, "error", err)
+				s.failImport(dl, "failed to hardlink/copy file: "+fileName)
+				return
+			}
 
-		// Create MediaFile record
-		mf := &store.MediaFile{
-			MediaItemID:   dl.MediaItemID,
-			Path:          dstPath,
-			FileName:      fileName,
-			Size:          f.Size,
-			Resolution:    info.Resolution,
-			SourceType:    info.SourceType,
-			SeasonNumber:  seasonNum,
-			EpisodeNumber: info.EpisodeNumber,
-			AddedAt:       time.Now(),
-		}
+			// Parse file metadata
+			info := fileparse.Parse(fileName)
 
-		if err := s.store.CreateMediaFile(mf); err != nil {
-			slog.Warn("importer: failed to create media file record",
-				"download_id", dl.ID, "path", dstPath, "error", err)
-			// Continue — file is on disk, record may already exist from a previous attempt
+			// Use download's season number as fallback for series
+			seasonNum := info.SeasonNumber
+			if seasonNum == nil && dl.SeasonNumber != nil {
+				seasonNum = dl.SeasonNumber
+			}
+
+			// Create MediaFile record
+			mf := &store.MediaFile{
+				MediaItemID:   dl.MediaItemID,
+				Path:          dstPath,
+				FileName:      fileName,
+				Size:          f.Size,
+				Resolution:    info.Resolution,
+				SourceType:    info.SourceType,
+				SeasonNumber:  seasonNum,
+				EpisodeNumber: info.EpisodeNumber,
+				AddedAt:       time.Now(),
+			}
+
+			if err := s.store.CreateMediaFile(mf); err != nil {
+				slog.Warn("importer: failed to create media file record",
+					"download_id", dl.ID, "path", dstPath, "error", err)
+				// Continue — file is on disk, record may already exist from a previous attempt
+			} else {
+				imported++
+			}
 		} else {
-			imported++
+			// Companion file (subtitle, nfo, image, etc.) — link but don't track in DB
+			if err := hardlinkOrCopy(srcPath, dstPath); err != nil {
+				slog.Warn("importer: failed to import companion file",
+					"download_id", dl.ID, "src", srcPath, "dst", dstPath, "error", err)
+				// Non-fatal — continue with other files
+			}
 		}
 	}
 
@@ -339,4 +375,29 @@ func (s *Service) completeDownload(dl *store.Download, client *qbittorrent.Clien
 
 	slog.Info("importer: seeding complete, torrent removed",
 		"download_id", dl.ID, "title", dl.Title)
+}
+
+// torrentRootFolder detects the common root folder in a multi-file torrent.
+// qBittorrent reports file names relative to the save path. Multi-file torrents
+// typically have all files under a single root directory (e.g., "ReleaseName/video.mkv").
+// Returns the common first path component, or "" for single-file torrents.
+func torrentRootFolder(files []qbittorrent.TorrentFile) string {
+	if len(files) < 2 {
+		return ""
+	}
+
+	var root string
+	for _, f := range files {
+		parts := strings.SplitN(f.Name, "/", 2)
+		if len(parts) < 2 {
+			// At least one file is at the top level — no common root
+			return ""
+		}
+		if root == "" {
+			root = parts[0]
+		} else if parts[0] != root {
+			return ""
+		}
+	}
+	return root
 }

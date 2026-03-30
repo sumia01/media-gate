@@ -50,3 +50,18 @@ func sanitizePath(name string) string {
 	}
 	return s
 }
+
+// buildReleaseFolderName returns a filesystem-safe folder name derived from a
+// torrent/release title. The name is sanitized and truncated to 200 characters.
+func buildReleaseFolderName(title string) string {
+	s := illegalChars.ReplaceAllString(title, "")
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, ".")
+	if len(s) > 200 {
+		s = strings.TrimRight(s[:200], ". ")
+	}
+	if s == "" {
+		return "release"
+	}
+	return s
+}

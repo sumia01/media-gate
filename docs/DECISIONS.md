@@ -585,3 +585,17 @@ SQLite requires `PRAGMA foreign_keys = ON` to enforce FK constraints, enabled at
 **Decision**: Add a `DownloadList` component on the media detail page showing all downloads for the media item. The backend enriches `GET /downloads?mediaItemId=X` with real-time progress/speed from qBittorrent. Added `DELETE /downloads/{id}` (with optional `deleteFiles` query param) and `GET /downloads/{id}/files` (proxies qBit's torrent file listing). The frontend polls every 5s while active downloads exist, supports retry (set status back to pending), delete (removes from DB + qBit), and replace (delete old after new download created via IndexerSearchModal).
 
 **Rationale**: Server-side enrichment avoids exposing qBit credentials to the frontend and reduces round-trips. The replace flow deletes the old download only after the user picks a new one (not immediately), preventing accidental data loss. Torrent file listing is on-demand (user clicks a button) rather than auto-polled.
+
+---
+
+## ADR-044: Release folder isolation and companion file import
+**Date**: 2026-03-30
+**Status**: Accepted
+
+**Context**: The importer only imported video files, placing them flat in the target directory. Companion files (subtitles, NFO, images) were ignored and lost when the torrent was deleted from qBittorrent. When two releases of the same movie/episode were downloaded, their files mixed in the same folder — making it impossible to cleanly delete one release without affecting the other.
+
+**Decision**: Each import creates a release subfolder named after the torrent title inside the target directory (e.g., `Title (Year)/ReleaseName/video.mkv`). All non-junk torrent files are hardlinked/copied into the release folder — video files get `MediaFile` DB records as before, companion files (subtitles, NFO, images, subtitle subdirectories) are imported alongside but not tracked in the database. On delete, tracked video files are removed first, then release folders containing only companion files (no remaining video files) are cleaned up with `os.RemoveAll`. Known junk files (`.exe`, `.bat`, `.msi`, torrent spam like `RARBG.txt`, `WWW.*.txt`) are skipped during import.
+
+No DB schema changes are required — companion files are isolated by the filesystem structure. The sync service already descends into non-season subdirectories (release folders), so it continues to discover video files inside release subfolders without modification. The delete handler is backward-compatible with the old flat layout: `onlyCompanionsLeft` returns false when other items' video files are present, preventing accidental `RemoveAll`.
+
+**Rationale**: Filesystem isolation via release subfolders is the simplest approach — no new DB tables, no migration, no companion file lifecycle management. Each release is self-contained: its video + companion files live together and are cleaned up together. This matches how Plex/Jellyfin resolve sidecar subtitles (by filename adjacency within the same folder).
