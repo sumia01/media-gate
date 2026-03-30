@@ -135,6 +135,7 @@ async function handleUnmatch() {
 
 async function handleDelete() {
   if (!item.value) return
+  if (!confirm(`Delete "${item.value.title}"? This will remove all files from the library, torrents from the download client, and all associated data.`)) return
   const { error: err } = await client.DELETE('/media/{id}', {
     params: { path: { id: item.value.id } },
   })
@@ -277,7 +278,6 @@ watch(() => route.params.id, loadAll)
           Unmatch
         </button>
         <button
-          v-if="item.source === 'request'"
           class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
           @click="handleDelete"
         >

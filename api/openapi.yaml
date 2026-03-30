@@ -396,18 +396,15 @@ paths:
     delete:
       operationId: deleteMediaItem
       summary: Delete a media item
-      description: Deletes a requested media item and its metadata. Only items with source "request" can be deleted.
+      description: >-
+        Fully deletes a media item: removes torrents from qBittorrent (with files),
+        deletes imported library files and empty parent directories, removes the poster,
+        and cascade-deletes all associated DB records.
       responses:
         "204":
           description: Media item deleted
         "404":
           description: Media item not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Cannot delete non-requested media item
           content:
             application/json:
               schema:
