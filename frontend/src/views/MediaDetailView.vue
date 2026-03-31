@@ -36,6 +36,11 @@ const metadata = computed(() => item.value?.metadata ?? null)
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
 
+const activeProfile = computed(() => {
+  if (!item.value?.mediaProfileId) return undefined
+  return profiles.value.find((p) => p.id === item.value!.mediaProfileId)
+})
+
 const externalUrl = computed(() => {
   if (!metadata.value) return null
   if (metadata.value.source === 'tmdb') {
@@ -622,6 +627,7 @@ watch(() => route.params.id, loadAll)
       :seasonNumber="indexerSearchSeason"
       :episodeNumber="indexerSearchEpisode"
       :episodeId="indexerSearchEpisodeId"
+      :mediaProfile="activeProfile"
       @close="closeIndexerSearch"
     />
   </div>

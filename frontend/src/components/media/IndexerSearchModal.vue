@@ -9,7 +9,10 @@ import {
   parseTitleSeasonEpisode,
   classifyMatch,
   matchLevelOrder,
+  parseTorrentQuality,
+  matchesProfile,
   type MatchLevel,
+  type ProfileMatchInput,
 } from '@/utils/torrent'
 
 const props = defineProps<{
@@ -20,6 +23,7 @@ const props = defineProps<{
   seasonNumber?: number
   episodeNumber?: number
   episodeId?: number
+  mediaProfile?: ProfileMatchInput
 }>()
 
 const emit = defineEmits<{
@@ -41,21 +45,25 @@ const downloadedIdx = ref<Set<number>>(new Set())
 const sortedResults = computed(() => {
   const userSeason = season.value ? parseInt(season.value, 10) : null
   const userEpisode = episode.value ? parseInt(episode.value, 10) : null
+  const profile = props.mediaProfile
 
-  if (props.mediaType !== 'series' || userSeason === null) {
-    return results.value.map((r, i) => ({ result: r, matchLevel: 'none' as MatchLevel, originalIndex: i }))
-  }
-
-  const classified = results.value.map((r, i) => ({
+  const classify = (r: TorrentResult, i: number) => ({
     result: r,
-    matchLevel: classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode),
+    matchLevel: (props.mediaType === 'series' && userSeason !== null)
+      ? classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode)
+      : 'none' as MatchLevel,
+    profileMatch: profile ? matchesProfile(parseTorrentQuality(r.title), profile) : false,
     originalIndex: i,
-  }))
-
-  classified.sort((a, b) => {
-    const diff = matchLevelOrder(a.matchLevel) - matchLevelOrder(b.matchLevel)
-    return diff !== 0 ? diff : a.originalIndex - b.originalIndex
   })
+
+  const classified = results.value.map(classify)
+
+  if (props.mediaType === 'series' && userSeason !== null) {
+    classified.sort((a, b) => {
+      const diff = matchLevelOrder(a.matchLevel) - matchLevelOrder(b.matchLevel)
+      return diff !== 0 ? diff : a.originalIndex - b.originalIndex
+    })
+  }
 
   return classified
 })
@@ -70,6 +78,10 @@ function matchRowClass(level: MatchLevel): string {
 
 const hasMatches = computed(() =>
   sortedResults.value.some((i) => i.matchLevel !== 'none')
+)
+
+const hasProfileMatches = computed(() =>
+  sortedResults.value.some((i) => i.profileMatch)
 )
 
 // --- Lifecycle ---
@@ -240,14 +252,20 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
     <ErrorBanner :message="error" />
 
     <!-- Match legend -->
-    <div v-if="hasMatches" class="flex items-center gap-4 mb-3 text-xs text-gray-500">
-      <div class="flex items-center gap-1.5">
+    <div v-if="hasMatches || hasProfileMatches" class="flex items-center gap-4 mb-3 text-xs text-gray-500">
+      <div v-if="hasMatches" class="flex items-center gap-1.5">
         <span class="inline-block w-3 h-3 rounded-sm bg-emerald-500/40"></span>
         <span>Season + Episode match</span>
       </div>
-      <div class="flex items-center gap-1.5">
+      <div v-if="hasMatches" class="flex items-center gap-1.5">
         <span class="inline-block w-3 h-3 rounded-sm bg-amber-500/40"></span>
         <span>Season match</span>
+      </div>
+      <div v-if="hasProfileMatches" class="flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
+        <span>Profile match</span>
       </div>
     </div>
 
@@ -269,6 +287,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-[#0f1225]">
           <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
+            <th v-if="props.mediaProfile" class="w-8 px-0 py-2.5"></th>
             <th class="px-3 py-2.5">Title</th>
             <th class="px-3 py-2.5 whitespace-nowrap">Size</th>
             <th class="px-3 py-2.5 text-center whitespace-nowrap">S</th>
@@ -288,6 +307,18 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
               matchRowClass(item.matchLevel),
             ]"
           >
+            <!-- Profile match star -->
+            <td v-if="props.mediaProfile" class="w-8 px-0 py-2.5 text-center">
+              <svg
+                v-if="item.profileMatch"
+                class="w-4 h-4 inline-block text-amber-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+            </td>
+
             <!-- Title -->
             <td class="px-3 py-2.5">
               <div class="flex items-center gap-2">
