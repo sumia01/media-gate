@@ -191,7 +191,9 @@ function onDownloadReplace(downloadId: number, seasonNumber?: number, episodeNum
 
 function onDownloadsChanged() {
   if (item.value) {
+    fetchItem(item.value.id)
     fetchFiles(item.value.id)
+    episodeRefreshKey.value++
   }
 }
 
@@ -337,13 +339,13 @@ watch(() => route.params.id, loadAll)
         <div class="flex-shrink-0 w-[300px]">
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
-              v-if="item.status === 'available' || item.status === 'requested'"
+              v-if="item.status !== 'new'"
               :src="posterUrl(item)"
               :alt="item.title"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
-            <span v-if="item.status !== 'available' && item.status !== 'requested'" class="text-6xl text-gray-600">
+            <span v-if="item.status === 'new'" class="text-6xl text-gray-600">
               {{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}
             </span>
           </div>
@@ -374,6 +376,7 @@ watch(() => route.params.id, loadAll)
                 'bg-yellow-600/20 text-yellow-300': item.status === 'new',
                 'bg-red-600/20 text-red-300': item.status === 'missing',
                 'bg-sky-600/20 text-sky-300': item.status === 'requested',
+                'bg-amber-600/20 text-amber-300': item.status === 'partial',
               }"
             >
               {{ item.status }}

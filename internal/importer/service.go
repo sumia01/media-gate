@@ -283,6 +283,11 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		slog.Warn("importer: resync after import failed", "download_id", dl.ID, "media_item_id", dl.MediaItemID, "error", err)
 	}
 
+	// Recalculate media item status based on current files.
+	if err := s.syncSvc.RecalcMediaItemStatus(dl.MediaItemID); err != nil {
+		slog.Warn("importer: status recalc failed", "download_id", dl.ID, "media_item_id", dl.MediaItemID, "error", err)
+	}
+
 	slog.Info("importer: import complete",
 		"download_id", dl.ID, "title", dl.Title, "files", imported, "status", dl.Status)
 

@@ -362,6 +362,93 @@ func intPtrEqual(a, b *int) bool {
 	return *a == *b
 }
 
+// RecalcMediaItemStatus recalculates and persists the media item's status
+// based on the current MediaFile and Episode records in the database.
+func (s *Service) RecalcMediaItemStatus(itemID uint) error {
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil {
+		return fmt.Errorf("recalc status: get item: %w", err)
+	}
+
+	files, err := s.store.ListMediaFilesByMediaItem(itemID)
+	if err != nil {
+		return fmt.Errorf("recalc status: list files: %w", err)
+	}
+	hasFiles := len(files) > 0
+
+	var newStatus string
+
+	if item.MediaType == "movie" {
+		if hasFiles {
+			newStatus = "available"
+		} else if item.Source == "request" {
+			newStatus = "requested"
+		} else {
+			newStatus = "missing"
+		}
+	} else {
+		// series
+		if !hasFiles {
+			if item.Source == "request" {
+				newStatus = "requested"
+			} else {
+				newStatus = "missing"
+			}
+		} else {
+			episodes, err := s.store.ListEpisodesByMediaItem(itemID)
+			if err != nil {
+				return fmt.Errorf("recalc status: list episodes: %w", err)
+			}
+
+			aired := filterAiredEpisodes(episodes)
+			if len(aired) == 0 {
+				// No aired episodes tracked yet but files exist — treat as available.
+				newStatus = "available"
+			} else if allAiredEpisodesCovered(aired, files) {
+				newStatus = "available"
+			} else {
+				newStatus = "partial"
+			}
+		}
+	}
+
+	if item.Status == newStatus {
+		return nil // no change
+	}
+	item.Status = newStatus
+	return s.store.UpdateMediaItem(item)
+}
+
+// filterAiredEpisodes returns only episodes whose AirDate is non-empty and not in the future.
+func filterAiredEpisodes(episodes []store.Episode) []store.Episode {
+	today := time.Now().Format("2006-01-02")
+	var aired []store.Episode
+	for _, ep := range episodes {
+		if ep.AirDate != "" && ep.AirDate <= today {
+			aired = append(aired, ep)
+		}
+	}
+	return aired
+}
+
+// allAiredEpisodesCovered checks whether every aired episode has at least one
+// matching MediaFile (by SeasonNumber + EpisodeNumber).
+func allAiredEpisodesCovered(aired []store.Episode, files []store.MediaFile) bool {
+	type seKey struct{ s, e int }
+	fileSet := make(map[seKey]struct{}, len(files))
+	for _, f := range files {
+		if f.SeasonNumber != nil && f.EpisodeNumber != nil {
+			fileSet[seKey{*f.SeasonNumber, *f.EpisodeNumber}] = struct{}{}
+		}
+	}
+	for _, ep := range aired {
+		if _, ok := fileSet[seKey{ep.SeasonNumber, ep.EpisodeNumber}]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // groupFolders groups top-level folders into logical media items.
 // For series: folders whose name contains a season indicator (e.g. "ShowName Season 1")
 // are grouped under the base title stripped of the season suffix.

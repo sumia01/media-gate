@@ -223,6 +223,11 @@ func (h *Handlers) ManualMatch(_ context.Context, req ManualMatchRequestObject) 
 		return nil, err
 	}
 
+	// Recalculate status based on current files (e.g. partial if some episodes already downloaded).
+	if err := h.syncSvc.RecalcMediaItemStatus(item.ID); err != nil {
+		slog.Warn("manual match: status recalc failed", "media_item_id", item.ID, "error", err)
+	}
+
 	// Re-fetch the updated item
 	item, err = h.store.GetMediaItem(item.ID)
 	if err != nil {
