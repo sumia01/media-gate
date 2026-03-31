@@ -98,6 +98,7 @@
 - [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
 - [x] Release folder isolation — each import creates a release subfolder, companion files (subtitles, NFO, images) imported alongside video
 - [x] Event bus + SSE — internal event bus (Go channels) with typed events for download lifecycle, library sync/match, media item changes; SSE endpoint for real-time frontend push; replaced polling in useJobQueue, DownloadList, LibraryDetailView, MediaDetailView
+- [x] Media item status recalculation — auto-recalc after import, download delete, and re-match based on file presence (available/partial/requested/missing); poster shown for all matched statuses; episode list auto-refreshes on download changes
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
