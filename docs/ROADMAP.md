@@ -106,7 +106,7 @@
 - [x] Monitor new seasons toggle on media detail page (series only)
 - [x] MediaFile model for multi-copy/multi-quality file tracking
 - [x] SeasonMonitor model for per-season monitoring
-- [ ] Quality profile UI (list/create/edit)
+- [x] Quality profile UI (list/create/edit)
 - [x] Multi-copy handling (same media in different qualities)
 - [x] Series episode tracking (which seasons/episodes are present/missing)
 - [ ] Season bundles vs standalone episodes vs complete series downloads
