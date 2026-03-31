@@ -18,7 +18,7 @@ Self-hosted, single-binary media management app replacing the Sonarr + Radarr + 
 media-gate/
 ├── cmd/server/          # Go entrypoint (main.go)
 ├── internal/
-│   ├── api/v1/          # Generated oapi-codegen server + handlers (package apiv1)
+│   ├── api/v1/          # Generated server + handlers split by domain (library, media, download, indexer, profile, settings, convert)
 │   ├── config/          # koanf configuration loading
 │   ├── library/         # Library service (CRUD, path validation, folder browsing, download path conflict check)
 │   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
