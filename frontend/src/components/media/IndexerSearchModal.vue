@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import client from '@/api/client'
 import type { Indexer, TorrentResult } from '@/types/api'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import { formatSize } from '@/utils/media'
+import {
+  parseTitleSeasonEpisode,
+  classifyMatch,
+  matchLevelOrder,
+  type MatchLevel,
+} from '@/utils/torrent'
 
 const props = defineProps<{
   mediaItemId: number
@@ -30,6 +36,41 @@ const loading = ref(false)
 const error = ref('')
 const downloadingIdx = ref<Set<number>>(new Set())
 const downloadedIdx = ref<Set<number>>(new Set())
+
+// --- Season/episode matching ---
+const sortedResults = computed(() => {
+  const userSeason = season.value ? parseInt(season.value, 10) : null
+  const userEpisode = episode.value ? parseInt(episode.value, 10) : null
+
+  if (props.mediaType !== 'series' || userSeason === null) {
+    return results.value.map((r, i) => ({ result: r, matchLevel: 'none' as MatchLevel, originalIndex: i }))
+  }
+
+  const classified = results.value.map((r, i) => ({
+    result: r,
+    matchLevel: classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode),
+    originalIndex: i,
+  }))
+
+  classified.sort((a, b) => {
+    const diff = matchLevelOrder(a.matchLevel) - matchLevelOrder(b.matchLevel)
+    return diff !== 0 ? diff : a.originalIndex - b.originalIndex
+  })
+
+  return classified
+})
+
+function matchRowClass(level: MatchLevel): string {
+  switch (level) {
+    case 'full': return 'bg-emerald-500/15'
+    case 'season': return 'bg-amber-500/15'
+    default: return ''
+  }
+}
+
+const hasMatches = computed(() =>
+  sortedResults.value.some((i) => i.matchLevel !== 'none')
+)
 
 // --- Lifecycle ---
 onMounted(async () => {
@@ -198,6 +239,18 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
 
     <ErrorBanner :message="error" />
 
+    <!-- Match legend -->
+    <div v-if="hasMatches" class="flex items-center gap-4 mb-3 text-xs text-gray-500">
+      <div class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-sm bg-emerald-500/40"></span>
+        <span>Season + Episode match</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-sm bg-amber-500/40"></span>
+        <span>Season match</span>
+      </div>
+    </div>
+
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
       <span class="text-gray-500 text-sm animate-pulse">Searching indexers...</span>
@@ -228,71 +281,74 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
         </thead>
         <tbody>
           <tr
-            v-for="(result, idx) in results"
-            :key="idx"
-            class="border-b border-violet-900/10 hover:bg-violet-600/5 transition-colors duration-200"
+            v-for="item in sortedResults"
+            :key="item.originalIndex"
+            :class="[
+              'border-b border-violet-900/10 hover:bg-violet-600/5 transition-colors duration-200',
+              matchRowClass(item.matchLevel),
+            ]"
           >
             <!-- Title -->
             <td class="px-3 py-2.5">
               <div class="flex items-center gap-2">
                 <a
-                  v-if="result.detailsUrl"
-                  :href="result.detailsUrl"
+                  v-if="item.result.detailsUrl"
+                  :href="item.result.detailsUrl"
                   target="_blank"
                   rel="noopener"
                   class="text-gray-200 hover:text-violet-300 transition-colors duration-200 truncate max-w-md"
-                  :title="result.title"
+                  :title="item.result.title"
                 >
-                  {{ result.title }}
+                  {{ item.result.title }}
                 </a>
-                <span v-else class="text-gray-200 truncate max-w-md" :title="result.title">
-                  {{ result.title }}
+                <span v-else class="text-gray-200 truncate max-w-md" :title="item.result.title">
+                  {{ item.result.title }}
                 </span>
                 <span
-                  v-if="volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor)"
+                  v-if="volumeLabel(item.result.downloadVolumeFactor, item.result.uploadVolumeFactor)"
                   class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
                 >
-                  {{ volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor) }}
+                  {{ volumeLabel(item.result.downloadVolumeFactor, item.result.uploadVolumeFactor) }}
                 </span>
               </div>
             </td>
 
             <!-- Size -->
             <td class="px-3 py-2.5 text-gray-400 whitespace-nowrap">
-              {{ formatSize(result.size) }}
+              {{ formatSize(item.result.size) }}
             </td>
 
             <!-- Seeders -->
             <td class="px-3 py-2.5 text-center text-green-400">
-              {{ result.seeders }}
+              {{ item.result.seeders }}
             </td>
 
             <!-- Leechers -->
             <td class="px-3 py-2.5 text-center text-red-400">
-              {{ result.leechers }}
+              {{ item.result.leechers }}
             </td>
 
             <!-- Indexer -->
             <td class="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-              {{ result.indexerName }}
+              {{ item.result.indexerName }}
             </td>
 
             <!-- Category -->
             <td class="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-              {{ result.categoryDesc || result.category || '' }}
+              {{ item.result.categoryDesc || item.result.category || '' }}
             </td>
 
             <!-- Date -->
             <td class="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-              {{ formatDate(result.date) }}
+              {{ formatDate(item.result.date) }}
             </td>
 
             <!-- Actions -->
             <td class="px-3 py-2.5">
               <div class="flex items-center gap-1">
                 <a
-                  v-if="result.detailsUrl"
-                  :href="result.detailsUrl"
+                  v-if="item.result.detailsUrl"
+                  :href="item.result.detailsUrl"
                   target="_blank"
                   rel="noopener"
                   class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
@@ -301,7 +357,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
                   Open
                 </a>
                 <button
-                  v-if="downloadedIdx.has(idx)"
+                  v-if="downloadedIdx.has(item.originalIndex)"
                   class="px-2.5 py-1.5 rounded-md text-xs text-emerald-400"
                   disabled
                 >
@@ -310,10 +366,10 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
                 <button
                   v-else
                   class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
-                  :disabled="downloadingIdx.has(idx)"
-                  @click="download(result, idx)"
+                  :disabled="downloadingIdx.has(item.originalIndex)"
+                  @click="download(item.result, item.originalIndex)"
                 >
-                  {{ downloadingIdx.has(idx) ? 'Adding...' : 'Download' }}
+                  {{ downloadingIdx.has(item.originalIndex) ? 'Adding...' : 'Download' }}
                 </button>
               </div>
             </td>
