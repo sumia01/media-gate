@@ -15,7 +15,7 @@ const emit = defineEmits<{
     >
       <div class="absolute inset-0 bg-black/60" @click="emit('close')"></div>
       <div
-        class="relative bg-[#0f1225] border border-violet-900/30 rounded-xl p-6 shadow-2xl w-full"
+        class="relative bg-[#0f1225] border border-violet-900/30 rounded-xl p-6 shadow-2xl w-full max-h-[90vh] flex flex-col"
         :class="maxWidth ?? 'max-w-sm'"
       >
         <slot />
