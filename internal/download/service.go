@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/settings"
@@ -18,16 +19,18 @@ type Service struct {
 	store      store.Store
 	settings   *settings.Service
 	indexerSvc *indexer.Service
+	bus        *eventbus.Bus
 	client     *qbittorrent.Client
 	mu         sync.Mutex
 	stopCh     chan struct{}
 }
 
-func NewService(s store.Store, settingsSvc *settings.Service, indexerSvc *indexer.Service) *Service {
+func NewService(s store.Store, settingsSvc *settings.Service, indexerSvc *indexer.Service, bus *eventbus.Bus) *Service {
 	return &Service{
 		store:      s,
 		settings:   settingsSvc,
 		indexerSvc: indexerSvc,
+		bus:        bus,
 		stopCh:     make(chan struct{}),
 	}
 }
@@ -133,6 +136,9 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 				"download_id", dl.ID, "title", dl.Title, "error", err)
 			dl.Status = "failed"
 			_ = s.store.UpdateDownload(dl)
+			s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
+				DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
+			})
 			continue
 		}
 
@@ -153,6 +159,9 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 					"download_id", dl.ID, "title", dl.Title, "error", err)
 				dl.Status = "failed"
 				_ = s.store.UpdateDownload(dl)
+				s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
+					DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
+				})
 				continue
 			}
 		}
@@ -165,6 +174,9 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		}
 
 		slog.Info("download worker: torrent added", "download_id", dl.ID, "title", dl.Title, "hash", hash)
+		s.bus.Publish(eventbus.DownloadSentToClient, eventbus.DownloadPayload{
+			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Hash: hash, Status: "downloading",
+		})
 	}
 }
 
@@ -233,4 +245,15 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 
 	slog.Info("download worker: status updated",
 		"download_id", dl.ID, "title", dl.Title, "status", newStatus)
+
+	switch newStatus {
+	case "downloaded":
+		s.bus.Publish(eventbus.DownloadCompleted, eventbus.DownloadPayload{
+			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Hash: dl.ClientTorrentHash, Status: newStatus,
+		})
+	case "failed":
+		s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
+			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: newStatus,
+		})
+	}
 }

@@ -8,10 +8,13 @@ import (
 	"os"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/sumia01/media-gate/frontend"
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
 	"github.com/sumia01/media-gate/internal/config"
 	"github.com/sumia01/media-gate/internal/download"
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
@@ -20,6 +23,7 @@ import (
 	"github.com/sumia01/media-gate/internal/logging"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
+	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/sync"
 )
@@ -50,7 +54,20 @@ func main() {
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
 
-	queue := jobqueue.New(syncSvc, matchSvc, db, 100)
+	// Event bus + SSE broker.
+	bus := eventbus.New(1024)
+	sseBroker := sse.NewBroker()
+	bus.SubscribeAll(func(e eventbus.Event) {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return
+		}
+		sseBroker.Broadcast(string(e.Type), data)
+	})
+	bus.Start()
+	defer bus.Stop()
+
+	queue := jobqueue.New(syncSvc, matchSvc, db, 100, bus)
 	queue.Start()
 	defer queue.Stop()
 
@@ -61,22 +78,25 @@ func main() {
 	}
 
 	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus)
 
 	// Startup check: reconcile download hashes with torrent client.
 	reconcileDownloadsWithTorrentClient(db, settingsSvc)
 
-	downloadSvc := download.NewService(db, settingsSvc, indexerSvc)
+	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus)
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	importerSvc := importer.NewService(db, settingsSvc, syncSvc)
+	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus)
 	importerSvc.Start()
 	defer importerSvc.Stop()
 
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
 	mux := http.NewServeMux()
+
+	// SSE endpoint for real-time frontend updates.
+	mux.Handle("GET /api/v1/events", sseBroker)
 
 	// Poster endpoint — raw binary, not part of generated strict server
 	mux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())

@@ -5,6 +5,7 @@ import client from '@/api/client'
 import type { Library, MediaItem } from '@/types/api'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import { useEventStream } from '@/composables/useEventStream'
 import { posterUrl } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import BaseModal from '@/components/BaseModal.vue'
@@ -13,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 const { jobs, triggerSync, triggerMatch, hasActiveJob, onJobDone } = useJobQueue()
 const { openSearch, setActiveLibrary } = useGlobalSearch()
+const { on, off } = useEventStream()
 
 const library = ref<Library | null>(null)
 const items = ref<MediaItem[]>([])
@@ -110,15 +112,32 @@ function navigateToMedia(item: MediaItem) {
   router.push({ name: 'media-detail', params: { id: item.id } })
 }
 
-// Reload media items when this library's jobs finish
-const removeJobDoneListener = onJobDone((libraryId, jobType) => {
-  if (library.value && library.value.id === libraryId) {
+// SSE: real-time refresh when items are synced or matched in this library
+function handleLibraryEvent(data: any) {
+  if (library.value && data.libraryId === library.value.id) {
     fetchMedia(library.value.id)
   }
-})
+}
 
-onMounted(loadAll)
-onUnmounted(removeJobDoneListener)
+const libraryEvents = [
+  'library.sync_completed',
+  'library.match_completed',
+  'media.item_synced',
+  'media.item_matched',
+  'media.item_deleted',
+]
+
+onMounted(() => {
+  loadAll()
+  for (const type of libraryEvents) {
+    on(type, handleLibraryEvent)
+  }
+})
+onUnmounted(() => {
+  for (const type of libraryEvents) {
+    off(type, handleLibraryEvent)
+  }
+})
 watch(() => route.params.id, loadAll)
 </script>
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
@@ -36,13 +37,14 @@ type Handlers struct {
 	matchSvc   *matching.Service
 	syncSvc    *mediasync.Service
 	indexerSvc *indexer.Service
+	bus        *eventbus.Bus
 	posterDir  string
 	qbitClient *qbittorrent.Client
 	qbitMu     sync.Mutex
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {
@@ -433,6 +435,10 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 	if err := h.store.DeleteMediaItem(item.ID); err != nil {
 		return nil, err
 	}
+
+	h.bus.Publish(eventbus.MediaItemDeleted, eventbus.MediaItemPayload{
+		MediaItemID: item.ID, LibraryID: item.LibraryID, Title: item.Title,
+	})
 
 	return DeleteMediaItem204Response{}, nil
 }
@@ -1246,6 +1252,10 @@ func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestOb
 			Message: err.Error(),
 		}, nil
 	}
+
+	h.bus.Publish(eventbus.DownloadCreated, eventbus.DownloadPayload{
+		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "pending",
+	})
 
 	return CreateDownload201JSONResponse(downloadToAPI(dl)), nil
 }

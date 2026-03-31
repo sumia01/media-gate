@@ -29,8 +29,10 @@ media-gate/
 │   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
 │   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
 │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
-│   ├── download/        # Download queue worker (sends pending → qBit, polls status)
-│   ├── importer/        # Import worker (hardlink/copy to library, seed cleanup)
+│   ├── eventbus/        # Internal event bus (Go channels, typed events, publish/subscribe)
+│   ├── sse/             # Server-Sent Events broker (real-time frontend push via GET /api/v1/events)
+│   ├── download/        # Download queue worker (sends pending → qBit, polls status, publishes events)
+│   ├── importer/        # Import worker (hardlink/copy to library, seed cleanup, publishes events)
 │   ├── integration/
 │   │   ├── tmdb/        # TMDB API v3 client (search, get, test)
 │   │   ├── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
@@ -41,7 +43,7 @@ media-gate/
 │       ├── api/         # Generated TypeScript API client
 │       ├── types/       # Shared API type re-exports from schema
 │       ├── utils/       # Shared utility functions (parseGenres, posterUrl, formatSize, formatBytes)
-│       ├── composables/ # Shared reactive state (useJobQueue)
+│       ├── composables/ # Shared reactive state (useJobQueue, useEventStream, useGlobalSearch, useSidebarLibraries)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
 │       │   └── media/   # Media-related components + shared types
@@ -101,7 +103,8 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 - **Single binary**: The Vue SPA builds into `frontend/dist/`, gets embedded into the Go binary via `frontend/embed.go`. No separate web server needed.
 - **go:generate**: `go generate ./...` runs oapi-codegen to regenerate Go server code.
 - **Modular frontend**: Components organized by concern — `layout/` for shell pieces, `media/` for domain components, `views/` for route-level pages.
+- **Event bus + SSE**: Internal event bus (`internal/eventbus/`) using Go channels dispatches typed events (download lifecycle, library sync/match, media item changes). Workers and handlers publish events on state transitions. SSE broker (`internal/sse/`) subscribes to all events and streams them to connected frontends via `GET /api/v1/events`. Frontend `useEventStream` composable provides reactive SSE subscription — replaces polling for job status, download progress, and media item updates.
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management), **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter with authenticated torrent fetch and file upload, download path + category settings, download queue worker with seeding rules and duplicate handling, downloads section on media detail page with progress/retry/delete/replace and torrent file listing, import worker with hardlink/copy to library and seed cleanup, release folder isolation with companion file import, full delete with torrent/file/empty-dir cleanup, post-import resync and frontend auto-refresh, FK constraint rebuild migration and startup orphan/torrent reconciliation), and **Phase 4** (multi-copy handling). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management), **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, episode download status, qBittorrent client adapter with authenticated torrent fetch and file upload, download path + category settings, download queue worker with seeding rules and duplicate handling, downloads section on media detail page with progress/retry/delete/replace and torrent file listing, import worker with hardlink/copy to library and seed cleanup, release folder isolation with companion file import, full delete with torrent/file/empty-dir cleanup, post-import resync and frontend auto-refresh, FK constraint rebuild migration and startup orphan/torrent reconciliation, event bus + SSE refactor replacing polling with real-time push), and **Phase 4** (multi-copy handling). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
