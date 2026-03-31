@@ -74,6 +74,7 @@
 ## Phase 3: Download Management (Sonarr/Radarr replacement) ⬜
 - [x] Download model + CRUD API (persistent Download records, POST/GET/PUT /downloads)
 - [x] IndexerSearchModal — search indexers from media detail page with indexer dropdown
+- [x] Search result season/episode matching — parse SxxExx from torrent titles, sort and highlight full (season+episode) and partial (season) matches in IndexerSearchModal
 - [x] Search buttons at item, season, and episode level (EpisodeGrid)
 - [x] Episode download status display (computed from Download records, shown in EpisodeGrid)
 - [x] Auto-refresh episode list when closing search modal after adding downloads
