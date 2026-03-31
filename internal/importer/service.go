@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/settings"
@@ -23,17 +24,19 @@ type Service struct {
 	store    store.Store
 	settings *settings.Service
 	syncSvc  *mediasync.Service
+	bus      *eventbus.Bus
 	client   *qbittorrent.Client
 	mu       sync.Mutex
 	stopCh   chan struct{}
 }
 
 // NewService creates a new importer service.
-func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync.Service) *Service {
+func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync.Service, bus *eventbus.Bus) *Service {
 	return &Service{
 		store:    s,
 		settings: settingsSvc,
 		syncSvc:  syncSvc,
+		bus:      bus,
 		stopCh:   make(chan struct{}),
 	}
 }
@@ -282,6 +285,10 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 
 	slog.Info("importer: import complete",
 		"download_id", dl.ID, "title", dl.Title, "files", imported, "status", dl.Status)
+
+	s.bus.Publish(eventbus.ImportCompleted, eventbus.ImportPayload{
+		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, FilesCount: imported,
+	})
 }
 
 // needsSeeding checks if the indexer has any seeding requirements.
@@ -301,6 +308,9 @@ func (s *Service) failImport(dl *store.Download, reason string) {
 		slog.Error("importer: failed to set import_failed status", "download_id", dl.ID, "error", err)
 	}
 	slog.Warn("importer: import failed", "download_id", dl.ID, "title", dl.Title, "reason", reason)
+	s.bus.Publish(eventbus.ImportFailed, eventbus.DownloadPayload{
+		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "import_failed",
+	})
 }
 
 // cleanupSeeding checks seeding downloads and removes torrents when obligations are met.
@@ -375,6 +385,9 @@ func (s *Service) completeDownload(dl *store.Download, client *qbittorrent.Clien
 
 	slog.Info("importer: seeding complete, torrent removed",
 		"download_id", dl.ID, "title", dl.Title)
+	s.bus.Publish(eventbus.SeedingCompleted, eventbus.DownloadPayload{
+		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "completed",
+	})
 }
 
 // torrentRootFolder detects the common root folder in a multi-file torrent.

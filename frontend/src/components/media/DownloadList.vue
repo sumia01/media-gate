@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import client from '@/api/client'
 import type { Download, TorrentFile } from '@/types/api'
 import { formatSize, formatBytes } from '@/utils/media'
+import { useEventStream } from '@/composables/useEventStream'
 
 const props = defineProps<{
   mediaItemId: number
@@ -22,8 +23,9 @@ const downloads = ref<Download[]>([])
 const expanded = ref(true)
 const torrentFiles = ref<Map<number, TorrentFile[]>>(new Map())
 const loadingFiles = ref<Set<number>>(new Set())
-const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const previousStatuses = ref<Map<number, string>>(new Map())
+
+const { on, off } = useEventStream()
 
 const statusOrder: Record<string, number> = {
   downloading: 0,
@@ -72,7 +74,6 @@ async function fetchDownloads() {
   previousStatuses.value = newMap
 
   downloads.value = newDownloads
-  managePolling()
 
   if (importFinished) {
     emit('downloadsChanged')
@@ -126,22 +127,6 @@ function replaceDownload(dl: Download) {
   emit('replace', dl.id, dl.seasonNumber ?? undefined, undefined, dl.episodeId ?? undefined)
 }
 
-function managePolling() {
-  if (hasActiveDownloads.value && !pollTimer.value) {
-    pollTimer.value = setInterval(fetchDownloads, 5000)
-  } else if (!hasActiveDownloads.value && pollTimer.value) {
-    clearInterval(pollTimer.value)
-    pollTimer.value = null
-  }
-}
-
-function stopPolling() {
-  if (pollTimer.value) {
-    clearInterval(pollTimer.value)
-    pollTimer.value = null
-  }
-}
-
 function statusColor(status: string) {
   switch (status) {
     case 'pending': return 'bg-gray-600/20 text-gray-400'
@@ -165,8 +150,35 @@ function formatSpeed(bytesPerSec?: number): string {
   return mb.toFixed(1) + ' MB/s'
 }
 
-onMounted(fetchDownloads)
-onUnmounted(stopPolling)
+// SSE event handler for download state changes
+function handleDownloadEvent(data: any) {
+  if (data.mediaItemId === props.mediaItemId) {
+    fetchDownloads()
+  }
+}
+
+const downloadEvents = [
+  'download.created',
+  'download.sent_to_client',
+  'download.failed',
+  'download.completed',
+  'download.import_started',
+  'download.import_completed',
+  'download.import_failed',
+  'download.seeding_completed',
+]
+
+onMounted(() => {
+  fetchDownloads()
+  for (const type of downloadEvents) {
+    on(type, handleDownloadEvent)
+  }
+})
+onUnmounted(() => {
+  for (const type of downloadEvents) {
+    off(type, handleDownloadEvent)
+  }
+})
 watch(() => props.mediaItemId, fetchDownloads)
 watch(() => props.refreshKey, fetchDownloads)
 </script>

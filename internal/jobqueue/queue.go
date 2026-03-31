@@ -8,6 +8,7 @@ import (
 	gosync "sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/sync"
@@ -56,17 +57,19 @@ type Queue struct {
 	syncSvc  *sync.Service
 	matchSvc *matching.Service
 	store    store.Store
+	bus      *eventbus.Bus
 	done     chan struct{}
 	seq      int
 }
 
-func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSize int) *Queue {
+func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSize int, bus *eventbus.Bus) *Queue {
 	q := &Queue{
 		jobs:     make(map[string]*Job),
 		pending:  make(chan *Job, bufSize),
 		syncSvc:  syncSvc,
 		matchSvc: matchSvc,
 		store:    s,
+		bus:      bus,
 		done:     make(chan struct{}),
 	}
 
@@ -171,13 +174,22 @@ func (q *Queue) execute(job *Job) {
 
 	switch job.Type {
 	case JobTypeSyncLibrary:
+		q.bus.Publish(eventbus.LibrarySyncStarted, eventbus.LibrarySyncPayload{
+			LibraryID: lib.ID, LibraryName: lib.Name,
+		})
 		added, removed, syncErr := q.syncSvc.SyncLibrary(lib)
 		if syncErr != nil {
 			q.finishJob(job, "", syncErr)
+			q.bus.Publish(eventbus.LibrarySyncFailed, eventbus.LibrarySyncPayload{
+				LibraryID: lib.ID, LibraryName: lib.Name,
+			})
 			return
 		}
 		msg := fmt.Sprintf("added %d, removed %d", added, removed)
 		q.finishJob(job, msg, nil)
+		q.bus.Publish(eventbus.LibrarySyncCompleted, eventbus.LibrarySyncPayload{
+			LibraryID: lib.ID, LibraryName: lib.Name, Added: added, Removed: removed,
+		})
 
 		// Auto-enqueue matching after sync
 		if q.matchSvc != nil {
@@ -187,6 +199,9 @@ func (q *Queue) execute(job *Job) {
 		}
 
 	case JobTypeMatchLibrary:
+		q.bus.Publish(eventbus.LibraryMatchStarted, eventbus.LibraryMatchPayload{
+			LibraryID: lib.ID, LibraryName: lib.Name,
+		})
 		progressFn := func(current, total int) {
 			q.mu.Lock()
 			job.Progress = &JobProgress{
@@ -195,13 +210,22 @@ func (q *Queue) execute(job *Job) {
 				Message: fmt.Sprintf("matching %d/%d", current, total),
 			}
 			q.mu.Unlock()
+			q.bus.Publish(eventbus.LibraryMatchProgress, eventbus.LibraryMatchPayload{
+				LibraryID: lib.ID, LibraryName: lib.Name, Current: current, Total: total,
+			})
 		}
 		matchErr := q.matchSvc.MatchLibrary(lib, job.FullRematch, progressFn)
 		if matchErr != nil {
 			q.finishJob(job, "", matchErr)
+			q.bus.Publish(eventbus.LibraryMatchFailed, eventbus.LibraryMatchPayload{
+				LibraryID: lib.ID, LibraryName: lib.Name,
+			})
 			return
 		}
 		q.finishJob(job, "matching complete", nil)
+		q.bus.Publish(eventbus.LibraryMatchCompleted, eventbus.LibraryMatchPayload{
+			LibraryID: lib.ID, LibraryName: lib.Name,
+		})
 	}
 }
 

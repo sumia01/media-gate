@@ -1,59 +1,22 @@
 import { ref, computed, onUnmounted } from 'vue'
 import client from '@/api/client'
 import type { Job } from '@/types/api'
+import { useEventStream } from './useEventStream'
+
 type JobDoneCallback = (libraryId: number, jobType: string) => void
 
 const jobs = ref<Job[]>([])
-let pollTimer: ReturnType<typeof setTimeout> | null = null
 let subscribers = 0
 const jobDoneListeners = new Set<JobDoneCallback>()
-
-// Track which library IDs had active jobs last poll (keyed by libId:type)
-let prevActiveKeys = new Set<string>()
 
 const hasActiveJob = computed(() =>
   jobs.value.some((j) => j.status === 'pending' || j.status === 'running'),
 )
 
-function activeKey(libId: number, type_: string) {
-  return `${libId}:${type_}`
-}
-
 async function fetchJobs() {
   const { data } = await client.GET('/jobs')
   if (data) {
     jobs.value = data.jobs
-  }
-
-  // Detect which libraries just finished a job
-  const currentActiveKeys = new Set<string>()
-  for (const j of jobs.value) {
-    if ((j.status === 'pending' || j.status === 'running') && j.libraryId) {
-      currentActiveKeys.add(activeKey(j.libraryId, j.type))
-    }
-  }
-  for (const key of prevActiveKeys) {
-    if (!currentActiveKeys.has(key)) {
-      const [libIdStr, jobType] = key.split(':')
-      jobDoneListeners.forEach((cb) => cb(Number(libIdStr), jobType ?? ''))
-    }
-  }
-  prevActiveKeys = currentActiveKeys
-}
-
-function startPolling() {
-  stopPolling()
-  const interval = hasActiveJob.value ? 2000 : 30000
-  pollTimer = setTimeout(async () => {
-    await fetchJobs()
-    if (subscribers > 0) startPolling()
-  }, interval)
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearTimeout(pollTimer)
-    pollTimer = null
   }
 }
 
@@ -62,11 +25,7 @@ async function triggerSync(libraryId: number) {
     params: { path: { id: libraryId } },
   })
   if (data) {
-    if (data.libraryId) {
-      prevActiveKeys.add(activeKey(data.libraryId, data.type))
-    }
     await fetchJobs()
-    startPolling()
   }
   return data
 }
@@ -79,11 +38,7 @@ async function triggerMatch(libraryId: number, fullRematch = false) {
     },
   })
   if (data) {
-    if (data.libraryId) {
-      prevActiveKeys.add(activeKey(data.libraryId, data.type))
-    }
     await fetchJobs()
-    startPolling()
   }
   return data
 }
@@ -93,14 +48,64 @@ function onJobDone(cb: JobDoneCallback) {
   return () => jobDoneListeners.delete(cb)
 }
 
+// Stable handler references for SSE (so off() works correctly)
+const sseHandlers = new Map<string, (data: any) => void>()
+
+function getHandler(eventType: string) {
+  let handler = sseHandlers.get(eventType)
+  if (!handler) {
+    handler = (data: any) => {
+      // Refresh job list on any library workflow event
+      fetchJobs()
+
+      // Notify job-done listeners on completion events
+      if (
+        eventType === 'library.sync_completed' ||
+        eventType === 'library.sync_failed' ||
+        eventType === 'library.match_completed' ||
+        eventType === 'library.match_failed'
+      ) {
+        const libraryId = data.libraryId
+        const jobType = eventType.startsWith('library.sync') ? 'sync_library' : 'match_library'
+        if (libraryId) {
+          jobDoneListeners.forEach((cb) => cb(libraryId, jobType))
+        }
+      }
+    }
+    sseHandlers.set(eventType, handler)
+  }
+  return handler
+}
+
+const eventTypes = [
+  'library.sync_started',
+  'library.sync_completed',
+  'library.sync_failed',
+  'library.match_started',
+  'library.match_progress',
+  'library.match_completed',
+  'library.match_failed',
+]
+
 export function useJobQueue() {
   subscribers++
-  fetchJobs().then(() => startPolling())
+
+  const { on, off } = useEventStream()
+
+  // Subscribe to SSE events
+  for (const type of eventTypes) {
+    on(type, getHandler(type))
+  }
+
+  // Initial fetch
+  fetchJobs()
 
   onUnmounted(() => {
     subscribers--
+    for (const type of eventTypes) {
+      off(type, getHandler(type))
+    }
     if (subscribers <= 0) {
-      stopPolling()
       subscribers = 0
     }
   })

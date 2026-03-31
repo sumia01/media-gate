@@ -96,6 +96,7 @@
 - [x] Startup integrity checks — orphan record cleanup, torrent hash reconciliation with qBit client
 - [x] Download status lifecycle: pending → downloading → downloaded → importing → seeding → completed
 - [x] Release folder isolation — each import creates a release subfolder, companion files (subtitles, NFO, images) imported alongside video
+- [x] Event bus + SSE — internal event bus (Go channels) with typed events for download lifecycle, library sync/match, media item changes; SSE endpoint for real-time frontend push; replaced polling in useJobQueue, DownloadList, LibraryDetailView, MediaDetailView
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜

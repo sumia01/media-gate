@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { Library, MediaItem, MediaFile, MediaProfile } from '@/types/api'
-import { useJobQueue } from '@/composables/useJobQueue'
+import { useEventStream } from '@/composables/useEventStream'
 import { parseGenres, profileImageUrl, posterUrl, formatBytes } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
@@ -13,7 +13,7 @@ import DownloadList from '@/components/media/DownloadList.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { onJobDone } = useJobQueue()
+const { on, off } = useEventStream()
 
 const item = ref<MediaItem | null>(null)
 const library = ref<Library | null>(null)
@@ -195,11 +195,28 @@ function onDownloadsChanged() {
   }
 }
 
-const removeJobDoneListener = onJobDone((libraryId) => {
-  if (item.value && item.value.libraryId === libraryId) {
+// SSE: refresh media item when import/resync/match events affect this item
+function handleMediaEvent(data: any) {
+  if (item.value && data.mediaItemId === item.value.id) {
     fetchItem(item.value.id)
   }
-})
+}
+
+function handleImportEvent(data: any) {
+  if (item.value && data.mediaItemId === item.value.id) {
+    fetchFiles(item.value.id)
+    episodeRefreshKey.value++
+  }
+}
+
+const mediaEvents = [
+  'media.item_matched',
+  'media.resync_completed',
+]
+
+const importEvents = [
+  'download.import_completed',
+]
 
 function loadAll() {
   const id = Number(route.params.id)
@@ -207,8 +224,23 @@ function loadAll() {
   fetchProfiles()
 }
 
-onMounted(loadAll)
-onUnmounted(removeJobDoneListener)
+onMounted(() => {
+  loadAll()
+  for (const type of mediaEvents) {
+    on(type, handleMediaEvent)
+  }
+  for (const type of importEvents) {
+    on(type, handleImportEvent)
+  }
+})
+onUnmounted(() => {
+  for (const type of mediaEvents) {
+    off(type, handleMediaEvent)
+  }
+  for (const type of importEvents) {
+    off(type, handleImportEvent)
+  }
+})
 watch(() => route.params.id, loadAll)
 </script>
 
