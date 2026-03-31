@@ -52,6 +52,27 @@ const hasActiveDownloads = computed(() =>
   )
 )
 
+// Progress polling — SSE handles state transitions, but progress/speed
+// data comes from server-side qBit polling and needs periodic fetching.
+let progressTimer: ReturnType<typeof setInterval> | null = null
+
+function startProgressPoll() {
+  if (progressTimer) return
+  progressTimer = setInterval(fetchDownloads, 3000)
+}
+
+function stopProgressPoll() {
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
+}
+
+watch(hasActiveDownloads, (active) => {
+  if (active) startProgressPoll()
+  else stopProgressPoll()
+})
+
 async function fetchDownloads() {
   const { data } = await client.GET('/downloads', {
     params: { query: { mediaItemId: props.mediaItemId } },
@@ -169,12 +190,15 @@ const downloadEvents = [
 ]
 
 onMounted(() => {
-  fetchDownloads()
+  fetchDownloads().then(() => {
+    if (hasActiveDownloads.value) startProgressPoll()
+  })
   for (const type of downloadEvents) {
     on(type, handleDownloadEvent)
   }
 })
 onUnmounted(() => {
+  stopProgressPoll()
   for (const type of downloadEvents) {
     off(type, handleDownloadEvent)
   }
