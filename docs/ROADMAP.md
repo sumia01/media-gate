@@ -75,6 +75,7 @@
 - [x] Download model + CRUD API (persistent Download records, POST/GET/PUT /downloads)
 - [x] IndexerSearchModal — search indexers from media detail page with indexer dropdown
 - [x] Search result season/episode matching — parse SxxExx from torrent titles, sort and highlight full (season+episode) and partial (season) matches in IndexerSearchModal
+- [x] Quality profile match indicator — yellow star on search results matching media item's profile (resolution + source)
 - [x] Search buttons at item, season, and episode level (EpisodeGrid)
 - [x] Episode download status display (computed from Download records, shown in EpisodeGrid)
 - [x] Auto-refresh episode list when closing search modal after adding downloads
