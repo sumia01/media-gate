@@ -265,7 +265,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
     </div>
 
     <!-- Results table -->
-    <div v-else class="overflow-x-auto">
+    <div v-else class="overflow-auto min-h-0">
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-[#0f1225]">
           <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
