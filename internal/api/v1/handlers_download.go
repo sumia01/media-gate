@@ -159,6 +159,10 @@ func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestOb
 	// Remove imported library files if the download was linked and deleteFiles requested.
 	if deleteFiles && dl.LinkedToLibrary {
 		h.cleanupImportedFiles(dl)
+		// Recalculate media item status after file removal.
+		if err := h.syncSvc.RecalcMediaItemStatus(dl.MediaItemID); err != nil {
+			slog.Warn("delete download: status recalc failed", "media_item_id", dl.MediaItemID, "error", err)
+		}
 	}
 
 	if err := h.store.DeleteDownload(dl.ID); err != nil {
