@@ -146,7 +146,7 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 	meta, _ := s.store.GetMediaMetadataByMediaItem(dl.MediaItemID)
 
 	// Build target directory
-	targetDir := buildTargetDir(lib, item, meta, dl.SeasonNumber)
+	targetDir := BuildTargetDir(lib, item, meta, dl.SeasonNumber)
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		slog.Error("importer: failed to create target dir", "download_id", dl.ID, "path", targetDir, "error", err)
 		s.failImport(dl, "failed to create target directory")
@@ -154,7 +154,7 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 	}
 
 	// Create release subfolder to isolate this download's files
-	releaseName := buildReleaseFolderName(dl.Title)
+	releaseName := BuildReleaseFolderName(dl.Title)
 	releaseDir := filepath.Join(targetDir, releaseName)
 	if err := os.MkdirAll(releaseDir, 0755); err != nil {
 		slog.Error("importer: failed to create release dir", "download_id", dl.ID, "path", releaseDir, "error", err)

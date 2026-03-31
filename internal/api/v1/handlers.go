@@ -16,6 +16,7 @@ import (
 
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
+	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
@@ -1352,13 +1353,19 @@ func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestOb
 		return nil, err
 	}
 
+	deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
+
 	if dl.ClientTorrentHash != "" {
 		if client, err := h.getQBitClient(); err == nil {
-			deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
 			if err := client.DeleteTorrent(dl.ClientTorrentHash, deleteFiles); err != nil {
 				slog.Warn("failed to remove torrent from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
 			}
 		}
+	}
+
+	// Remove imported library files if the download was linked and deleteFiles requested.
+	if deleteFiles && dl.LinkedToLibrary {
+		h.cleanupImportedFiles(dl)
 	}
 
 	if err := h.store.DeleteDownload(dl.ID); err != nil {
@@ -1366,6 +1373,55 @@ func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestOb
 	}
 
 	return DeleteDownload204Response{}, nil
+}
+
+// cleanupImportedFiles removes library files that were imported from a specific download.
+// It reconstructs the release folder path and removes matching MediaFile records + disk files.
+func (h *Handlers) cleanupImportedFiles(dl *store.Download) {
+	item, err := h.store.GetMediaItem(dl.MediaItemID)
+	if err != nil {
+		slog.Warn("cleanup: media item not found, skipping library file cleanup", "download_id", dl.ID, "error", err)
+		return
+	}
+	lib, err := h.store.GetLibrary(item.LibraryID)
+	if err != nil {
+		slog.Warn("cleanup: library not found, skipping library file cleanup", "download_id", dl.ID, "error", err)
+		return
+	}
+
+	meta, _ := h.store.GetMediaMetadataByMediaItem(dl.MediaItemID)
+	targetDir := importer.BuildTargetDir(lib, item, meta, dl.SeasonNumber)
+	releaseDir := filepath.Join(targetDir, importer.BuildReleaseFolderName(dl.Title))
+
+	// Find MediaFiles belonging to this release folder.
+	allFiles, _ := h.store.ListMediaFilesByMediaItem(item.ID)
+	var matchedPaths []string
+	prefix := releaseDir + string(filepath.Separator)
+	for _, mf := range allFiles {
+		if strings.HasPrefix(mf.Path, prefix) {
+			if err := os.Remove(mf.Path); err != nil && !os.IsNotExist(err) {
+				slog.Warn("cleanup: failed to remove library file", "path", mf.Path, "error", err)
+			}
+			matchedPaths = append(matchedPaths, mf.Path)
+		}
+	}
+
+	// Remove MediaFile DB records.
+	if len(matchedPaths) > 0 {
+		if err := h.store.DeleteMediaFilesByPaths(matchedPaths); err != nil {
+			slog.Warn("cleanup: failed to delete media file records", "download_id", dl.ID, "error", err)
+		}
+	}
+
+	// Remove the release folder if only companion files remain.
+	if onlyCompanionsLeft(releaseDir) {
+		if err := os.RemoveAll(releaseDir); err != nil {
+			slog.Warn("cleanup: failed to remove release dir", "path", releaseDir, "error", err)
+		}
+	}
+
+	// Clean up empty parent directories up to library root.
+	removeEmptyParents(filepath.Dir(releaseDir), lib.Path)
 }
 
 func (h *Handlers) ListDownloadFiles(_ context.Context, req ListDownloadFilesRequestObject) (ListDownloadFilesResponseObject, error) {

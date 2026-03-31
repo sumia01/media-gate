@@ -12,10 +12,10 @@ import (
 // illegalChars matches characters not allowed in file/folder names across OS.
 var illegalChars = regexp.MustCompile(`[/\\:*?"<>|]`)
 
-// buildTargetDir returns the library directory where imported files should be placed.
+// BuildTargetDir returns the library directory where imported files should be placed.
 // Movie:  {lib.Path}/{Title} ({Year})/
 // Series: {lib.Path}/{Title} ({Year})/Season {XX}/
-func buildTargetDir(lib *store.Library, item *store.MediaItem, meta *store.MediaMetadata, seasonNumber *int) string {
+func BuildTargetDir(lib *store.Library, item *store.MediaItem, meta *store.MediaMetadata, seasonNumber *int) string {
 	title, year := item.Title, item.Year
 	if meta != nil {
 		if meta.Title != "" {
@@ -51,9 +51,9 @@ func sanitizePath(name string) string {
 	return s
 }
 
-// buildReleaseFolderName returns a filesystem-safe folder name derived from a
+// BuildReleaseFolderName returns a filesystem-safe folder name derived from a
 // torrent/release title. The name is sanitized and truncated to 200 characters.
-func buildReleaseFolderName(title string) string {
+func BuildReleaseFolderName(title string) string {
 	s := illegalChars.ReplaceAllString(title, "")
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, ".")
