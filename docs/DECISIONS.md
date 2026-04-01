@@ -599,3 +599,25 @@ SQLite requires `PRAGMA foreign_keys = ON` to enforce FK constraints, enabled at
 No DB schema changes are required — companion files are isolated by the filesystem structure. The sync service already descends into non-season subdirectories (release folders), so it continues to discover video files inside release subfolders without modification. The delete handler is backward-compatible with the old flat layout: `onlyCompanionsLeft` returns false when other items' video files are present, preventing accidental `RemoveAll`.
 
 **Rationale**: Filesystem isolation via release subfolders is the simplest approach — no new DB tables, no migration, no companion file lifecycle management. Each release is self-contained: its video + companion files live together and are cleaned up together. This matches how Plex/Jellyfin resolve sidecar subtitles (by filename adjacency within the same folder).
+
+---
+
+## ADR-045: Path traversal protection across all filesystem operations
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: The application creates directories and writes files based on user input (library paths, download paths) and external data (torrent file names from qBittorrent API, media titles from TMDB/TVDB). Without validation, a malicious torrent with `../../etc/cron.d/evil` in its file names could cause the importer to read or write files outside the intended directories.
+
+**Decision**: Three layers of path traversal defense:
+
+1. **Library service** (`internal/library/service.go`): `validatePath()` uses `filepath.Clean` + `strings.HasPrefix` to ensure all library paths (Create, Update, Browse) stay within `LIBRARY_BASEPATH`. Rejects prefix tricks (e.g., `basePath + "evil"`), relative paths, and empty/whitespace input.
+
+2. **Settings service** (`internal/settings/service.go`): `validateDownloadPath()` applies the same `filepath.Clean` + `HasPrefix` check to the `qbit_download_path` setting, plus mutual exclusion with existing library paths.
+
+3. **Importer** (`internal/importer/path.go`): `safePath()` validates that both source (download dir) and destination (library dir) paths stay within their respective base directories during the import loop. Torrent file names from the qBittorrent API are validated before any filesystem operation (hardlink, copy, mkdir). Files that fail validation are skipped with a warning log.
+
+Additionally, `sanitizePath()` in the importer strips `/`, `\`, and other illegal characters from media titles (TMDB/TVDB) and release folder names before using them in `filepath.Join`, preventing title-based traversal.
+
+**Known limitation**: Symlinks inside allowed directories that point outside are not detected by the string-prefix check. The OS-level path stays within the base, but the resolved target may not. This is documented in test suite (`TestSymlinkTraversal_DocumentedLimitation`). In practice, symlink creation requires existing filesystem access within the base path, and Docker bind-mounts provide an additional boundary.
+
+**Rationale**: Defense in depth — user-facing inputs (library paths, download paths) are validated at the API boundary, and external data (torrent file names) is validated at the import boundary. The `filepath.Clean` + `HasPrefix` pattern is simple, stdlib-only, and proven effective against all standard traversal vectors on Linux. Comprehensive test coverage (69 test cases across 3 packages) exercises adversarial paths including `../`, prefix tricks, empty strings, unicode look-alike slashes, null bytes, and basePath parent escapes.
