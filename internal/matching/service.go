@@ -142,7 +142,11 @@ func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaTy
 	}
 
 	// Fetch full details and save metadata
-	return s.applyMatch(item, source, apiKey, mediaType, best.ExternalID, best.Confidence)
+	if err := s.applyMatch(item, source, apiKey, mediaType, best.ExternalID, best.Confidence); err != nil {
+		return err
+	}
+	s.DownloadPoster(item.ID)
+	return nil
 }
 
 func (s *Service) SearchCandidates(query, mediaType string, year *int, source string) ([]Candidate, error) {
@@ -225,7 +229,11 @@ func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) e
 	// Delete existing episodes
 	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
 
-	return s.applyMatch(item, source, apiKey, item.MediaType, externalID, 1.0)
+	if err := s.applyMatch(item, source, apiKey, item.MediaType, externalID, 1.0); err != nil {
+		return err
+	}
+	s.DownloadPoster(item.ID)
+	return nil
 }
 
 func (s *Service) Unmatch(mediaItemID uint) error {
@@ -321,7 +329,7 @@ func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalI
 		return nil, fmt.Errorf("creating media item: %w", err)
 	}
 
-	// Apply match (fetches details, creates metadata, downloads poster)
+	// Apply match (fetches details, creates metadata — poster downloaded separately after tx commit)
 	if err := s.applyMatch(item, source, apiKey, lib.MediaType, externalID, 1.0); err != nil {
 		// Clean up on failure
 		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
@@ -366,18 +374,6 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 		return fmt.Errorf("saving metadata: %w", err)
 	}
 
-	// Download poster
-	posterURL := s.posterURL(source, meta)
-	if posterURL != "" {
-		dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", item.ID))
-		if err := downloadPoster(s.httpClient, posterURL, dest); err != nil {
-			slog.Warn("poster download failed", "item_id", item.ID, "error", err)
-		} else {
-			meta.PosterPath = fmt.Sprintf("%d.jpg", item.ID)
-			_ = s.store.UpdateMediaMetadata(meta)
-		}
-	}
-
 	if item.Source != "request" {
 		item.Status = "available"
 	}
@@ -391,6 +387,29 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 	}
 
 	return nil
+}
+
+// DownloadPoster fetches the poster image for a media item and updates the metadata.
+// This is intentionally separate from applyMatch so it can run outside a DB transaction.
+func (s *Service) DownloadPoster(itemID uint) {
+	meta, err := s.store.GetMediaMetadataByMediaItem(itemID)
+	if err != nil || meta == nil {
+		return
+	}
+
+	posterURL := s.posterURL(meta.Source, meta)
+	if posterURL == "" {
+		return
+	}
+
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := downloadPoster(s.httpClient, posterURL, dest); err != nil {
+		slog.Warn("poster download failed", "item_id", itemID, "error", err)
+		return
+	}
+
+	meta.PosterPath = fmt.Sprintf("%d.jpg", itemID)
+	_ = s.store.UpdateMediaMetadata(meta)
 }
 
 type episodeData struct {

@@ -662,7 +662,7 @@ Per-season monitoring via `SeasonMonitor` model (default: all seasons monitored)
 
 2. **Extended `AddMediaRequest`**: The `POST /libraries/{id}/media` body now accepts optional `monitored`, `mediaProfileId`, and `seasonMonitors[]` fields. Everything is sent in a single request.
 
-3. **DB transaction**: The handler wraps the entire create flow in `Store.WithTx` — a new method on the Store interface that runs a callback inside a GORM transaction. The matching service is given a transactional store via `matching.Service.WithStore(txStore)`. If any step fails (item creation, metadata fetch, season monitor creation), the entire transaction rolls back — no partial records.
+3. **DB transaction**: The handler wraps the entire create flow in `Store.WithTx` — a new method on the Store interface that runs a callback inside a GORM transaction. The matching service is given a transactional store via `matching.Service.WithStore(txStore)`. If any step fails (item creation, metadata fetch, season monitor creation), the entire transaction rolls back — no partial records. Poster download runs after the transaction commits to minimize lock duration (network I/O outside the transaction).
 
 The `WithTx` implementation creates a `SQLiteStore` backed by the transactional `*gorm.DB`, so all existing store methods automatically participate in the transaction.
 
@@ -682,4 +682,4 @@ The `WithTx` implementation creates a `SQLiteStore` backed by the transactional 
 
 For services that need to participate in a caller's transaction, a `WithStore(store.Store) *Service` pattern creates a shallow clone of the service using the transactional store. Currently implemented on `matching.Service`.
 
-**Rationale**: Adding transaction support at the Store interface level means any handler or service can wrap multi-step writes atomically. The `SQLiteStore{db: tx}` approach requires zero changes to existing CRUD methods. The `WithStore` pattern keeps services unaware of transaction management — the caller controls the transaction scope.
+**Rationale**: Adding transaction support at the Store interface level means any handler or service can wrap multi-step writes atomically. The `SQLiteStore{db: tx}` approach requires zero changes to existing CRUD methods. The `WithStore` pattern keeps services unaware of transaction management — the caller controls the transaction scope. Poster download is extracted from `applyMatch` into a separate `DownloadPoster` method called after transaction commit — all callers (`matchSingleItem`, `ManualMatch`, `AddMediaToLibrary` handler) follow this pattern to avoid holding DB write locks during network I/O.
