@@ -14,7 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/store"
 )
 
-const pollInterval = 15 * time.Minute
+const defaultPollInterval = 15 * time.Minute
 
 // activeStatuses are download statuses that indicate work is in progress or complete.
 // If a download has one of these statuses, the item/episode should not be re-downloaded.
@@ -47,7 +47,6 @@ func NewService(s store.Store, indexerSvc *indexer.Service, settingsSvc *setting
 
 func (s *Service) Start() {
 	go s.run()
-	slog.Info("monitor worker started", "interval", pollInterval)
 }
 
 func (s *Service) Stop() {
@@ -55,8 +54,12 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) run() {
-	ticker := time.NewTicker(pollInterval)
+	settingsCh := s.settings.Subscribe()
+	interval := s.settings.GetDurationWithDefault(settings.KeyWorkerMonitorInterval, defaultPollInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	slog.Info("monitor worker started", "interval", interval)
 
 	// Run once after a short startup delay to let other services initialize.
 	time.Sleep(30 * time.Second)
@@ -68,6 +71,15 @@ func (s *Service) run() {
 			return
 		case <-ticker.C:
 			s.processOnce()
+		case key := <-settingsCh:
+			if key == settings.KeyWorkerMonitorInterval {
+				newInterval := s.settings.GetDurationWithDefault(settings.KeyWorkerMonitorInterval, defaultPollInterval)
+				if newInterval != interval {
+					interval = newInterval
+					ticker.Reset(interval)
+					slog.Info("monitor interval updated", "interval", interval)
+				}
+			}
 		}
 	}
 }

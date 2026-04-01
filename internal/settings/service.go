@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
@@ -24,6 +27,10 @@ const (
 	KeyQBitDownloadPath       = "qbit_download_path"
 	KeyQBitCategory           = "qbit_category"
 	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
+
+	KeyWorkerMonitorInterval  = "worker_monitor_interval"
+	KeyWorkerDownloadInterval = "worker_download_interval"
+	KeyWorkerImporterInterval = "worker_importer_interval"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -43,12 +50,34 @@ var (
 )
 
 type Service struct {
-	store    store.Store
-	basePath string
+	store       store.Store
+	basePath    string
+	subscribers []chan string
+	mu          sync.Mutex
 }
 
 func NewService(s store.Store, basePath string) *Service {
 	return &Service{store: s, basePath: filepath.Clean(basePath)}
+}
+
+// Subscribe returns a channel that receives the key name whenever a setting is updated.
+func (s *Service) Subscribe() <-chan string {
+	ch := make(chan string, 16)
+	s.mu.Lock()
+	s.subscribers = append(s.subscribers, ch)
+	s.mu.Unlock()
+	return ch
+}
+
+func (s *Service) notify(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ch := range s.subscribers {
+		select {
+		case ch <- key:
+		default:
+		}
+	}
 }
 
 func (s *Service) List() ([]store.Setting, error) {
@@ -79,6 +108,7 @@ func (s *Service) Update(items []KeyValue) error {
 		if err := s.store.SetSetting(setting); err != nil {
 			return fmt.Errorf("saving setting %q: %w", item.Key, err)
 		}
+		s.notify(item.Key)
 	}
 	return nil
 }
@@ -97,6 +127,18 @@ func (s *Service) GetWithDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return val
+}
+
+func (s *Service) GetDurationWithDefault(key string, defaultVal time.Duration) time.Duration {
+	val, err := s.Get(key)
+	if err != nil {
+		return defaultVal
+	}
+	seconds, err := strconv.Atoi(val)
+	if err != nil || seconds <= 0 {
+		return defaultVal
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func (s *Service) TestTMDB(apiKey *string) (bool, string, error) {

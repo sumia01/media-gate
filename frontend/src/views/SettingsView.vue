@@ -46,12 +46,20 @@ const qbCategoryDirty = ref(false)
 const seasonPackPref = ref('prefer_packs')
 const seasonPackPrefDirty = ref(false)
 
+const monitorInterval = ref('900')
+const downloadInterval = ref('5')
+const importerInterval = ref('10')
+const monitorIntervalDirty = ref(false)
+const downloadIntervalDirty = ref(false)
+const importerIntervalDirty = ref(false)
+
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
   qbDownloadPathDirty.value || qbCategoryDirty.value ||
-  seasonPackPrefDirty.value
+  seasonPackPrefDirty.value ||
+  monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value
 )
 
 async function fetchSettings() {
@@ -76,6 +84,9 @@ async function fetchSettings() {
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
     if (s.key === 'qbit_category') qbCategory.value = s.value
     if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
+    if (s.key === 'worker_monitor_interval') monitorInterval.value = s.value
+    if (s.key === 'worker_download_interval') downloadInterval.value = s.value
+    if (s.key === 'worker_importer_interval') importerInterval.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -88,6 +99,9 @@ async function fetchSettings() {
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
   seasonPackPrefDirty.value = false
+  monitorIntervalDirty.value = false
+  downloadIntervalDirty.value = false
+  importerIntervalDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -133,6 +147,15 @@ async function saveSettings() {
   if (seasonPackPrefDirty.value) {
     items.push({ key: 'monitor_season_pack_preference', value: seasonPackPref.value })
   }
+  if (monitorIntervalDirty.value) {
+    items.push({ key: 'worker_monitor_interval', value: monitorInterval.value })
+  }
+  if (downloadIntervalDirty.value) {
+    items.push({ key: 'worker_download_interval', value: downloadInterval.value })
+  }
+  if (importerIntervalDirty.value) {
+    items.push({ key: 'worker_importer_interval', value: importerInterval.value })
+  }
 
   if (items.length === 0) {
     saving.value = false
@@ -164,6 +187,9 @@ async function saveSettings() {
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
     if (s.key === 'qbit_category') qbCategory.value = s.value
     if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
+    if (s.key === 'worker_monitor_interval') monitorInterval.value = s.value
+    if (s.key === 'worker_download_interval') downloadInterval.value = s.value
+    if (s.key === 'worker_importer_interval') importerInterval.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -176,6 +202,9 @@ async function saveSettings() {
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
   seasonPackPrefDirty.value = false
+  monitorIntervalDirty.value = false
+  downloadIntervalDirty.value = false
+  importerIntervalDirty.value = false
 }
 
 async function testTmdb() {
@@ -514,6 +543,61 @@ onMounted(fetchSettings)
               <template v-else-if="seasonPackPref === 'prefer_episodes'">Always downloads individual episodes. Falls back to season packs only when no episode match is found.</template>
               <template v-else>Only downloads full season packs. Never downloads individual episodes.</template>
             </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workers section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Workers</h2>
+
+      <div class="space-y-4">
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <p class="text-[10px] text-gray-500 mb-4">Poll intervals for background workers. Changes take effect immediately without restart.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Monitor interval -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Monitor Interval (seconds)</label>
+              <input
+                v-model="monitorInterval"
+                type="number"
+                min="60"
+                max="86400"
+                placeholder="900"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="monitorIntervalDirty = true"
+              />
+              <p class="text-[10px] text-gray-500 mt-1">How often to scan for new releases. Default: 900 (15 min)</p>
+            </div>
+
+            <!-- Download interval -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Interval (seconds)</label>
+              <input
+                v-model="downloadInterval"
+                type="number"
+                min="1"
+                max="3600"
+                placeholder="5"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="downloadIntervalDirty = true"
+              />
+              <p class="text-[10px] text-gray-500 mt-1">How often to check download progress. Default: 5</p>
+            </div>
+
+            <!-- Importer interval -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Importer Interval (seconds)</label>
+              <input
+                v-model="importerInterval"
+                type="number"
+                min="1"
+                max="3600"
+                placeholder="10"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="importerIntervalDirty = true"
+              />
+              <p class="text-[10px] text-gray-500 mt-1">How often to import completed downloads. Default: 10</p>
+            </div>
           </div>
         </div>
       </div>
