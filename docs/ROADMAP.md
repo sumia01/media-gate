@@ -71,7 +71,7 @@
 - [x] Per-indexer seeding rules (seedMinRatio, seedMinTime)
 - [x] "Try it out" modal — meta search + indexer search from indexer management page
 
-## Phase 3: Download Management (Sonarr/Radarr replacement) ⬜
+## Phase 3: Download Management (Sonarr/Radarr replacement) ✅
 - [x] Download model + CRUD API (persistent Download records, POST/GET/PUT /downloads)
 - [x] IndexerSearchModal — search indexers from media detail page with indexer dropdown
 - [x] Search result season/episode matching — parse SxxExx from torrent titles, sort and highlight full (season+episode) and partial (season) matches in IndexerSearchModal
@@ -108,7 +108,7 @@
 - [x] Atomic Add-to-Library — external episode prefetch endpoint, extended AddMediaRequest with seasonMonitors/monitored/mediaProfileId, DB transaction wrapping entire create flow (Store.WithTx), fully client-side modal until final submit
 - [x] Configurable worker poll intervals — DB settings for monitor/download/importer intervals with live notification and dynamic ticker reset, frontend Settings UI
 - [x] Typed settings API — replaced generic key-value array with explicit typed fields per setting (string/integer/enum), eliminating stringly-typed bugs
-- [ ] Auto-download based on watchlist
+- [x] Auto-download based on watchlist (implemented as auto-grab monitor worker)
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
 - [x] Requested media items (source: request, status: requested) — foundation
