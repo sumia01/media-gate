@@ -30,12 +30,17 @@ const (
 
 // Media item events.
 const (
-	MediaItemSynced       EventType = "media.item_synced"
-	MediaItemRemoved      EventType = "media.item_removed"
-	MediaItemMatched      EventType = "media.item_matched"
-	MediaItemDeleteReq    EventType = "media.item_delete_requested"
-	MediaItemDeleted      EventType = "media.item_deleted"
-	ResyncCompleted       EventType = "media.resync_completed"
+	MediaItemSynced    EventType = "media.item_synced"
+	MediaItemRemoved   EventType = "media.item_removed"
+	MediaItemMatched   EventType = "media.item_matched"
+	MediaItemDeleteReq EventType = "media.item_delete_requested"
+	MediaItemDeleted   EventType = "media.item_deleted"
+	ResyncCompleted    EventType = "media.resync_completed"
+)
+
+// Monitor worker events.
+const (
+	MonitorGrabbed EventType = "monitor.grabbed"
 )
 
 // Event is a single occurrence published on the bus.
@@ -103,4 +108,11 @@ type ResyncPayload struct {
 	Updated     int  `json:"updated,omitempty"`
 	Added       int  `json:"added,omitempty"`
 	Removed     int  `json:"removed,omitempty"`
+}
+
+// MonitorPayload carries monitor worker event data.
+type MonitorPayload struct {
+	MediaItemID uint   `json:"mediaItemId"`
+	Title       string `json:"title"`
+	ResultTitle string `json:"resultTitle"`
 }

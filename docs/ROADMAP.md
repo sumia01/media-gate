@@ -51,7 +51,7 @@
 - [x] Global search bar in topbar triggers add-media panel on library pages
 - [x] Global search rework — search overlay with movie/series toggle, media preview page, "Add to Library" modal with library picker, Esc to close
 - [x] Entity model redesign — split logical media (MediaItem) from physical files (MediaFile), add QualityProfile and SeasonMonitor models, quality profile CRUD API
-- [x] Update media item endpoint (`PATCH /media/{id}`) — assign quality profile, toggle monitor new seasons
+- [x] Update media item endpoint (`PATCH /media/{id}`) — assign quality profile, toggle monitored (auto-grab)
 - [x] Quality profile selector on media detail page
 - [x] Cast & crew display on media detail page
 - [x] Collapsible files list on media detail page (collapsed by default)
@@ -101,13 +101,16 @@
 - [x] Event bus + SSE — internal event bus (Go channels) with typed events for download lifecycle, library sync/match, media item changes; SSE endpoint for real-time frontend push; replaced polling in useJobQueue, DownloadList, LibraryDetailView, MediaDetailView
 - [x] Media item status recalculation — auto-recalc after import, download delete, and re-match based on file presence (available/partial/requested/missing); poster shown for all matched statuses; episode list auto-refreshes on download changes
 - [x] Path traversal protection — basePath validation on library/settings/importer; torrent file name validation during import; comprehensive test suite (69 cases)
+- [x] Auto-grab monitor worker — background worker polls every 15min for monitored items, searches indexers by IMDb ID with quality profile filtering, auto-creates downloads for released movies and aired episodes
+- [x] Season pack preference setting — global setting (prefer_packs/prefer_episodes/packs_only) controls season pack vs individual episode download strategy with 70% threshold
+- [x] Season monitor API — per-season monitored toggle (GET/PUT /media/{id}/season-monitors/{seasonNumber})
+- [x] Auto-grab UI — monitored toggle on media detail page, "Searching for Xd" indicator, per-season monitored badges in episode grid, release date in stats grid
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜
 - [x] Requested media items (source: request, status: requested) — foundation
 - [x] Quality profiles model + CRUD API (data model ready, frontend deferred)
 - [x] Quality profile assignment on media detail page (dropdown + PATCH endpoint)
-- [x] Monitor new seasons toggle on media detail page (series only)
 - [x] MediaFile model for multi-copy/multi-quality file tracking
 - [x] SeasonMonitor model for per-season monitoring
 - [x] Quality profile UI (list/create/edit)

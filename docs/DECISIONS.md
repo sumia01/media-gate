@@ -621,3 +621,29 @@ Additionally, `sanitizePath()` in the importer strips `/`, `\`, and other illega
 **Known limitation**: Symlinks inside allowed directories that point outside are not detected by the string-prefix check. The OS-level path stays within the base, but the resolved target may not. This is documented in test suite (`TestSymlinkTraversal_DocumentedLimitation`). In practice, symlink creation requires existing filesystem access within the base path, and Docker bind-mounts provide an additional boundary.
 
 **Rationale**: Defense in depth — user-facing inputs (library paths, download paths) are validated at the API boundary, and external data (torrent file names) is validated at the import boundary. The `filepath.Clean` + `HasPrefix` pattern is simple, stdlib-only, and proven effective against all standard traversal vectors on Linux. Comprehensive test coverage (69 test cases across 3 packages) exercises adversarial paths including `../`, prefix tricks, empty strings, unicode look-alike slashes, null bytes, and basePath parent escapes.
+
+---
+
+## ADR-046: Monitor worker with auto-grab and season pack preference
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: Users want to subscribe to movies and series so that new releases are automatically downloaded when they become available — the core Sonarr/Radarr auto-grab feature.
+
+**Decision**: A background monitor worker (`internal/monitor/`) polls every 15 minutes:
+
+1. **Movies**: Checks release date (from TMDB/TVDB metadata), searches indexers by IMDb ID, filters by quality profile, and creates a download for the best match.
+2. **Series**: Builds a list of "wanted" episodes (aired, in a monitored season, no file, no active download), groups by season, searches indexers per-season, and matches results to episodes.
+
+Season pack vs. individual episode preference is controlled by a global setting (`monitor_season_pack_preference`) with three modes:
+- `prefer_packs` (default): Season pack preferred when >= 70% of aired episodes in a season are missing; individual episodes for smaller gaps.
+- `prefer_episodes`: Always prefers individual episode torrents; season packs only as fallback.
+- `packs_only`: Only downloads season packs, never individual episodes.
+
+Per-season monitoring via `SeasonMonitor` model (default: all seasons monitored). `MonitorSearchStartedAt` tracks first unsuccessful search attempt for UI indicators.
+
+**Removed**: `MonitorNewSeasons` field — superseded by planned periodic metadata refresh worker that will detect new seasons automatically.
+
+**Deduplication**: Three-layer protection — wanted list filters out items with active downloads, fresh DB re-check before each `createAutoDownload` call (race condition guard), and active status map covering the full download lifecycle (pending → completed).
+
+**Rationale**: Polling-based approach (vs. webhook/push) is simpler and sufficient for the use case — release dates don't change frequently. The configurable season pack preference addresses the tension between download efficiency (fewer torrents, consistent quality) and bandwidth efficiency (don't re-download episodes you already have).

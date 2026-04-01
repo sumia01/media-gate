@@ -571,6 +571,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		if y := parseYear(details.ReleaseDate); y != nil {
 			meta.Year = y
 		}
+		meta.ReleaseDate = details.ReleaseDate
 		meta.Genres = genresToJSON(details.Genres)
 		meta.Credits = tmdbCreditsToJSON(details.Credits)
 	} else {
@@ -592,6 +593,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		if y := parseYear(details.FirstAirDate); y != nil {
 			meta.Year = y
 		}
+		meta.ReleaseDate = details.FirstAirDate
 		meta.Genres = genresToJSON(details.Genres)
 		meta.Credits = tmdbCreditsToJSON(details.Credits)
 	}
@@ -616,6 +618,7 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 	if y := parseYear(details.FirstAired); y != nil {
 		meta.Year = y
 	}
+	meta.ReleaseDate = details.FirstAired
 	meta.Credits = tvdbCharactersToJSON(details.Characters)
 	return nil
 }

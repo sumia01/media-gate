@@ -36,6 +36,7 @@ func (s *settingsStubStore) CountMediaItemsByLibrary(uint) (int64, error)       
 func (s *settingsStubStore) MediaItemExistsByExternalID(uint, string, int) (bool, error) {
 	return false, nil
 }
+func (s *settingsStubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
 
 func (s *settingsStubStore) CreateMediaMetadata(*store.MediaMetadata) error { return nil }
 func (s *settingsStubStore) GetMediaMetadataByMediaItem(uint) (*store.MediaMetadata, error) {

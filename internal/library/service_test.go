@@ -32,6 +32,7 @@ func (s *stubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error)
 func (s *stubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
 func (s *stubStore) CountMediaItemsByLibrary(uint) (int64, error)               { return 0, nil }
 func (s *stubStore) MediaItemExistsByExternalID(uint, string, int) (bool, error) { return false, nil }
+func (s *stubStore) ListMonitoredMediaItems() ([]store.MediaItem, error)         { return nil, nil }
 
 func (s *stubStore) CreateMediaMetadata(*store.MediaMetadata) error                { return nil }
 func (s *stubStore) GetMediaMetadataByMediaItem(uint) (*store.MediaMetadata, error) { return nil, nil }

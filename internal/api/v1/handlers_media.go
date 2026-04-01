@@ -58,8 +58,8 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 		item.MediaProfileID = &profileID
 	}
 
-	if req.Body.MonitorNewSeasons != nil {
-		item.MonitorNewSeasons = *req.Body.MonitorNewSeasons
+	if req.Body.Monitored != nil {
+		item.Monitored = *req.Body.Monitored
 	}
 
 	if err := h.store.UpdateMediaItem(item); err != nil {
@@ -478,4 +478,93 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 	})
 
 	return ListMediaEpisodes200JSONResponse{Seasons: seasons}, nil
+}
+
+func (h *Handlers) ListSeasonMonitors(_ context.Context, req ListSeasonMonitorsRequestObject) (ListSeasonMonitorsResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ListSeasonMonitors404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+	_ = item
+
+	monitors, err := h.store.ListSeasonMonitorsByMediaItem(uint(req.Id))
+	if err != nil {
+		return nil, err
+	}
+
+	apiMonitors := make([]SeasonMonitor, len(monitors))
+	for i, m := range monitors {
+		apiMonitors[i] = SeasonMonitor{
+			Id:           int64(m.ID),
+			MediaItemId:  int64(m.MediaItemID),
+			SeasonNumber: m.SeasonNumber,
+			Monitored:    m.Monitored,
+		}
+	}
+
+	return ListSeasonMonitors200JSONResponse{Monitors: apiMonitors}, nil
+}
+
+func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonitorRequestObject) (UpdateSeasonMonitorResponseObject, error) {
+	item, err := h.store.GetMediaItem(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateSeasonMonitor404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+	_ = item
+
+	// Look for existing SeasonMonitor for this season.
+	monitors, err := h.store.ListSeasonMonitorsByMediaItem(uint(req.Id))
+	if err != nil {
+		return nil, err
+	}
+
+	var existing *store.SeasonMonitor
+	for i := range monitors {
+		if monitors[i].SeasonNumber == req.SeasonNumber {
+			existing = &monitors[i]
+			break
+		}
+	}
+
+	if existing != nil {
+		existing.Monitored = req.Body.Monitored
+		if err := h.store.UpdateSeasonMonitor(existing); err != nil {
+			return nil, err
+		}
+		return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
+			Id:           int64(existing.ID),
+			MediaItemId:  int64(existing.MediaItemID),
+			SeasonNumber: existing.SeasonNumber,
+			Monitored:    existing.Monitored,
+		}), nil
+	}
+
+	// Create new SeasonMonitor.
+	sm := &store.SeasonMonitor{
+		MediaItemID:  uint(req.Id),
+		SeasonNumber: req.SeasonNumber,
+		Monitored:    req.Body.Monitored,
+	}
+	if err := h.store.CreateSeasonMonitor(sm); err != nil {
+		return nil, err
+	}
+
+	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
+		Id:           int64(sm.ID),
+		MediaItemId:  int64(sm.MediaItemID),
+		SeasonNumber: sm.SeasonNumber,
+		Monitored:    sm.Monitored,
+	}), nil
 }

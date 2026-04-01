@@ -42,9 +42,10 @@ func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem 
 		mpID := int64(*item.MediaProfileID)
 		apiItem.MediaProfileId = &mpID
 	}
-	if item.MonitorNewSeasons {
-		apiItem.MonitorNewSeasons = &item.MonitorNewSeasons
+	if item.Monitored {
+		apiItem.Monitored = &item.Monitored
 	}
+	apiItem.MonitorSearchStartedAt = item.MonitorSearchStartedAt
 	if meta != nil {
 		apiMeta := mediaMetadataToAPI(meta)
 		apiItem.Metadata = &apiMeta
@@ -87,6 +88,9 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 	}
 	if meta.Seasons != nil {
 		m.Seasons = meta.Seasons
+	}
+	if meta.ReleaseDate != "" {
+		m.ReleaseDate = &meta.ReleaseDate
 	}
 	if meta.Credits != "" {
 		var credits []CreditPerson

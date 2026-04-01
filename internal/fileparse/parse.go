@@ -97,13 +97,23 @@ func Parse(filename string) FileInfo {
 		info.EpisodeNumber = &e
 	}
 
-	// Resolution
-	if m := resRe.FindStringSubmatch(filename); m != nil {
-		info.Resolution = m[1] + "p"
-	}
+	info.Resolution = ParseResolution(filename)
+	info.SourceType = ParseSource(filename)
 
-	// Source type: try longer aliases first so "webrip" matches before "web"
-	lower := strings.ToLower(filename)
+	return info
+}
+
+// ParseResolution extracts a resolution string from text (e.g. "1080p", "2160p").
+func ParseResolution(text string) string {
+	if m := resRe.FindStringSubmatch(text); m != nil {
+		return m[1] + "p"
+	}
+	return ""
+}
+
+// ParseSource extracts a canonical source type from text (e.g. "bluray", "webdl").
+func ParseSource(text string) string {
+	lower := strings.ToLower(text)
 	bestAlias := ""
 	bestCanonical := ""
 	for alias, canonical := range sourceAliases {
@@ -112,11 +122,7 @@ func Parse(filename string) FileInfo {
 			bestCanonical = canonical
 		}
 	}
-	if bestCanonical != "" {
-		info.SourceType = bestCanonical
-	}
-
-	return info
+	return bestCanonical
 }
 
 func IsVideoFile(name string) bool {

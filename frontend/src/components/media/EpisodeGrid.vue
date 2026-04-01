@@ -26,6 +26,18 @@ async function fetchEpisodes() {
   loading.value = false
 }
 
+async function toggleSeasonMonitor(seasonNumber: number, currentMonitored: boolean) {
+  await client.PUT('/media/{id}/season-monitors/{seasonNumber}', {
+    params: { path: { id: props.mediaItemId, seasonNumber } },
+    body: { monitored: !currentMonitored },
+  })
+  // Update local state
+  const season = seasons.value.find(s => s.seasonNumber === seasonNumber)
+  if (season) {
+    season.monitored = !currentMonitored
+  }
+}
+
 function toggleSeason(seasonNumber: number) {
   const s = new Set(expandedSeasons.value)
   if (s.has(seasonNumber)) {
@@ -98,9 +110,19 @@ watch(() => props.refreshKey, fetchEpisodes)
             </span>
             <span
               v-if="!season.monitored"
-              class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-600/20 text-gray-400"
+              class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-600/20 text-gray-400 cursor-pointer hover:bg-emerald-600/20 hover:text-emerald-300 transition-colors duration-200"
+              title="Click to monitor this season"
+              @click.stop="toggleSeasonMonitor(season.seasonNumber, false)"
             >
               unmonitored
+            </span>
+            <span
+              v-else
+              class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 cursor-pointer hover:bg-gray-600/20 hover:text-gray-400 transition-colors duration-200"
+              title="Click to unmonitor this season"
+              @click.stop="toggleSeasonMonitor(season.seasonNumber, true)"
+            >
+              monitored
             </span>
             <button
               class="px-2 py-0.5 rounded-md text-[10px] text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
