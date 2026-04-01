@@ -119,11 +119,15 @@
 - [x] Quality profile UI (list/create/edit)
 - [x] Multi-copy handling (same media in different qualities)
 - [x] Series episode tracking (which seasons/episodes are present/missing)
-- [ ] Season bundles vs standalone episodes vs complete series downloads
-- [ ] Request approval / auto-approve rules
+- [x] Season bundles vs standalone episodes vs complete series downloads (implemented as season pack preference setting with prefer_packs/prefer_episodes/packs_only modes)
 - [ ] User management (if multi-user)
 
+## Phase 4.5: Security Hardening ⬜
+- [ ] AES-256 encryption for sensitive settings (API keys, passwords) at rest in the database
+- [ ] Encryption salt via environment variable (`MEDIAGATE_ENCRYPTION_SALT`) — required for key derivation, must not be stored in DB
+
 ## Phase 5: Observability & Polish ⬜
+- [ ] Initial setup wizard / onboarding flow (guide through API keys, download client, library creation on first launch)
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
