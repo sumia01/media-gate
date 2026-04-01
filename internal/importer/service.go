@@ -195,6 +195,16 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		srcPath := filepath.Join(dl.SavePath, f.Name)
 		dstPath := filepath.Join(releaseDir, relPath)
 
+		// Validate paths stay within allowed boundaries
+		if err := safePath(dl.SavePath, srcPath); err != nil {
+			slog.Warn("importer: skipping file with path traversal in source", "download_id", dl.ID, "file", f.Name)
+			continue
+		}
+		if err := safePath(releaseDir, dstPath); err != nil {
+			slog.Warn("importer: skipping file with path traversal in destination", "download_id", dl.ID, "file", f.Name)
+			continue
+		}
+
 		// Ensure subdirectories exist (e.g., Subs/)
 		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 			slog.Warn("importer: failed to create subdir", "download_id", dl.ID, "path", filepath.Dir(dstPath), "error", err)

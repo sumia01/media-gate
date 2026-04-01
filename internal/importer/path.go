@@ -65,3 +65,14 @@ func BuildReleaseFolderName(title string) string {
 	}
 	return s
 }
+
+// safePath checks that the resolved path stays within the given base directory.
+// Returns an error if the cleaned path escapes base.
+func safePath(base, path string) error {
+	cleanBase := filepath.Clean(base)
+	clean := filepath.Clean(path)
+	if clean != cleanBase && !strings.HasPrefix(clean, cleanBase+string(filepath.Separator)) {
+		return fmt.Errorf("path %q escapes base %q", path, base)
+	}
+	return nil
+}
