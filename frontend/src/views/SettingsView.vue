@@ -43,11 +43,15 @@ const qbDownloadPathDirty = ref(false)
 const qbCategory = ref('')
 const qbCategoryDirty = ref(false)
 
+const seasonPackPref = ref('prefer_packs')
+const seasonPackPrefDirty = ref(false)
+
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
-  qbDownloadPathDirty.value || qbCategoryDirty.value
+  qbDownloadPathDirty.value || qbCategoryDirty.value ||
+  seasonPackPrefDirty.value
 )
 
 async function fetchSettings() {
@@ -71,6 +75,7 @@ async function fetchSettings() {
     if (s.key === 'qbit_password') qbPassword.value = s.value
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
     if (s.key === 'qbit_category') qbCategory.value = s.value
+    if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -82,6 +87,7 @@ async function fetchSettings() {
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
+  seasonPackPrefDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -124,6 +130,9 @@ async function saveSettings() {
   if (qbCategoryDirty.value) {
     items.push({ key: 'qbit_category', value: qbCategory.value })
   }
+  if (seasonPackPrefDirty.value) {
+    items.push({ key: 'monitor_season_pack_preference', value: seasonPackPref.value })
+  }
 
   if (items.length === 0) {
     saving.value = false
@@ -154,6 +163,7 @@ async function saveSettings() {
     if (s.key === 'qbit_password') qbPassword.value = s.value
     if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
     if (s.key === 'qbit_category') qbCategory.value = s.value
+    if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -165,6 +175,7 @@ async function saveSettings() {
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
+  seasonPackPrefDirty.value = false
 }
 
 async function testTmdb() {
@@ -478,6 +489,31 @@ onMounted(fetchSettings)
                 @input="tvdbRateLimitDirty = true"
               />
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monitor section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Monitor</h2>
+
+      <div class="space-y-4">
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">Season Pack Preference</label>
+            <select
+              v-model="seasonPackPref"
+              class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+              @change="seasonPackPrefDirty = true"
+            >
+              <option value="prefer_packs">Prefer season packs</option>
+              <option value="prefer_episodes">Prefer episodes</option>
+              <option value="packs_only">Season packs only</option>
+            </select>
+            <p class="text-[10px] text-gray-500 mt-2">
+              <template v-if="seasonPackPref === 'prefer_packs'">Downloads full season packs when 70% or more episodes are missing. Falls back to individual episodes otherwise.</template>
+              <template v-else-if="seasonPackPref === 'prefer_episodes'">Always downloads individual episodes. Falls back to season packs only when no episode match is found.</template>
+              <template v-else>Only downloads full season packs. Never downloads individual episodes.</template>
+            </p>
           </div>
         </div>
       </div>

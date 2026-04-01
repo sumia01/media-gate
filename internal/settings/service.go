@@ -23,6 +23,7 @@ const (
 	KeyQBitPassword           = "qbit_password"
 	KeyQBitDownloadPath       = "qbit_download_path"
 	KeyQBitCategory           = "qbit_category"
+	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
 )
 
 var sensitiveKeys = map[string]bool{

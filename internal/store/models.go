@@ -21,9 +21,10 @@ type MediaItem struct {
 	Source           string `gorm:"not null;default:disk"`
 	Year             *int
 	MediaProfileID *uint
-	MonitorNewSeasons bool  `gorm:"not null;default:false"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Monitored              bool       `gorm:"not null;default:false"`
+	MonitorSearchStartedAt *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 type MediaMetadata struct {
@@ -42,6 +43,7 @@ type MediaMetadata struct {
 	Status      string
 	Runtime     *int
 	Seasons     *int
+	ReleaseDate string // ISO "YYYY-MM-DD" from TMDB/TVDB
 	Confidence  float64
 	MatchedAt   time.Time
 	CreatedAt   time.Time

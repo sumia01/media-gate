@@ -99,7 +99,7 @@ async function fetchProfiles() {
   profiles.value = data?.profiles ?? []
 }
 
-async function updateMediaItem(update: { mediaProfileId?: number; monitorNewSeasons?: boolean }) {
+async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean }) {
   if (!item.value) return
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: item.value.id } },
@@ -113,10 +113,17 @@ async function onProfileChange(event: Event) {
   await updateMediaItem({ mediaProfileId: value ? Number(value) : undefined })
 }
 
-async function onMonitorToggle(event: Event) {
+async function onMonitoredToggle(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
-  await updateMediaItem({ monitorNewSeasons: checked })
+  await updateMediaItem({ monitored: checked })
 }
+
+const searchDaysAgo = computed(() => {
+  if (!item.value?.monitorSearchStartedAt) return null
+  const started = new Date(item.value.monitorSearchStartedAt)
+  const days = Math.floor((Date.now() - started.getTime()) / (1000 * 60 * 60 * 24))
+  return days
+})
 
 async function handleResync() {
   if (!item.value) return
@@ -219,6 +226,7 @@ function handleImportEvent(data: any) {
 const mediaEvents = [
   'media.item_matched',
   'media.resync_completed',
+  'monitor.grabbed',
 ]
 
 const importEvents = [
@@ -279,15 +287,15 @@ watch(() => route.params.id, loadAll)
           </select>
         </div>
 
-        <!-- Monitor new seasons -->
-        <label v-if="item.mediaType === 'series'" class="flex items-center gap-2 cursor-pointer">
+        <!-- Monitored (auto-grab) -->
+        <label v-if="metadata" class="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             class="w-4 h-4 rounded border-violet-900/20 bg-[#161b2e] text-violet-600 focus:ring-violet-500/50 focus:ring-offset-0"
-            :checked="item.monitorNewSeasons ?? false"
-            @change="onMonitorToggle"
+            :checked="item.monitored ?? false"
+            @change="onMonitoredToggle"
           />
-          <span class="text-xs text-gray-500">Monitor new seasons</span>
+          <span class="text-xs text-gray-500">Auto-grab</span>
         </label>
 
         <!-- Divider -->
@@ -386,6 +394,15 @@ watch(() => route.params.id, loadAll)
             >
               {{ item.status }}
             </span>
+            <span
+              v-if="item.monitored && searchDaysAgo !== null"
+              class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              :class="searchDaysAgo >= 7
+                ? 'bg-amber-600/20 text-amber-300'
+                : 'bg-sky-600/20 text-sky-300'"
+            >
+              Searching{{ searchDaysAgo > 0 ? ` for ${searchDaysAgo}d` : '' }}
+            </span>
           </div>
 
           <!-- Genre pills -->
@@ -421,6 +438,10 @@ watch(() => route.params.id, loadAll)
             <div v-if="metadata.status" class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
               <p class="text-xs text-gray-500 mb-1">Status</p>
               <p class="text-sm font-medium text-gray-200">{{ metadata.status }}</p>
+            </div>
+            <div v-if="metadata.releaseDate" class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
+              <p class="text-xs text-gray-500 mb-1">{{ item.mediaType === 'movie' ? 'Release Date' : 'First Aired' }}</p>
+              <p class="text-sm font-medium text-gray-200">{{ metadata.releaseDate }}</p>
             </div>
           </div>
 

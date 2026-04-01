@@ -26,22 +26,22 @@ export function parseTitleSeasonEpisode(title: string): ParsedSeasonEpisode {
   let m: RegExpMatchArray | null
 
   m = title.match(RE_SXEX_RANGE)
-  if (m) return { season: +m[1], episode: null, episodeRange: [+m[2], +m[3]] }
+  if (m) return { season: +m[1]!, episode: null, episodeRange: [+m[2]!, +m[3]!] }
 
   m = title.match(RE_SXEX)
-  if (m) return { season: +m[1], episode: +m[2], episodeRange: null }
+  if (m) return { season: +m[1]!, episode: +m[2]!, episodeRange: null }
 
   m = title.match(RE_S_ONLY)
-  if (m) return { season: +m[1], episode: null, episodeRange: null }
+  if (m) return { season: +m[1]!, episode: null, episodeRange: null }
 
   m = title.match(RE_SEASON_EP)
-  if (m) return { season: +m[1], episode: +m[2], episodeRange: null }
+  if (m) return { season: +m[1]!, episode: +m[2]!, episodeRange: null }
 
   m = title.match(RE_SEASON_ONLY)
-  if (m) return { season: +m[1], episode: null, episodeRange: null }
+  if (m) return { season: +m[1]!, episode: null, episodeRange: null }
 
   m = title.match(RE_NXN)
-  if (m) return { season: +m[1], episode: +m[2], episodeRange: null }
+  if (m) return { season: +m[1]!, episode: +m[2]!, episodeRange: null }
 
   return { season: null, episode: null, episodeRange: null }
 }

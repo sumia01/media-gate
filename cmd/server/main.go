@@ -17,6 +17,7 @@ import (
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/monitor"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -90,6 +91,10 @@ func main() {
 	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus)
 	importerSvc.Start()
 	defer importerSvc.Stop()
+
+	monitorSvc := monitor.NewService(db, indexerSvc, settingsSvc, bus)
+	monitorSvc.Start()
+	defer monitorSvc.Stop()
 
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 

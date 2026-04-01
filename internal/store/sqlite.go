@@ -85,11 +85,12 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 				"source" text NOT NULL DEFAULT "disk",
 				"year" integer,
 				"media_profile_id" integer,
-				"monitor_new_seasons" numeric NOT NULL DEFAULT false,
+				"monitored" numeric NOT NULL DEFAULT false,
+				"monitor_search_started_at" datetime,
 				"created_at" datetime,
 				"updated_at" datetime
 			)`,
-			columns: "id,library_id,title,media_type,status,source,year,media_profile_id,monitor_new_seasons,created_at,updated_at",
+			columns: "id,library_id,title,media_type,status,source,year,media_profile_id,monitored,monitor_search_started_at,created_at,updated_at",
 		},
 		{
 			table: "media_metadata",
@@ -109,12 +110,13 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 				"status" text,
 				"runtime" integer,
 				"seasons" integer,
+				"release_date" text,
 				"confidence" real,
 				"matched_at" datetime,
 				"created_at" datetime,
 				"updated_at" datetime
 			)`,
-			columns: "id,media_item_id,source,external_id,imdb_id,title,overview,poster_path,genres,credits,year,rating,status,runtime,seasons,confidence,matched_at,created_at,updated_at",
+			columns: "id,media_item_id,source,external_id,imdb_id,title,overview,poster_path,genres,credits,year,rating,status,runtime,seasons,release_date,confidence,matched_at,created_at,updated_at",
 		},
 		{
 			table: "media_files",
@@ -417,6 +419,14 @@ func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (s *SQLiteStore) ListMonitoredMediaItems() ([]MediaItem, error) {
+	var items []MediaItem
+	if err := s.db.Where("monitored = ?", true).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *SQLiteStore) MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error) {
