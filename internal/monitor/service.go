@@ -100,6 +100,8 @@ func (s *Service) processOnce() {
 	for i := range items {
 		item := &items[i]
 
+		slog.Debug("monitor: checking item", "item_id", item.ID, "title", item.Title, "type", item.MediaType)
+
 		meta, err := s.store.GetMediaMetadataByMediaItem(item.ID)
 		if err != nil || meta == nil {
 			continue // not matched yet, skip
@@ -117,9 +119,10 @@ func (s *Service) processOnce() {
 			continue
 		}
 
-		if item.MediaType == "movie" {
+		switch item.MediaType {
+		case "movie":
 			s.processMovie(item, meta, downloads, files)
-		} else if item.MediaType == "series" {
+		case "series":
 			s.processSeries(item, meta, downloads, files)
 		}
 	}
@@ -128,16 +131,19 @@ func (s *Service) processOnce() {
 func (s *Service) processMovie(item *store.MediaItem, meta *store.MediaMetadata, downloads []store.Download, files []store.MediaFile) {
 	// Already have files — no upgrade
 	if len(files) > 0 {
+		slog.Debug("monitor: movie already has files, skipping", "item_id", item.ID, "title", item.Title)
 		return
 	}
 
 	// Already have an active download
 	if hasActiveDownload(downloads, nil) {
+		slog.Debug("monitor: movie already has active download, skipping", "item_id", item.ID, "title", item.Title)
 		return
 	}
 
 	// Check if released
 	if !isReleased(meta) {
+		slog.Debug("monitor: movie not yet released, skipping", "item_id", item.ID, "title", item.Title)
 		return
 	}
 
@@ -238,6 +244,7 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 	}
 
 	if len(wanted) == 0 {
+		slog.Debug("monitor: series has no missing aired episodes, skipping", "item_id", item.ID, "title", item.Title)
 		return
 	}
 
