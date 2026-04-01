@@ -2,11 +2,13 @@ package apiv1
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/matching"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -167,12 +169,101 @@ func jobToAPI(j *jobqueue.Job) Job {
 	return apiJob
 }
 
-func settingToAPI(s *store.Setting) Setting {
-	return Setting{
-		Key:       s.Key,
-		Value:     s.Value,
-		Sensitive: &s.Sensitive,
+func settingsToAPI(items []store.Setting) Settings {
+	var s Settings
+	for _, item := range items {
+		v := item.Value
+		switch item.Key {
+		case settings.KeyTMDBApiKey:
+			s.TmdbApiKey = &v
+		case settings.KeyTVDBApiKey:
+			s.TvdbApiKey = &v
+		case settings.KeyMetadataPrimarySource:
+			src := SettingsMetadataPrimarySource(v)
+			s.MetadataPrimarySource = &src
+		case settings.KeyTMDBRateLimit:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.TmdbRateLimit = &n
+			}
+		case settings.KeyTVDBRateLimit:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.TvdbRateLimit = &n
+			}
+		case settings.KeyQBitURL:
+			s.QbitUrl = &v
+		case settings.KeyQBitUsername:
+			s.QbitUsername = &v
+		case settings.KeyQBitPassword:
+			s.QbitPassword = &v
+		case settings.KeyQBitDownloadPath:
+			s.QbitDownloadPath = &v
+		case settings.KeyQBitCategory:
+			s.QbitCategory = &v
+		case settings.KeyMonitorSeasonPackPref:
+			pref := SettingsMonitorSeasonPackPreference(v)
+			s.MonitorSeasonPackPreference = &pref
+		case settings.KeyWorkerMonitorInterval:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.WorkerMonitorInterval = &n
+			}
+		case settings.KeyWorkerDownloadInterval:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.WorkerDownloadInterval = &n
+			}
+		case settings.KeyWorkerImporterInterval:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.WorkerImporterInterval = &n
+			}
+		}
 	}
+	return s
+}
+
+func settingsFromAPI(s *Settings) []settings.KeyValue {
+	var kvs []settings.KeyValue
+	if s.TmdbApiKey != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyTMDBApiKey, Value: *s.TmdbApiKey})
+	}
+	if s.TvdbApiKey != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyTVDBApiKey, Value: *s.TvdbApiKey})
+	}
+	if s.MetadataPrimarySource != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyMetadataPrimarySource, Value: string(*s.MetadataPrimarySource)})
+	}
+	if s.TmdbRateLimit != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyTMDBRateLimit, Value: strconv.Itoa(*s.TmdbRateLimit)})
+	}
+	if s.TvdbRateLimit != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyTVDBRateLimit, Value: strconv.Itoa(*s.TvdbRateLimit)})
+	}
+	if s.QbitUrl != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitURL, Value: *s.QbitUrl})
+	}
+	if s.QbitUsername != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitUsername, Value: *s.QbitUsername})
+	}
+	if s.QbitPassword != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitPassword, Value: *s.QbitPassword})
+	}
+	if s.QbitDownloadPath != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitDownloadPath, Value: *s.QbitDownloadPath})
+	}
+	if s.QbitCategory != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitCategory, Value: *s.QbitCategory})
+	}
+	if s.MonitorSeasonPackPreference != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyMonitorSeasonPackPref, Value: string(*s.MonitorSeasonPackPreference)})
+	}
+	if s.WorkerMonitorInterval != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerMonitorInterval, Value: strconv.Itoa(*s.WorkerMonitorInterval)})
+	}
+	if s.WorkerDownloadInterval != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerDownloadInterval, Value: strconv.Itoa(*s.WorkerDownloadInterval)})
+	}
+	if s.WorkerImporterInterval != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerImporterInterval, Value: strconv.Itoa(*s.WorkerImporterInterval)})
+	}
+	return kvs
 }
 
 func mediaFileToAPI(f *store.MediaFile) MediaFile {
