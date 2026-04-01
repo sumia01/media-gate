@@ -714,9 +714,7 @@ paths:
                   - settings
                 properties:
                   settings:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Setting"
+                    $ref: "#/components/schemas/Settings"
     put:
       operationId: updateSettings
       summary: Update settings
@@ -725,7 +723,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SettingsUpdate"
+              $ref: "#/components/schemas/Settings"
       responses:
         "200":
           description: Updated settings
@@ -737,9 +735,7 @@ paths:
                   - settings
                 properties:
                   settings:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Setting"
+                    $ref: "#/components/schemas/Settings"
 
   /settings/test-tmdb:
     post:
@@ -2049,36 +2045,39 @@ components:
           type: string
           format: date-time
 
-    Setting:
+    Settings:
       type: object
-      required:
-        - key
-        - value
       properties:
-        key:
+        tmdbApiKey:
           type: string
-        value:
+        tvdbApiKey:
           type: string
-        sensitive:
-          type: boolean
-
-    SettingsUpdate:
-      type: object
-      required:
-        - settings
-      properties:
-        settings:
-          type: array
-          items:
-            type: object
-            required:
-              - key
-              - value
-            properties:
-              key:
-                type: string
-              value:
-                type: string
+        metadataPrimarySource:
+          type: string
+          enum: [tmdb, tvdb]
+        tmdbRateLimit:
+          type: integer
+        tvdbRateLimit:
+          type: integer
+        qbitUrl:
+          type: string
+        qbitUsername:
+          type: string
+        qbitPassword:
+          type: string
+        qbitDownloadPath:
+          type: string
+        qbitCategory:
+          type: string
+        monitorSeasonPackPreference:
+          type: string
+          enum: [prefer_packs, prefer_episodes, packs_only]
+        workerMonitorInterval:
+          type: integer
+        workerDownloadInterval:
+          type: integer
+        workerImporterInterval:
+          type: integer
 
     ConnectionTestRequest:
       type: object

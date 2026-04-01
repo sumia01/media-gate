@@ -2,8 +2,6 @@ package apiv1
 
 import (
 	"context"
-
-	"github.com/sumia01/media-gate/internal/settings"
 )
 
 func (h *Handlers) ListJobs(_ context.Context, _ ListJobsRequestObject) (ListJobsResponseObject, error) {
@@ -20,18 +18,11 @@ func (h *Handlers) ListSettings(_ context.Context, _ ListSettingsRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	apiSettings := make([]Setting, len(items))
-	for i, s := range items {
-		apiSettings[i] = settingToAPI(&s)
-	}
-	return ListSettings200JSONResponse{Settings: apiSettings}, nil
+	return ListSettings200JSONResponse{Settings: settingsToAPI(items)}, nil
 }
 
 func (h *Handlers) UpdateSettings(_ context.Context, req UpdateSettingsRequestObject) (UpdateSettingsResponseObject, error) {
-	kvs := make([]settings.KeyValue, len(req.Body.Settings))
-	for i, s := range req.Body.Settings {
-		kvs[i] = settings.KeyValue{Key: s.Key, Value: s.Value}
-	}
+	kvs := settingsFromAPI(req.Body)
 	if err := h.settings.Update(kvs); err != nil {
 		return nil, err
 	}
@@ -40,11 +31,7 @@ func (h *Handlers) UpdateSettings(_ context.Context, req UpdateSettingsRequestOb
 	if err != nil {
 		return nil, err
 	}
-	apiSettings := make([]Setting, len(items))
-	for i, s := range items {
-		apiSettings[i] = settingToAPI(&s)
-	}
-	return UpdateSettings200JSONResponse{Settings: apiSettings}, nil
+	return UpdateSettings200JSONResponse{Settings: settingsToAPI(items)}, nil
 }
 
 func (h *Handlers) TestTmdbConnection(_ context.Context, req TestTmdbConnectionRequestObject) (TestTmdbConnectionResponseObject, error) {

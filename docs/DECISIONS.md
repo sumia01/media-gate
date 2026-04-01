@@ -695,3 +695,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Store worker poll intervals as DB settings (`worker_monitor_interval`, `worker_download_interval`, `worker_importer_interval`), values in seconds. Each worker reads its interval on startup via `settings.GetDurationWithDefault()`, falling back to the previous hardcoded default (monitor: 900s, download: 5s, importer: 10s). Workers subscribe to a settings change notification channel (`settings.Subscribe()`) and dynamically reset their ticker when their interval key changes — no restart required. The settings service gains a pub/sub mechanism: `Subscribe()` returns a `<-chan string` that receives the key name on each `Update()` call. Frontend Settings page exposes the three intervals in a "Workers" section with number inputs.
 
 **Rationale**: DB-backed settings with live notification avoids the need for config file changes or process restarts. The channel-based notification pattern is lightweight and reusable for any future setting that needs to trigger runtime behavior changes. Storing values as seconds (string) is consistent with existing rate limit settings.
+
+---
+
+## ADR-050: Typed Settings API replacing generic key-value array
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: The settings API used a generic `{key: string, value: string}[]` array for both GET and PUT. All values were strings — numeric fields like worker intervals and rate limits required string conversion on the frontend. HTML `<input type="number">` naturally produces JavaScript numbers, causing JSON unmarshal errors (`cannot unmarshal number into string`) when the backend received them. Workarounds (frontend `String()` wrappers, backend `interface{}` coercion) were fragile.
+
+**Decision**: Replace the generic `Setting` and `SettingsUpdate` schemas with a single typed `Settings` object where each setting is a named field with its correct type (string, integer, or string enum). The same schema is used for both GET response and PUT request body — all fields are optional so PUT sends only changed fields. The DB layer remains a string key-value store; type conversion (string ↔ int) lives in the API handler layer via `settingsToAPI` and `settingsFromAPI` converter functions. The `sensitive` boolean field is removed from the API — the backend still masks sensitive values in GET responses, and the frontend knows which fields are sensitive by convention.
+
+**Rationale**: An explicit typed schema eliminates stringly-typed bugs, provides IDE autocompletion on both frontend and backend, and lets the OpenAPI code generators produce correct types (`*int` in Go, `number` in TypeScript). The settings key set is closed and known — there's no reason for a generic array. Keeping the DB layer as key-value strings avoids a migration and keeps the settings service (used by workers via `Get`/`GetWithDefault`) unchanged.

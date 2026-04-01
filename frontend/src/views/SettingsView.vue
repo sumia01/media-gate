@@ -71,22 +71,22 @@ async function fetchSettings() {
     error.value = 'Failed to load settings'
     return
   }
-  const settings = data?.settings ?? []
-  for (const s of settings) {
-    if (s.key === 'tmdb_api_key') tmdbKey.value = s.value
-    if (s.key === 'tvdb_api_key') tvdbKey.value = s.value
-    if (s.key === 'metadata_primary_source') primarySource.value = s.value
-    if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
-    if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
-    if (s.key === 'qbit_url') qbUrl.value = s.value
-    if (s.key === 'qbit_username') qbUsername.value = s.value
-    if (s.key === 'qbit_password') qbPassword.value = s.value
-    if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
-    if (s.key === 'qbit_category') qbCategory.value = s.value
-    if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
-    if (s.key === 'worker_monitor_interval') monitorInterval.value = s.value
-    if (s.key === 'worker_download_interval') downloadInterval.value = s.value
-    if (s.key === 'worker_importer_interval') importerInterval.value = s.value
+  const s = data?.settings
+  if (s) {
+    tmdbKey.value = s.tmdbApiKey ?? ''
+    tvdbKey.value = s.tvdbApiKey ?? ''
+    primarySource.value = s.metadataPrimarySource ?? 'tmdb'
+    tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
+    tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
+    qbUrl.value = s.qbitUrl ?? ''
+    qbUsername.value = s.qbitUsername ?? ''
+    qbPassword.value = s.qbitPassword ?? ''
+    qbDownloadPath.value = s.qbitDownloadPath ?? ''
+    qbCategory.value = s.qbitCategory ?? ''
+    seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
+    monitorInterval.value = String(s.workerMonitorInterval ?? 900)
+    downloadInterval.value = String(s.workerDownloadInterval ?? 5)
+    importerInterval.value = String(s.workerImporterInterval ?? 10)
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -113,58 +113,28 @@ async function saveSettings() {
   error.value = ''
   saveSuccess.value = false
 
-  const items: { key: string; value: string }[] = []
-  if (tmdbDirty.value && !isMasked(tmdbKey.value)) {
-    items.push({ key: 'tmdb_api_key', value: tmdbKey.value })
-  }
-  if (tvdbDirty.value && !isMasked(tvdbKey.value)) {
-    items.push({ key: 'tvdb_api_key', value: tvdbKey.value })
-  }
-  if (primarySourceDirty.value) {
-    items.push({ key: 'metadata_primary_source', value: primarySource.value })
-  }
-  if (tmdbRateLimitDirty.value) {
-    items.push({ key: 'tmdb_rate_limit', value: tmdbRateLimit.value })
-  }
-  if (tvdbRateLimitDirty.value) {
-    items.push({ key: 'tvdb_rate_limit', value: tvdbRateLimit.value })
-  }
-  if (qbUrlDirty.value) {
-    items.push({ key: 'qbit_url', value: qbUrl.value })
-  }
-  if (qbUsernameDirty.value) {
-    items.push({ key: 'qbit_username', value: qbUsername.value })
-  }
-  if (qbPasswordDirty.value && !isMasked(qbPassword.value)) {
-    items.push({ key: 'qbit_password', value: qbPassword.value })
-  }
-  if (qbDownloadPathDirty.value) {
-    items.push({ key: 'qbit_download_path', value: qbDownloadPath.value })
-  }
-  if (qbCategoryDirty.value) {
-    items.push({ key: 'qbit_category', value: qbCategory.value })
-  }
-  if (seasonPackPrefDirty.value) {
-    items.push({ key: 'monitor_season_pack_preference', value: seasonPackPref.value })
-  }
-  if (monitorIntervalDirty.value) {
-    items.push({ key: 'worker_monitor_interval', value: monitorInterval.value })
-  }
-  if (downloadIntervalDirty.value) {
-    items.push({ key: 'worker_download_interval', value: downloadInterval.value })
-  }
-  if (importerIntervalDirty.value) {
-    items.push({ key: 'worker_importer_interval', value: importerInterval.value })
-  }
+  const body: Record<string, unknown> = {}
+  if (tmdbDirty.value && !isMasked(tmdbKey.value)) body.tmdbApiKey = tmdbKey.value
+  if (tvdbDirty.value && !isMasked(tvdbKey.value)) body.tvdbApiKey = tvdbKey.value
+  if (primarySourceDirty.value) body.metadataPrimarySource = primarySource.value
+  if (tmdbRateLimitDirty.value) body.tmdbRateLimit = Number(tmdbRateLimit.value)
+  if (tvdbRateLimitDirty.value) body.tvdbRateLimit = Number(tvdbRateLimit.value)
+  if (qbUrlDirty.value) body.qbitUrl = qbUrl.value
+  if (qbUsernameDirty.value) body.qbitUsername = qbUsername.value
+  if (qbPasswordDirty.value && !isMasked(qbPassword.value)) body.qbitPassword = qbPassword.value
+  if (qbDownloadPathDirty.value) body.qbitDownloadPath = qbDownloadPath.value
+  if (qbCategoryDirty.value) body.qbitCategory = qbCategory.value
+  if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
+  if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
+  if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
+  if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
 
-  if (items.length === 0) {
+  if (Object.keys(body).length === 0) {
     saving.value = false
     return
   }
 
-  const { data, error: err } = await client.PUT('/settings', {
-    body: { settings: items },
-  })
+  const { data, error: err } = await client.PUT('/settings', { body })
   saving.value = false
   if (err) {
     error.value = 'Failed to save settings'
@@ -174,22 +144,22 @@ async function saveSettings() {
   saveSuccess.value = true
   setTimeout(() => { saveSuccess.value = false }, 3000)
 
-  const settings = data?.settings ?? []
-  for (const s of settings) {
-    if (s.key === 'tmdb_api_key') tmdbKey.value = s.value
-    if (s.key === 'tvdb_api_key') tvdbKey.value = s.value
-    if (s.key === 'metadata_primary_source') primarySource.value = s.value
-    if (s.key === 'tmdb_rate_limit') tmdbRateLimit.value = s.value
-    if (s.key === 'tvdb_rate_limit') tvdbRateLimit.value = s.value
-    if (s.key === 'qbit_url') qbUrl.value = s.value
-    if (s.key === 'qbit_username') qbUsername.value = s.value
-    if (s.key === 'qbit_password') qbPassword.value = s.value
-    if (s.key === 'qbit_download_path') qbDownloadPath.value = s.value
-    if (s.key === 'qbit_category') qbCategory.value = s.value
-    if (s.key === 'monitor_season_pack_preference') seasonPackPref.value = s.value
-    if (s.key === 'worker_monitor_interval') monitorInterval.value = s.value
-    if (s.key === 'worker_download_interval') downloadInterval.value = s.value
-    if (s.key === 'worker_importer_interval') importerInterval.value = s.value
+  const s = data?.settings
+  if (s) {
+    tmdbKey.value = s.tmdbApiKey ?? ''
+    tvdbKey.value = s.tvdbApiKey ?? ''
+    primarySource.value = s.metadataPrimarySource ?? 'tmdb'
+    tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
+    tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
+    qbUrl.value = s.qbitUrl ?? ''
+    qbUsername.value = s.qbitUsername ?? ''
+    qbPassword.value = s.qbitPassword ?? ''
+    qbDownloadPath.value = s.qbitDownloadPath ?? ''
+    qbCategory.value = s.qbitCategory ?? ''
+    seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
+    monitorInterval.value = String(s.workerMonitorInterval ?? 900)
+    downloadInterval.value = String(s.workerDownloadInterval ?? 5)
+    importerInterval.value = String(s.workerImporterInterval ?? 10)
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
