@@ -16,7 +16,7 @@ import (
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
-const pollInterval = 10 * time.Second
+const defaultPollInterval = 10 * time.Second
 
 // Service runs background workers for importing completed downloads into
 // library directories and cleaning up torrents after seeding obligations are met.
@@ -44,7 +44,6 @@ func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync
 // Start launches the background worker goroutine.
 func (s *Service) Start() {
 	go s.run()
-	slog.Info("importer worker started", "interval", pollInterval)
 }
 
 // Stop signals the worker to shut down.
@@ -53,8 +52,12 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) run() {
-	ticker := time.NewTicker(pollInterval)
+	settingsCh := s.settings.Subscribe()
+	interval := s.settings.GetDurationWithDefault(settings.KeyWorkerImporterInterval, defaultPollInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	slog.Info("importer worker started", "interval", interval)
 
 	for {
 		select {
@@ -62,6 +65,15 @@ func (s *Service) run() {
 			return
 		case <-ticker.C:
 			s.processOnce()
+		case key := <-settingsCh:
+			if key == settings.KeyWorkerImporterInterval {
+				newInterval := s.settings.GetDurationWithDefault(settings.KeyWorkerImporterInterval, defaultPollInterval)
+				if newInterval != interval {
+					interval = newInterval
+					ticker.Reset(interval)
+					slog.Info("importer interval updated", "interval", interval)
+				}
+			}
 		}
 	}
 }

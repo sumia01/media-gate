@@ -683,3 +683,15 @@ The `WithTx` implementation creates a `SQLiteStore` backed by the transactional 
 For services that need to participate in a caller's transaction, a `WithStore(store.Store) *Service` pattern creates a shallow clone of the service using the transactional store. Currently implemented on `matching.Service`.
 
 **Rationale**: Adding transaction support at the Store interface level means any handler or service can wrap multi-step writes atomically. The `SQLiteStore{db: tx}` approach requires zero changes to existing CRUD methods. The `WithStore` pattern keeps services unaware of transaction management — the caller controls the transaction scope. Poster download is extracted from `applyMatch` into a separate `DownloadPoster` method called after transaction commit — all callers (`matchSingleItem`, `ManualMatch`, `AddMediaToLibrary` handler) follow this pattern to avoid holding DB write locks during network I/O.
+
+---
+
+## ADR-049: Configurable worker poll intervals via DB settings
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: The three background workers (monitor, download, importer) had hardcoded poll intervals. Tuning required code changes and redeployment.
+
+**Decision**: Store worker poll intervals as DB settings (`worker_monitor_interval`, `worker_download_interval`, `worker_importer_interval`), values in seconds. Each worker reads its interval on startup via `settings.GetDurationWithDefault()`, falling back to the previous hardcoded default (monitor: 900s, download: 5s, importer: 10s). Workers subscribe to a settings change notification channel (`settings.Subscribe()`) and dynamically reset their ticker when their interval key changes — no restart required. The settings service gains a pub/sub mechanism: `Subscribe()` returns a `<-chan string` that receives the key name on each `Update()` call. Frontend Settings page exposes the three intervals in a "Workers" section with number inputs.
+
+**Rationale**: DB-backed settings with live notification avoids the need for config file changes or process restarts. The channel-based notification pattern is lightweight and reusable for any future setting that needs to trigger runtime behavior changes. Storing values as seconds (string) is consistent with existing rate limit settings.

@@ -106,6 +106,7 @@
 - [x] Season monitor API — per-season monitored toggle (GET/PUT /media/{id}/season-monitors/{seasonNumber})
 - [x] Auto-grab UI — monitored toggle on media detail page, "Searching for Xd" indicator, per-season monitored badges in episode grid, release date in stats grid
 - [x] Atomic Add-to-Library — external episode prefetch endpoint, extended AddMediaRequest with seasonMonitors/monitored/mediaProfileId, DB transaction wrapping entire create flow (Store.WithTx), fully client-side modal until final submit
+- [x] Configurable worker poll intervals — DB settings for monitor/download/importer intervals with live notification and dynamic ticker reset, frontend Settings UI
 - [ ] Auto-download based on watchlist
 
 ## Phase 4: Request System (Overseerr replacement) ⬜

@@ -13,7 +13,7 @@ import (
 	"github.com/sumia01/media-gate/internal/store"
 )
 
-const pollInterval = 5 * time.Second
+const defaultPollInterval = 5 * time.Second
 
 type Service struct {
 	store      store.Store
@@ -38,7 +38,6 @@ func NewService(s store.Store, settingsSvc *settings.Service, indexerSvc *indexe
 // Start launches the background worker goroutine.
 func (s *Service) Start() {
 	go s.run()
-	slog.Info("download worker started", "interval", pollInterval)
 }
 
 // Stop signals the worker to shut down.
@@ -47,8 +46,12 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) run() {
-	ticker := time.NewTicker(pollInterval)
+	settingsCh := s.settings.Subscribe()
+	interval := s.settings.GetDurationWithDefault(settings.KeyWorkerDownloadInterval, defaultPollInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	slog.Info("download worker started", "interval", interval)
 
 	for {
 		select {
@@ -56,6 +59,15 @@ func (s *Service) run() {
 			return
 		case <-ticker.C:
 			s.processOnce()
+		case key := <-settingsCh:
+			if key == settings.KeyWorkerDownloadInterval {
+				newInterval := s.settings.GetDurationWithDefault(settings.KeyWorkerDownloadInterval, defaultPollInterval)
+				if newInterval != interval {
+					interval = newInterval
+					ticker.Reset(interval)
+					slog.Info("download interval updated", "interval", interval)
+				}
+			}
 		}
 	}
 }
