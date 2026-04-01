@@ -647,3 +647,39 @@ Per-season monitoring via `SeasonMonitor` model (default: all seasons monitored)
 **Deduplication**: Three-layer protection — wanted list filters out items with active downloads, fresh DB re-check before each `createAutoDownload` call (race condition guard), and active status map covering the full download lifecycle (pending → completed).
 
 **Rationale**: Polling-based approach (vs. webhook/push) is simpler and sufficient for the use case — release dates don't change frequently. The configurable season pack preference addresses the tension between download efficiency (fewer torrents, consistent quality) and bandwidth efficiency (don't re-download episodes you already have).
+
+---
+
+## ADR-047: Atomic Add-to-Library with external episode prefetch
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: The Add to Library flow for series required choosing a library, monitor settings, quality profile, and per-season monitoring. The original implementation created the media item in the DB immediately, then applied settings in subsequent requests. This left partial records on failure and allowed the monitor worker to pick up items before the user finalized season choices.
+
+**Decision**: Three changes to make the flow atomic:
+
+1. **External episodes endpoint** (`GET /search/{source}/{externalId}/episodes`): Returns episode data from TMDB/TVDB without touching the DB. The frontend prefetches this on the media preview page so it's ready when the modal opens. Reuses `matching.Service.FetchExternalEpisodes` (new public wrapper around existing `fetchEpisodesFromSource`).
+
+2. **Extended `AddMediaRequest`**: The `POST /libraries/{id}/media` body now accepts optional `monitored`, `mediaProfileId`, and `seasonMonitors[]` fields. Everything is sent in a single request.
+
+3. **DB transaction**: The handler wraps the entire create flow in `Store.WithTx` — a new method on the Store interface that runs a callback inside a GORM transaction. The matching service is given a transactional store via `matching.Service.WithStore(txStore)`. If any step fails (item creation, metadata fetch, season monitor creation), the entire transaction rolls back — no partial records.
+
+The `WithTx` implementation creates a `SQLiteStore` backed by the transactional `*gorm.DB`, so all existing store methods automatically participate in the transaction.
+
+**Frontend flow**: The modal is fully client-side until the final "Add" button. Step 1: library + monitor + quality profile. Step 2 (series): season/episode toggles using prefetched external data. Final click sends one POST with all choices.
+
+**Rationale**: Atomic create prevents partial records and race conditions with the monitor worker. External episode prefetch eliminates wait time in the modal. `WithTx` on the Store interface is a general-purpose pattern reusable for any future multi-step write operations.
+
+---
+
+## ADR-048: Store.WithTx for transactional operations
+**Date**: 2026-04-01
+**Status**: Accepted
+
+**Context**: The Store interface had no transaction support. Multi-step operations (e.g., create item + metadata + season monitors) were individual DB calls — if one failed mid-way, partial records remained.
+
+**Decision**: Add `WithTx(fn func(Store) error) error` to the Store interface. The SQLite implementation uses GORM's `db.Transaction()` which handles begin/commit/rollback automatically. The callback receives a new `SQLiteStore` instance backed by the transactional `*gorm.DB` — all existing methods work without modification because they use `s.db` internally.
+
+For services that need to participate in a caller's transaction, a `WithStore(store.Store) *Service` pattern creates a shallow clone of the service using the transactional store. Currently implemented on `matching.Service`.
+
+**Rationale**: Adding transaction support at the Store interface level means any handler or service can wrap multi-step writes atomically. The `SQLiteStore{db: tx}` approach requires zero changes to existing CRUD methods. The `WithStore` pattern keeps services unaware of transaction management — the caller controls the transaction scope.

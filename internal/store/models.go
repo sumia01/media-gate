@@ -80,7 +80,7 @@ type SeasonMonitor struct {
 	ID           uint `gorm:"primarykey"`
 	MediaItemID  uint `gorm:"not null;uniqueIndex:idx_media_season;constraint:OnDelete:CASCADE"`
 	SeasonNumber int  `gorm:"not null;uniqueIndex:idx_media_season"`
-	Monitored    bool `gorm:"not null;default:true"`
+	Monitored    bool `gorm:"not null"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

@@ -280,7 +280,51 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
-	item, err := h.matchSvc.AddMediaToLibrary(lib, string(req.Body.Source), req.Body.ExternalId)
+	var resultItem *store.MediaItem
+	var resultMeta *store.MediaMetadata
+
+	err = h.store.WithTx(func(tx store.Store) error {
+		txMatchSvc := h.matchSvc.WithStore(tx)
+
+		item, err := txMatchSvc.AddMediaToLibrary(lib, string(req.Body.Source), req.Body.ExternalId)
+		if err != nil {
+			return err
+		}
+
+		// Apply optional monitored / mediaProfileId from request
+		needsUpdate := false
+		if req.Body.Monitored != nil {
+			item.Monitored = *req.Body.Monitored
+			needsUpdate = true
+		}
+		if req.Body.MediaProfileId != nil {
+			profileID := uint(*req.Body.MediaProfileId)
+			item.MediaProfileID = &profileID
+			needsUpdate = true
+		}
+		if needsUpdate {
+			if err := tx.UpdateMediaItem(item); err != nil {
+				return err
+			}
+		}
+
+		// Create season monitors from request
+		if req.Body.SeasonMonitors != nil {
+			for _, sm := range *req.Body.SeasonMonitors {
+				if err := tx.CreateSeasonMonitor(&store.SeasonMonitor{
+					MediaItemID:  item.ID,
+					SeasonNumber: sm.SeasonNumber,
+					Monitored:    sm.Monitored,
+				}); err != nil {
+					return fmt.Errorf("creating season monitor for S%02d: %w", sm.SeasonNumber, err)
+				}
+			}
+		}
+
+		resultItem = item
+		resultMeta, _ = tx.GetMediaMetadataByMediaItem(item.ID)
+		return nil
+	})
 	if err != nil {
 		if errors.Is(err, matching.ErrAlreadyExists) {
 			return AddMediaToLibrary409JSONResponse{
@@ -291,8 +335,7 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
-	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
-	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
+	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(resultItem, resultMeta)), nil
 }
 
 func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject) (GlobalSearchResponseObject, error) {
@@ -348,4 +391,39 @@ func (h *Handlers) GetExternalMediaDetail(_ context.Context, req GetExternalMedi
 	}
 
 	return GetExternalMediaDetail200JSONResponse(apiDetail), nil
+}
+
+func (h *Handlers) GetExternalEpisodes(_ context.Context, req GetExternalEpisodesRequestObject) (GetExternalEpisodesResponseObject, error) {
+	data, err := h.matchSvc.FetchExternalEpisodes(req.Source, req.ExternalId, req.Params.SeasonCount)
+	if err != nil {
+		return nil, err
+	}
+
+	seasons := make([]ExternalSeasonSummary, len(data))
+	for i, s := range data {
+		episodes := make([]ExternalEpisode, len(s.Episodes))
+		for j, ep := range s.Episodes {
+			episodes[j] = ExternalEpisode{
+				SeasonNumber:  ep.SeasonNumber,
+				EpisodeNumber: ep.EpisodeNumber,
+			}
+			if ep.Title != "" {
+				episodes[j].Title = &ep.Title
+			}
+			if ep.AirDate != "" {
+				episodes[j].AirDate = &ep.AirDate
+			}
+			if ep.Runtime > 0 {
+				r := ep.Runtime
+				episodes[j].Runtime = &r
+			}
+		}
+		seasons[i] = ExternalSeasonSummary{
+			SeasonNumber:  s.SeasonNumber,
+			TotalEpisodes: s.TotalEpisodes,
+			Episodes:      episodes,
+		}
+	}
+
+	return GetExternalEpisodes200JSONResponse{Seasons: seasons}, nil
 }

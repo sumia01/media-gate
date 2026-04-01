@@ -26,6 +26,7 @@ Media Gate is a self-hosted, all-in-one media management application that replac
   - `sqlite` — lightweight, single-file, great for dev and small deployments
   - `postgres` — production-grade, for heavier usage
 - **ORM**: GORM handles both drivers behind the Store interface
+- **Transactions**: `Store.WithTx(fn func(Store) error)` runs a callback inside a DB transaction; the callback receives a transactional Store instance so all methods automatically participate in the transaction
 
 ## Deployment
 
@@ -131,7 +132,7 @@ HTTP Request
 - **library.Service** — manages Library CRUD with basePath validation (prevents path traversal via `filepath.Clean` + prefix check); rejects library paths that match the configured download directory
 - **sync.Service** — reads a library's directory, walks each media folder for video files (`.mkv`, `.mp4`, etc.), parses filenames for resolution/source/season/episode via the `fileparse` package. Supports three series layouts: season subfolders, flat mixed episodes, and split-season folders (grouped into one MediaItem). Creates MediaItem + MediaFile records per video file; detects removals; supports single-item resync.
 - **jobqueue.Queue** — single-worker queue; prevents duplicate jobs per library; completed/failed job history persisted to SQLite `job_records` table (keeps last 200)
-- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode; provides external detail preview (GetExternalDetail) for search results without persisting data
+- **matching.Service** — auto-matches MediaItems to TMDB (movies) or TVDB (series) using parsed folder names; supports manual match override from UI; handles library-scoped search and adding requested media with full metadata; fetches and stores episode lists for series from TMDB/TVDB; extracts IMDb IDs from TMDB/TVDB responses; supports full re-match (all items) or unmatched-only mode; provides external detail preview (GetExternalDetail) and external episode listing (FetchExternalEpisodes) for search results without persisting data; `WithStore(store.Store)` creates a shallow clone for transactional use
 - **settings.Service** — manages DB-backed settings (API keys, download path, etc.); masks sensitive values in list responses; delegates to TMDB/TVDB/qBittorrent clients for connection testing; validates download path against basePath and existing library paths on save
 - **tmdb.Client** — TMDB API v3 client; auth via `?api_key=` query param; search movies/TV, get details with credits and external IDs (`append_to_response`), get TV season episodes, test connection
 - **tvdb.Client** — TVDB API v4 client; JWT auth via `POST /login`; search series (type-filtered), get extended details with characters and remote IDs (IMDb), get series episodes by season, test connection

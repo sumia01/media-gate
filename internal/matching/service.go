@@ -53,6 +53,17 @@ func NewService(s store.Store, set *settings.Service, posterDir string) *Service
 	}
 }
 
+// WithStore returns a shallow copy of the Service that uses the given store.
+// Useful for running operations inside a database transaction.
+func (s *Service) WithStore(st store.Store) *Service {
+	return &Service{
+		store:      st,
+		settings:   s.settings,
+		posterDir:  s.posterDir,
+		httpClient: s.httpClient,
+	}
+}
+
 func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn func(current, total int)) error {
 	source := s.settings.GetWithDefault(settings.KeyMetadataPrimarySource, "tmdb")
 	apiKey, err := s.resolveAPIKey(source)
@@ -389,6 +400,55 @@ type episodeData struct {
 	overview      string
 	airDate       string
 	runtime       int
+}
+
+// SeasonEpisodeData holds a season's episode list fetched from an external source (no DB).
+type SeasonEpisodeData struct {
+	SeasonNumber  int
+	TotalEpisodes int
+	Episodes      []EpisodeInfo
+}
+
+// EpisodeInfo holds episode data from an external source.
+type EpisodeInfo struct {
+	SeasonNumber  int
+	EpisodeNumber int
+	Title         string
+	AirDate       string
+	Runtime       int
+}
+
+// FetchExternalEpisodes retrieves episode data from TMDB/TVDB without persisting anything.
+func (s *Service) FetchExternalEpisodes(source string, externalID, seasonCount int) ([]SeasonEpisodeData, error) {
+	apiKey, err := s.resolveAPIKey(source)
+	if err != nil {
+		return nil, fmt.Errorf("no API key configured for %s", source)
+	}
+
+	var result []SeasonEpisodeData
+	for season := 1; season <= seasonCount; season++ {
+		episodes, err := s.fetchEpisodesFromSource(source, apiKey, externalID, season)
+		if err != nil {
+			slog.Warn("failed to fetch external episodes", "season", season, "source", source, "error", err)
+			continue
+		}
+		infos := make([]EpisodeInfo, len(episodes))
+		for i, ep := range episodes {
+			infos[i] = EpisodeInfo{
+				SeasonNumber:  ep.seasonNumber,
+				EpisodeNumber: ep.episodeNumber,
+				Title:         ep.title,
+				AirDate:       ep.airDate,
+				Runtime:       ep.runtime,
+			}
+		}
+		result = append(result, SeasonEpisodeData{
+			SeasonNumber:  season,
+			TotalEpisodes: len(episodes),
+			Episodes:      infos,
+		})
+	}
+	return result, nil
 }
 
 func (s *Service) fetchAndStoreEpisodes(item *store.MediaItem, source, apiKey string, externalID, seasonCount int) {

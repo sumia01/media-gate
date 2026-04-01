@@ -87,4 +87,8 @@ type Store interface {
 	UpdateDownload(download *Download) error
 	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
 	DeleteDownload(id uint) error
+
+	// WithTx executes fn inside a database transaction.
+	// The Store passed to fn uses the transaction; if fn returns an error the transaction is rolled back.
+	WithTx(fn func(Store) error) error
 }
