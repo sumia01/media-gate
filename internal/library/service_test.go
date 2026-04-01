@@ -85,6 +85,7 @@ func (s *stubStore) GetDownload(uint) (*store.Download, error)                  
 func (s *stubStore) UpdateDownload(*store.Download) error                       { return nil }
 func (s *stubStore) ListDownloads(*uint, *string) ([]store.Download, error)     { return nil, nil }
 func (s *stubStore) DeleteDownload(uint) error                                  { return nil }
+func (s *stubStore) WithTx(fn func(store.Store) error) error                    { return fn(s) }
 
 // newTestService creates a library service with a temp dir as basePath.
 func newTestService(t *testing.T) (*Service, string) {

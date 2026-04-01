@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { ExternalMediaDetail } from '@/types/api'
+import type { ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
 import { parseGenres, profileImageUrl } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
@@ -11,6 +11,7 @@ const route = useRoute()
 const router = useRouter()
 
 const detail = ref<ExternalMediaDetail | null>(null)
+const externalSeasons = ref<ExternalSeasonSummary[]>([])
 const loading = ref(false)
 const error = ref('')
 const showAddModal = ref(false)
@@ -57,7 +58,20 @@ async function fetchDetail() {
     error.value = 'Failed to load media details'
     return
   }
-  if (data) detail.value = data
+  if (data) {
+    detail.value = data
+    // Prefetch episodes for series (used by AddToLibraryModal)
+    if (data.mediaType === 'series' && data.seasons && data.seasons > 0) {
+      client.GET('/search/{source}/{externalId}/episodes', {
+        params: {
+          path: { source: source as 'tmdb' | 'tvdb', externalId },
+          query: { seasonCount: data.seasons },
+        },
+      }).then(({ data: epData }) => {
+        externalSeasons.value = epData?.seasons ?? []
+      })
+    }
+  }
 }
 
 function handleAdded(mediaItemId: number) {
@@ -266,6 +280,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
         :source="detail.source"
         :external-id="detail.externalId"
         :media-type="detail.mediaType"
+        :external-seasons="externalSeasons"
         @added="handleAdded"
         @close="showAddModal = false"
       />

@@ -868,6 +868,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExternalMediaDetail"
 
+  /search/{source}/{externalId}/episodes:
+    parameters:
+      - name: source
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+      - name: externalId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getExternalEpisodes
+      summary: Get episode list from external source
+      description: Fetches season/episode data from TMDB/TVDB without creating any database records
+      parameters:
+        - name: seasonCount
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Number of seasons to fetch
+      responses:
+        "200":
+          description: Episode list grouped by season
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - seasons
+                properties:
+                  seasons:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExternalSeasonSummary"
+
   /media-profiles:
     get:
       operationId: listMediaProfiles
@@ -1852,6 +1893,23 @@ components:
             - tvdb
         externalId:
           type: integer
+        monitored:
+          type: boolean
+        mediaProfileId:
+          type: integer
+          format: int64
+        seasonMonitors:
+          type: array
+          items:
+            type: object
+            required:
+              - seasonNumber
+              - monitored
+            properties:
+              seasonNumber:
+                type: integer
+              monitored:
+                type: boolean
 
     ManualMatchRequest:
       type: object
@@ -1909,6 +1967,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CreditPerson"
+
+    ExternalSeasonSummary:
+      type: object
+      required:
+        - seasonNumber
+        - totalEpisodes
+        - episodes
+      properties:
+        seasonNumber:
+          type: integer
+        totalEpisodes:
+          type: integer
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalEpisode"
+
+    ExternalEpisode:
+      type: object
+      required:
+        - seasonNumber
+        - episodeNumber
+      properties:
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        title:
+          type: string
+        airDate:
+          type: string
+        runtime:
+          type: integer
 
     Job:
       type: object

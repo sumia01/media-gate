@@ -101,6 +101,7 @@ func (s *settingsStubStore) GetDownload(uint) (*store.Download, error)          
 func (s *settingsStubStore) UpdateDownload(*store.Download) error                   { return nil }
 func (s *settingsStubStore) ListDownloads(*uint, *string) ([]store.Download, error) { return nil, nil }
 func (s *settingsStubStore) DeleteDownload(uint) error                              { return nil }
+func (s *settingsStubStore) WithTx(fn func(store.Store) error) error                { return fn(s) }
 
 func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {
 	basePath := t.TempDir()

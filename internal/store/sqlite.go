@@ -142,7 +142,7 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 				"id" integer PRIMARY KEY AUTOINCREMENT,
 				"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
 				"season_number" integer NOT NULL,
-				"monitored" numeric NOT NULL DEFAULT true,
+				"monitored" numeric NOT NULL,
 				"created_at" datetime,
 				"updated_at" datetime
 			)`,
@@ -550,7 +550,7 @@ func (s *SQLiteStore) DeleteMediaFilesByPaths(paths []string) error {
 // --- SeasonMonitor ---
 
 func (s *SQLiteStore) CreateSeasonMonitor(monitor *SeasonMonitor) error {
-	return s.db.Create(monitor).Error
+	return s.db.Select("MediaItemID", "SeasonNumber", "Monitored").Create(monitor).Error
 }
 
 func (s *SQLiteStore) ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonMonitor, error) {
@@ -705,4 +705,10 @@ func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]Downlo
 
 func (s *SQLiteStore) DeleteDownload(id uint) error {
 	return deleteByID(s.db, &Download{}, id)
+}
+
+func (s *SQLiteStore) WithTx(fn func(Store) error) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		return fn(&SQLiteStore{db: tx})
+	})
 }
