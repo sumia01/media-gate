@@ -335,6 +335,12 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
+	// Download poster outside the transaction to avoid holding a DB write lock during network I/O
+	h.matchSvc.DownloadPoster(resultItem.ID)
+
+	// Re-read metadata to include poster path
+	resultMeta, _ = h.store.GetMediaMetadataByMediaItem(resultItem.ID)
+
 	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(resultItem, resultMeta)), nil
 }
 
