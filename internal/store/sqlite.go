@@ -619,6 +619,18 @@ func (s *SQLiteStore) DeleteSetting(key string) error {
 	return nil
 }
 
+func (s *SQLiteStore) DeleteSettingsByPrefix(prefix string) error {
+	return s.db.Where("key LIKE ?", prefix+"%").Delete(&Setting{}).Error
+}
+
+func (s *SQLiteStore) ListSettingsByPrefix(prefix string) ([]Setting, error) {
+	var settings []Setting
+	if err := s.db.Where("key LIKE ?", prefix+"%").Find(&settings).Error; err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
 // --- JobRecords ---
 
 func (s *SQLiteStore) CreateJobRecord(record *JobRecord) error {

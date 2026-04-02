@@ -11,15 +11,17 @@ import (
 
 	"github.com/sumia01/media-gate/internal/indexer/cardigann"
 	"github.com/sumia01/media-gate/internal/indexer/definitions"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
 // Service manages indexer CRUD, definition loading, and multi-indexer search.
 type Service struct {
-	store   store.Store
-	defs    map[string]*cardigann.Definition
-	engines map[uint]*engineEntry
-	mu      sync.Mutex
+	store       store.Store
+	settingsSvc *settings.Service
+	defs        map[string]*cardigann.Definition
+	engines     map[uint]*engineEntry
+	mu          sync.Mutex
 }
 
 type engineEntry struct {
@@ -89,7 +91,7 @@ type SearchParams struct {
 }
 
 // NewService loads built-in definitions and creates the indexer service.
-func NewService(s store.Store) (*Service, error) {
+func NewService(s store.Store, settingsSvc *settings.Service) (*Service, error) {
 	raw, err := definitions.LoadBuiltin()
 	if err != nil {
 		return nil, fmt.Errorf("loading built-in definitions: %w", err)
@@ -107,9 +109,10 @@ func NewService(s store.Store) (*Service, error) {
 	slog.Info("indexer definitions loaded", "count", len(defs))
 
 	return &Service{
-		store:   s,
-		defs:    defs,
-		engines: make(map[uint]*engineEntry),
+		store:       s,
+		settingsSvc: settingsSvc,
+		defs:        defs,
+		engines:     make(map[uint]*engineEntry),
 	}, nil
 }
 
@@ -139,7 +142,18 @@ func (s *Service) Create(name, definitionID string, settings map[string]string, 
 		return nil, fmt.Errorf("unknown definition: %q", definitionID)
 	}
 
-	settingsJSON, err := json.Marshal(settings)
+	pwFields := s.passwordFields(definitionID)
+	nonSensitive := make(map[string]string, len(settings))
+	sensitive := make(map[string]string)
+	for k, v := range settings {
+		if pwFields[k] {
+			sensitive[k] = v
+		} else {
+			nonSensitive[k] = v
+		}
+	}
+
+	settingsJSON, err := json.Marshal(nonSensitive)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling settings: %w", err)
 	}
@@ -156,6 +170,14 @@ func (s *Service) Create(name, definitionID string, settings map[string]string, 
 	if err := s.store.CreateIndexer(indexer); err != nil {
 		return nil, fmt.Errorf("creating indexer: %w", err)
 	}
+
+	for field, value := range sensitive {
+		if err := s.settingsSvc.SetIndexerSecret(indexer.ID, field, value); err != nil {
+			_ = s.store.DeleteIndexer(indexer.ID)
+			return nil, fmt.Errorf("saving indexer secret %q: %w", field, err)
+		}
+	}
+
 	return s.indexerToInfo(indexer)
 }
 
@@ -206,7 +228,20 @@ func (s *Service) Update(id uint, name *string, settings map[string]string, enab
 		if err != nil {
 			return nil, fmt.Errorf("merging settings: %w", err)
 		}
-		settingsJSON, err := json.Marshal(merged)
+
+		pwFields := s.passwordFields(indexer.DefinitionID)
+		nonSensitive := make(map[string]string, len(merged))
+		for k, v := range merged {
+			if pwFields[k] {
+				if err := s.settingsSvc.SetIndexerSecret(indexer.ID, k, v); err != nil {
+					return nil, fmt.Errorf("saving indexer secret %q: %w", k, err)
+				}
+			} else {
+				nonSensitive[k] = v
+			}
+		}
+
+		settingsJSON, err := json.Marshal(nonSensitive)
 		if err != nil {
 			return nil, fmt.Errorf("marshalling settings: %w", err)
 		}
@@ -229,6 +264,7 @@ func (s *Service) Update(id uint, name *string, settings map[string]string, enab
 // Delete removes an indexer.
 func (s *Service) Delete(id uint) error {
 	s.invalidateEngine(id)
+	_ = s.settingsSvc.DeleteIndexerSecrets(id)
 	return s.store.DeleteIndexer(id)
 }
 
@@ -383,12 +419,20 @@ func (s *Service) getOrCreateEngine(indexer *store.Indexer) (*engineEntry, error
 		return nil, fmt.Errorf("unknown definition: %q", indexer.DefinitionID)
 	}
 
-	settings, err := parseSettings(indexer.Settings)
+	cfg, err := parseSettings(indexer.Settings)
 	if err != nil {
 		return nil, err
 	}
 
-	engine, err := cardigann.NewEngine(def, settings)
+	secrets, err := s.settingsSvc.GetIndexerSecrets(indexer.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching indexer secrets: %w", err)
+	}
+	for k, v := range secrets {
+		cfg[k] = v
+	}
+
+	engine, err := cardigann.NewEngine(def, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -431,33 +475,48 @@ func (s *Service) FetchTorrent(ctx context.Context, indexerID uint, downloadURL 
 }
 
 func (s *Service) mergeSettings(indexer *store.Indexer, overrides map[string]string) (map[string]string, error) {
-	settings, err := parseSettings(indexer.Settings)
+	cfg, err := parseSettings(indexer.Settings)
 	if err != nil {
 		return nil, err
+	}
+	secrets, err := s.settingsSvc.GetIndexerSecrets(indexer.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching indexer secrets: %w", err)
+	}
+	for k, v := range secrets {
+		cfg[k] = v
 	}
 	for k, v := range overrides {
 		if strings.HasPrefix(v, "****") {
 			continue // skip masked values — keep the stored original
 		}
-		settings[k] = v
+		cfg[k] = v
 	}
-	return settings, nil
+	return cfg, nil
 }
 
 func (s *Service) indexerToInfo(indexer *store.Indexer) (*IndexerInfo, error) {
-	settings, err := parseSettings(indexer.Settings)
+	cfg, err := parseSettings(indexer.Settings)
 	if err != nil {
 		return nil, err
 	}
 
-	s.maskSettings(indexer.DefinitionID, settings)
+	secrets, err := s.settingsSvc.GetIndexerSecrets(indexer.ID)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range secrets {
+		cfg[k] = v
+	}
+
+	s.maskSettings(indexer.DefinitionID, cfg)
 
 	return &IndexerInfo{
 		ID:           indexer.ID,
 		Name:         indexer.Name,
 		DefinitionID: indexer.DefinitionID,
 		Enabled:      indexer.Enabled,
-		Settings:     settings,
+		Settings:     cfg,
 		Priority:     indexer.Priority,
 		SeedMinRatio: indexer.SeedMinRatio,
 		SeedMinTime:  indexer.SeedMinTime,
@@ -477,6 +536,75 @@ func (s *Service) maskSettings(defID string, settings map[string]string) {
 			settings[field.Name] = maskValue(val)
 		}
 	}
+}
+
+// passwordFields returns a set of field names that are password-type for a given definition.
+func (s *Service) passwordFields(defID string) map[string]bool {
+	def, ok := s.defs[defID]
+	if !ok {
+		return nil
+	}
+	m := make(map[string]bool)
+	for _, f := range def.Settings {
+		if f.Type == "password" {
+			m[f.Name] = true
+		}
+	}
+	return m
+}
+
+// MigrateCredentials moves password fields from Indexer.Settings JSON into the
+// Settings table and strips them from the JSON column. Idempotent.
+func (s *Service) MigrateCredentials() error {
+	indexers, err := s.store.ListIndexers()
+	if err != nil {
+		return fmt.Errorf("listing indexers: %w", err)
+	}
+	for _, idx := range indexers {
+		pwFields := s.passwordFields(idx.DefinitionID)
+		if len(pwFields) == 0 {
+			continue
+		}
+		cfg, err := parseSettings(idx.Settings)
+		if err != nil {
+			slog.Warn("skipping indexer with unparseable settings", "id", idx.ID, "error", err)
+			continue
+		}
+		changed := false
+		for field := range pwFields {
+			val, exists := cfg[field]
+			if !exists || val == "" {
+				continue
+			}
+			// Check if already migrated
+			existing, err := s.settingsSvc.GetIndexerSecrets(idx.ID)
+			if err == nil {
+				if _, ok := existing[field]; ok {
+					// Already in Settings table — remove from JSON
+					delete(cfg, field)
+					changed = true
+					continue
+				}
+			}
+			if err := s.settingsSvc.SetIndexerSecret(idx.ID, field, val); err != nil {
+				return fmt.Errorf("migrating indexer %d field %s: %w", idx.ID, field, err)
+			}
+			delete(cfg, field)
+			changed = true
+			slog.Info("migrated indexer credential to settings table", "indexer_id", idx.ID, "field", field)
+		}
+		if changed {
+			jsonBytes, err := json.Marshal(cfg)
+			if err != nil {
+				return fmt.Errorf("re-marshalling indexer %d settings: %w", idx.ID, err)
+			}
+			idx.Settings = string(jsonBytes)
+			if err := s.store.UpdateIndexer(&idx); err != nil {
+				return fmt.Errorf("updating indexer %d: %w", idx.ID, err)
+			}
+		}
+	}
+	return nil
 }
 
 func parseSettings(raw string) (map[string]string, error) {

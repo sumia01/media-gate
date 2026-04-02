@@ -17,6 +17,7 @@ type Config struct {
 	Library LibraryConfig `koanf:"library"`
 	TMDB    TMDBConfig    `koanf:"tmdb"`
 	TVDB    TVDBConfig    `koanf:"tvdb"`
+	Secret  SecretConfig  `koanf:"secret"`
 }
 
 type TMDBConfig struct {
@@ -25,6 +26,10 @@ type TMDBConfig struct {
 
 type TVDBConfig struct {
 	ApiKey string `koanf:"apikey"`
+}
+
+type SecretConfig struct {
+	Key string `koanf:"key"`
 }
 
 type LibraryConfig struct {

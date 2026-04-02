@@ -68,6 +68,8 @@ type Store interface {
 	SetSetting(setting *Setting) error
 	ListSettings() ([]Setting, error)
 	DeleteSetting(key string) error
+	DeleteSettingsByPrefix(prefix string) error
+	ListSettingsByPrefix(prefix string) ([]Setting, error)
 
 	CreateJobRecord(record *JobRecord) error
 	ListJobRecords(limit int) ([]JobRecord, error)

@@ -124,9 +124,12 @@
 - [x] Library Copies UI — completed downloads split into dedicated section on media detail page, per-release delete with inline confirmation (reuses existing cleanupImportedFiles backend logic)
 - [ ] User management (if multi-user)
 
-## Phase 4.5: Security Hardening ⬜
-- [ ] AES-256 encryption for sensitive settings (API keys, passwords) at rest in the database
-- [ ] Encryption salt via environment variable (`MEDIAGATE_ENCRYPTION_SALT`) — required for key derivation, must not be stored in DB
+## Phase 4.5: Security Hardening ✅
+- [x] AES-256-GCM encryption for sensitive settings (API keys, passwords) at rest in the database
+- [x] Master key via environment variable (`MEDIAGATE_SECRET_KEY`) — SHA-256 key derivation, plaintext fallback for dev mode
+- [x] Unified secrets management — indexer credentials (password-type fields) migrated from `Indexer.Settings` JSON to shared `Settings` table with `indexer:{id}:{field}` key pattern
+- [x] `internal/crypto` package — stdlib-only AES-256-GCM with `enc:` prefix format for migration detection
+- [x] Idempotent startup migrations — `MigrateEncryption` (plaintext → encrypted) and `MigrateCredentials` (Indexer JSON → Settings table)
 
 ## Phase 5: Observability & Polish ⬜
 - [ ] Initial setup wizard / onboarding flow (guide through API keys, download client, library creation on first launch)
