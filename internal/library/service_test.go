@@ -64,10 +64,12 @@ func (s *stubStore) CreateEpisode(*store.Episode) error                    { ret
 func (s *stubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
 func (s *stubStore) DeleteEpisodesByMediaItem(uint) error                  { return nil }
 
-func (s *stubStore) GetSetting(string) (*store.Setting, error)   { return nil, store.ErrNotFound }
-func (s *stubStore) SetSetting(*store.Setting) error             { return nil }
-func (s *stubStore) ListSettings() ([]store.Setting, error)      { return nil, nil }
-func (s *stubStore) DeleteSetting(string) error                  { return nil }
+func (s *stubStore) GetSetting(string) (*store.Setting, error)              { return nil, store.ErrNotFound }
+func (s *stubStore) SetSetting(*store.Setting) error                        { return nil }
+func (s *stubStore) ListSettings() ([]store.Setting, error)                 { return nil, nil }
+func (s *stubStore) DeleteSetting(string) error                             { return nil }
+func (s *stubStore) DeleteSettingsByPrefix(string) error                    { return nil }
+func (s *stubStore) ListSettingsByPrefix(string) ([]store.Setting, error)   { return nil, nil }
 
 func (s *stubStore) CreateJobRecord(*store.JobRecord) error        { return nil }
 func (s *stubStore) ListJobRecords(int) ([]store.JobRecord, error) { return nil, nil }

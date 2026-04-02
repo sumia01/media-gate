@@ -767,3 +767,27 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Three changes: (1) When toggling monitor ON for a series on the detail page, intercept the toggle and show a SeasonMonitorModal with per-season toggles (all on by default). On confirm, send `PATCH /media/{id}` with both `monitored: true` and a new `seasonMonitors` array field for atomic upsert. On cancel, leave the item unmonitored. (2) The `MediaItemUpdate` OpenAPI schema gains a `seasonMonitors` field, and the backend handler upserts season monitor records (create-or-update). (3) The Add-to-Library modal skips the season step when the monitor toggle is off, and omits `seasonMonitors` from the request body. (4) Season monitored/unmonitored badges in the EpisodeGrid are hidden when the media item itself is not monitored.
 
 **Rationale**: Monitoring is a deliberate choice — users should always explicitly pick which seasons to track before the auto-grab worker acts on them. Skipping the season step when unmonitored avoids a confusing extra click. Atomic `seasonMonitors` on PATCH keeps the API consistent with the existing create flow (POST) which already supports the same field.
+
+---
+
+## ADR-056: At-rest encryption for sensitive settings
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: Sensitive credentials (API keys, passwords) were stored as plaintext in the SQLite database. While the API layer masks values before returning them to clients, direct database access (backups, DB browsers) exposes secrets in cleartext.
+
+**Decision**: Add AES-256-GCM encryption in the `settings.Service` layer. A master key is derived from `MEDIAGATE_SECRET_KEY` env var via SHA-256. Encrypted values are stored with an `enc:` prefix (`enc:<base64(nonce+ciphertext)>`) so the system can distinguish encrypted from plaintext values. If no key is configured, values are stored in plaintext with a startup warning (dev-friendly). An idempotent `MigrateEncryption()` runs at startup to encrypt any existing plaintext sensitive values. The `internal/crypto` package is stdlib-only (no external dependencies).
+
+**Rationale**: Service-layer encryption keeps the store simple and encryption transparent to all callers (Get/Update/List). The `enc:` prefix enables gradual migration without downtime. SHA-256 key derivation is appropriate because the input is a secret key (not a password), so slow KDF is unnecessary. Plaintext fallback avoids breaking dev workflows.
+
+---
+
+## ADR-057: Unified secrets management — indexer credentials in Settings table
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: Indexer credentials were stored as plaintext JSON in `Indexer.Settings` column with separate masking logic (`maskSettings` based on definition metadata). This duplicated the settings service's masking pattern and meant indexer secrets weren't covered by at-rest encryption (ADR-056).
+
+**Decision**: Move password-type indexer fields (identified by `field.Type == "password"` in Cardigann definitions) from `Indexer.Settings` JSON to the shared `Settings` table. Key pattern: `indexer:{id}:{fieldName}` (e.g., `indexer:5:password`). Non-sensitive fields (username, text) remain in the JSON column. The `settings.Service` provides `SetIndexerSecret`, `GetIndexerSecrets`, and `DeleteIndexerSecrets` helpers. On indexer delete, cascade-delete removes related Setting rows via `DeleteSettingsByPrefix`. An idempotent `MigrateCredentials()` runs at startup to move existing credentials. Indexer secret keys are automatically excluded from the settings API (`List` filters out `indexer:*` keys).
+
+**Rationale**: Single canonical location for all secrets enables consistent encryption, masking, and auditing. The `indexer:{id}:{field}` key pattern provides natural namespacing. `DeleteSettingsByPrefix` enables clean cascade without FK constraints between Settings and Indexers. The API contract and frontend behavior are unchanged — indexer settings still appear as a `map[string]string` with masked password fields.

@@ -54,7 +54,11 @@ func main() {
 	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
 		settings.KeyTMDBApiKey: cfg.TMDB.ApiKey,
 		settings.KeyTVDBApiKey: cfg.TVDB.ApiKey,
-	})
+	}, cfg.Secret.Key)
+	if err := settingsSvc.MigrateEncryption(); err != nil {
+		slog.Error("failed to migrate encryption", "error", err)
+		os.Exit(1)
+	}
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
 
@@ -75,9 +79,13 @@ func main() {
 	queue.Start()
 	defer queue.Stop()
 
-	indexerSvc, err := indexer.NewService(db)
+	indexerSvc, err := indexer.NewService(db, settingsSvc)
 	if err != nil {
 		slog.Error("failed to initialize indexer service", "error", err)
+		os.Exit(1)
+	}
+	if err := indexerSvc.MigrateCredentials(); err != nil {
+		slog.Error("failed to migrate indexer credentials", "error", err)
 		os.Exit(1)
 	}
 

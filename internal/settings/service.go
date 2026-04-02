@@ -3,12 +3,14 @@ package settings
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/crypto"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
@@ -39,6 +41,13 @@ var sensitiveKeys = map[string]bool{
 	KeyQBitPassword: true,
 }
 
+func isSensitiveKey(key string) bool {
+	if sensitiveKeys[key] {
+		return true
+	}
+	return strings.HasPrefix(key, "indexer:")
+}
+
 type KeyValue struct {
 	Key   string
 	Value string
@@ -53,18 +62,33 @@ type Service struct {
 	store        store.Store
 	basePath     string
 	envFallbacks map[string]string
+	cipher       *crypto.Cipher
 	subscribers  []chan string
 	mu           sync.Mutex
 }
 
-func NewService(s store.Store, basePath string, envFallbacks map[string]string) *Service {
+func NewService(s store.Store, basePath string, envFallbacks map[string]string, secretKey string) *Service {
 	fb := make(map[string]string, len(envFallbacks))
 	for k, v := range envFallbacks {
 		if v != "" {
 			fb[k] = v
 		}
 	}
-	return &Service{store: s, basePath: filepath.Clean(basePath), envFallbacks: fb}
+	svc := &Service{store: s, basePath: filepath.Clean(basePath), envFallbacks: fb}
+
+	if secretKey != "" {
+		key := crypto.DeriveKey(secretKey)
+		c, err := crypto.NewCipher(key)
+		if err != nil {
+			slog.Error("failed to initialize encryption cipher", "error", err)
+		} else {
+			svc.cipher = c
+		}
+	} else {
+		slog.Warn("MEDIAGATE_SECRET_KEY not set; sensitive settings stored in plaintext")
+	}
+
+	return svc
 }
 
 // Subscribe returns a channel that receives the key name whenever a setting is updated.
@@ -92,12 +116,23 @@ func (s *Service) List() ([]store.Setting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing settings: %w", err)
 	}
+	filtered := settings[:0]
 	for i := range settings {
+		// Indexer secrets are internal — not shown on the settings page.
+		if strings.HasPrefix(settings[i].Key, "indexer:") {
+			continue
+		}
+		if settings[i].Sensitive && s.cipher != nil {
+			if decrypted, err := s.cipher.Decrypt(settings[i].Value); err == nil {
+				settings[i].Value = decrypted
+			}
+		}
 		if settings[i].Sensitive {
 			settings[i].Value = maskValue(settings[i].Value)
 		}
+		filtered = append(filtered, settings[i])
 	}
-	return settings, nil
+	return filtered, nil
 }
 
 func (s *Service) Update(items []KeyValue) error {
@@ -107,10 +142,19 @@ func (s *Service) Update(items []KeyValue) error {
 				return err
 			}
 		}
+		sensitive := isSensitiveKey(item.Key)
+		value := item.Value
+		if sensitive && s.cipher != nil {
+			encrypted, err := s.cipher.Encrypt(value)
+			if err != nil {
+				return fmt.Errorf("encrypting setting %q: %w", item.Key, err)
+			}
+			value = encrypted
+		}
 		setting := &store.Setting{
 			Key:       item.Key,
-			Value:     item.Value,
-			Sensitive: sensitiveKeys[item.Key],
+			Value:     value,
+			Sensitive: sensitive,
 		}
 		if err := s.store.SetSetting(setting); err != nil {
 			return fmt.Errorf("saving setting %q: %w", item.Key, err)
@@ -123,6 +167,13 @@ func (s *Service) Update(items []KeyValue) error {
 func (s *Service) Get(key string) (string, error) {
 	setting, err := s.store.GetSetting(key)
 	if err == nil {
+		if setting.Sensitive && s.cipher != nil {
+			decrypted, err := s.cipher.Decrypt(setting.Value)
+			if err != nil {
+				return "", fmt.Errorf("decrypting setting %q: %w", key, err)
+			}
+			return decrypted, nil
+		}
 		return setting.Value, nil
 	}
 	if v, ok := s.envFallbacks[key]; ok {
@@ -214,6 +265,79 @@ func maskValue(v string) string {
 		return "****"
 	}
 	return "****" + v[len(v)-4:]
+}
+
+// --- Indexer secret helpers ---
+
+func indexerSecretKey(indexerID uint, fieldName string) string {
+	return fmt.Sprintf("indexer:%d:%s", indexerID, fieldName)
+}
+
+// SetIndexerSecret stores a single indexer credential in the settings table.
+func (s *Service) SetIndexerSecret(indexerID uint, fieldName, value string) error {
+	return s.Update([]KeyValue{{
+		Key:   indexerSecretKey(indexerID, fieldName),
+		Value: value,
+	}})
+}
+
+// GetIndexerSecrets returns all credentials for an indexer as a map of field name → plaintext value.
+func (s *Service) GetIndexerSecrets(indexerID uint) (map[string]string, error) {
+	prefix := fmt.Sprintf("indexer:%d:", indexerID)
+	rows, err := s.store.ListSettingsByPrefix(prefix)
+	if err != nil {
+		return nil, fmt.Errorf("listing indexer secrets: %w", err)
+	}
+	result := make(map[string]string, len(rows))
+	for _, row := range rows {
+		fieldName := strings.TrimPrefix(row.Key, prefix)
+		val := row.Value
+		if row.Sensitive && s.cipher != nil {
+			decrypted, err := s.cipher.Decrypt(val)
+			if err != nil {
+				return nil, fmt.Errorf("decrypting %s: %w", row.Key, err)
+			}
+			val = decrypted
+		}
+		result[fieldName] = val
+	}
+	return result, nil
+}
+
+// DeleteIndexerSecrets removes all credentials for an indexer.
+func (s *Service) DeleteIndexerSecrets(indexerID uint) error {
+	prefix := fmt.Sprintf("indexer:%d:", indexerID)
+	return s.store.DeleteSettingsByPrefix(prefix)
+}
+
+// MigrateEncryption encrypts any existing plaintext sensitive settings.
+// It is idempotent — values already encrypted are skipped.
+func (s *Service) MigrateEncryption() error {
+	if s.cipher == nil {
+		return nil
+	}
+	settings, err := s.store.ListSettings()
+	if err != nil {
+		return fmt.Errorf("listing settings for encryption migration: %w", err)
+	}
+	for i := range settings {
+		if !settings[i].Sensitive {
+			continue
+		}
+		if crypto.IsEncrypted(settings[i].Value) {
+			continue
+		}
+		encrypted, err := s.cipher.Encrypt(settings[i].Value)
+		if err != nil {
+			return fmt.Errorf("encrypting %s: %w", settings[i].Key, err)
+		}
+		settings[i].Value = encrypted
+		if err := s.store.SetSetting(&settings[i]); err != nil {
+			return fmt.Errorf("saving encrypted %s: %w", settings[i].Key, err)
+		}
+		slog.Info("encrypted sensitive setting", "key", settings[i].Key)
+	}
+	return nil
 }
 
 // validateDownloadPath ensures the path is within basePath and not used by any library.
