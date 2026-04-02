@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/indexer/cardigann"
 	"github.com/sumia01/media-gate/internal/indexer/definitions"
@@ -20,6 +21,7 @@ type Service struct {
 	store       store.Store
 	settingsSvc *settings.Service
 	defs        map[string]*cardigann.Definition
+	defsMu      sync.RWMutex
 	engines     map[uint]*engineEntry
 	mu          sync.Mutex
 }
@@ -90,18 +92,24 @@ type SearchParams struct {
 	Limit      int
 }
 
-// NewService loads built-in definitions and creates the indexer service.
-func NewService(s store.Store, settingsSvc *settings.Service) (*Service, error) {
-	raw, err := definitions.LoadBuiltin()
+// NewService loads indexer definitions and creates the indexer service.
+// It tries the disk cache first, then falls back to embedded definitions.
+func NewService(s store.Store, settingsSvc *settings.Service, cacheDir string) (*Service, error) {
+	raw, err := definitions.LoadCached(cacheDir)
 	if err != nil {
-		return nil, fmt.Errorf("loading built-in definitions: %w", err)
+		slog.Info("no cached definitions, using embedded fallback", "reason", err)
+		raw, err = definitions.LoadBuiltin()
+		if err != nil {
+			return nil, fmt.Errorf("loading built-in definitions: %w", err)
+		}
 	}
 
 	defs := make(map[string]*cardigann.Definition, len(raw))
 	for id, data := range raw {
-		def, err := cardigann.ParseDefinition(data)
-		if err != nil {
-			return nil, fmt.Errorf("parsing definition %q: %w", id, err)
+		def, parseErr := cardigann.ParseDefinition(data)
+		if parseErr != nil {
+			slog.Warn("skipping unparseable definition", "id", id, "error", parseErr)
+			continue
 		}
 		defs[id] = def
 	}
@@ -116,8 +124,55 @@ func NewService(s store.Store, settingsSvc *settings.Service) (*Service, error) 
 	}, nil
 }
 
+// RefreshDefinitions fetches the latest definitions from GitHub,
+// updates the disk cache and in-memory defs.
+func (s *Service) RefreshDefinitions(cacheDir string) error {
+	raw, err := definitions.FetchFromGitHub()
+	if err != nil {
+		return fmt.Errorf("fetching from github: %w", err)
+	}
+
+	newDefs := make(map[string]*cardigann.Definition, len(raw))
+	for id, data := range raw {
+		def, parseErr := cardigann.ParseDefinition(data)
+		if parseErr != nil {
+			slog.Warn("skipping unparseable remote definition", "id", id, "error", parseErr)
+			continue
+		}
+		newDefs[id] = def
+	}
+
+	if err := definitions.SaveCache(cacheDir, raw); err != nil {
+		slog.Warn("failed to save definition cache", "error", err)
+	}
+
+	// Swap defs and invalidate engines for changed definitions.
+	s.defsMu.Lock()
+	oldDefs := s.defs
+	s.defs = newDefs
+	s.defsMu.Unlock()
+
+	s.mu.Lock()
+	for id := range s.engines {
+		// Invalidate all engines — definitions may have changed.
+		delete(s.engines, id)
+	}
+	s.mu.Unlock()
+	_ = oldDefs // suppress unused warning
+
+	slog.Info("indexer definitions refreshed", "count", len(newDefs))
+	return nil
+}
+
+// CacheFresh returns whether the disk cache is fresh.
+func CacheFresh(cacheDir string) bool {
+	return definitions.IsCacheFresh(cacheDir, 24*time.Hour)
+}
+
 // ListDefinitions returns all available indexer definitions.
 func (s *Service) ListDefinitions() []DefinitionInfo {
+	s.defsMu.RLock()
+	defer s.defsMu.RUnlock()
 	result := make([]DefinitionInfo, 0, len(s.defs))
 	for _, def := range s.defs {
 		result = append(result, definitionToInfo(def))
@@ -128,7 +183,9 @@ func (s *Service) ListDefinitions() []DefinitionInfo {
 
 // GetDefinition returns a single definition by ID.
 func (s *Service) GetDefinition(id string) (*DefinitionInfo, error) {
+	s.defsMu.RLock()
 	def, ok := s.defs[id]
+	s.defsMu.RUnlock()
 	if !ok {
 		return nil, store.ErrNotFound
 	}
@@ -138,7 +195,10 @@ func (s *Service) GetDefinition(id string) (*DefinitionInfo, error) {
 
 // Create adds a new indexer configuration.
 func (s *Service) Create(name, definitionID string, settings map[string]string, priority int, seedMinRatio float64, seedMinTime int) (*IndexerInfo, error) {
-	if _, ok := s.defs[definitionID]; !ok {
+	s.defsMu.RLock()
+	_, ok := s.defs[definitionID]
+	s.defsMu.RUnlock()
+	if !ok {
 		return nil, fmt.Errorf("unknown definition: %q", definitionID)
 	}
 
@@ -275,7 +335,9 @@ func (s *Service) TestConnection(id uint, overrideSettings map[string]string) (b
 		return false, "", err
 	}
 
+	s.defsMu.RLock()
 	def, ok := s.defs[indexer.DefinitionID]
+	s.defsMu.RUnlock()
 	if !ok {
 		return false, "unknown definition", nil
 	}
@@ -414,7 +476,9 @@ func (s *Service) getOrCreateEngine(indexer *store.Indexer) (*engineEntry, error
 	}
 	s.mu.Unlock()
 
+	s.defsMu.RLock()
 	def, ok := s.defs[indexer.DefinitionID]
+	s.defsMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("unknown definition: %q", indexer.DefinitionID)
 	}
@@ -524,7 +588,9 @@ func (s *Service) indexerToInfo(indexer *store.Indexer) (*IndexerInfo, error) {
 }
 
 func (s *Service) maskSettings(defID string, settings map[string]string) {
+	s.defsMu.RLock()
 	def, ok := s.defs[defID]
+	s.defsMu.RUnlock()
 	if !ok {
 		return
 	}
@@ -540,7 +606,9 @@ func (s *Service) maskSettings(defID string, settings map[string]string) {
 
 // passwordFields returns a set of field names that are password-type for a given definition.
 func (s *Service) passwordFields(defID string) map[string]bool {
+	s.defsMu.RLock()
 	def, ok := s.defs[defID]
+	s.defsMu.RUnlock()
 	if !ok {
 		return nil
 	}

@@ -52,6 +52,7 @@ func main() {
 	}
 
 	posterDir := ".cache/posters"
+	defCacheDir := ".cache/definitions"
 	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
 		settings.KeyTMDBApiKey:      cfg.TMDB.ApiKey,
 		settings.KeyTVDBApiKey:      cfg.TVDB.ApiKey,
@@ -98,7 +99,7 @@ func main() {
 	queue.Start()
 	defer queue.Stop()
 
-	indexerSvc, err := indexer.NewService(db, settingsSvc)
+	indexerSvc, err := indexer.NewService(db, settingsSvc, defCacheDir)
 	if err != nil {
 		slog.Error("failed to initialize indexer service", "error", err)
 		os.Exit(1)
@@ -107,6 +108,10 @@ func main() {
 		slog.Error("failed to migrate indexer credentials", "error", err)
 		os.Exit(1)
 	}
+
+	defRefresher := indexer.NewRefreshWorker(indexerSvc, defCacheDir)
+	defRefresher.Start()
+	defer defRefresher.Stop()
 
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
 	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc)

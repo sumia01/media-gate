@@ -63,6 +63,8 @@
 ## Phase 2: Indexer Integration (Prowlarr replacement) ✅
 - [x] Cardigann YAML engine (parse + execute Prowlarr indexer definitions)
 - [x] Built-in indexer definitions (ncore.yml embedded via go:embed)
+- [x] Remote indexer definitions — fetch ~550 Prowlarr/Indexers v11 YAML definitions from GitHub tarball, disk cache with 24h TTL, background refresh worker, embedded fallback when offline
+- [x] Cardigann `ErrorBlock.Message` flexible parsing (string or `{text: "..."}` map form for v11 compatibility)
 - [x] Indexer CRUD (store model, service, API endpoints)
 - [x] Multi-indexer search with parallel execution
 - [x] Indexer connection testing
@@ -151,11 +153,14 @@
 - [x] Removed static demo data (`dummyData.ts`, `MediaCardA.vue`)
 
 ## Phase 5: Observability & Polish ⬜
-- [ ] Guided library creation at end of onboarding (post-wizard)
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
 - [ ] Notification system (TBD)
+
+## Known Bugs ⬜
+- [ ] Indexer test button tests ALL configured indexers instead of only the one clicked
+- [ ] BitHU indexer search returns no results despite connection test succeeding
 
 ---
 

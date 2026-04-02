@@ -57,8 +57,27 @@ type Login struct {
 
 // ErrorBlock identifies an error on a login response page.
 type ErrorBlock struct {
-	Selector string `yaml:"selector"`
-	Message  string `yaml:"message"`
+	Selector string       `yaml:"selector"`
+	Message  StringOrText `yaml:"message"`
+}
+
+// StringOrText accepts either a plain string or an object with a "text" field.
+// Many Prowlarr v11 definitions use message: {text: "..."} instead of a bare string.
+type StringOrText string
+
+func (s *StringOrText) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = StringOrText(value.Value)
+		return nil
+	}
+	var m struct {
+		Text string `yaml:"text"`
+	}
+	if err := value.Decode(&m); err != nil {
+		return err
+	}
+	*s = StringOrText(m.Text)
+	return nil
 }
 
 // TestBlock verifies a login was successful.
