@@ -106,7 +106,7 @@ func (s *settingsStubStore) WithTx(fn func(store.Store) error) error            
 func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath)
+	svc := NewService(st, basePath, nil)
 
 	tests := []struct {
 		name string
@@ -145,7 +145,7 @@ func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {
 func TestValidateDownloadPath_AcceptsValidPaths(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath)
+	svc := NewService(st, basePath, nil)
 
 	tests := []struct {
 		name string
@@ -172,7 +172,7 @@ func TestValidateDownloadPath_RejectsConflictWithLibrary(t *testing.T) {
 	st.libraries = []store.Library{
 		{ID: 1, Name: "Movies", Path: basePath + "/movies", MediaType: "movie"},
 	}
-	svc := NewService(st, basePath)
+	svc := NewService(st, basePath, nil)
 
 	err := svc.validateDownloadPath(basePath + "/movies")
 	if err != ErrDownloadPathConflict {
@@ -183,7 +183,7 @@ func TestValidateDownloadPath_RejectsConflictWithLibrary(t *testing.T) {
 func TestUpdate_RejectsDownloadPathOutsideBase(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath)
+	svc := NewService(st, basePath, nil)
 
 	attacks := []struct {
 		name string
@@ -207,7 +207,7 @@ func TestUpdate_RejectsDownloadPathOutsideBase(t *testing.T) {
 func TestUpdate_AcceptsDownloadPathInsideBase(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath)
+	svc := NewService(st, basePath, nil)
 
 	err := svc.Update([]KeyValue{{Key: KeyQBitDownloadPath, Value: basePath + "/downloads"}})
 	if err != nil {

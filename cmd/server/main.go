@@ -51,7 +51,10 @@ func main() {
 	}
 
 	posterDir := ".cache/posters"
-	settingsSvc := settings.NewService(db, cfg.Library.BasePath)
+	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
+		settings.KeyTMDBApiKey: cfg.TMDB.ApiKey,
+		settings.KeyTVDBApiKey: cfg.TVDB.ApiKey,
+	})
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
 

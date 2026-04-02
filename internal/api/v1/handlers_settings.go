@@ -18,7 +18,7 @@ func (h *Handlers) ListSettings(_ context.Context, _ ListSettingsRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	return ListSettings200JSONResponse{Settings: settingsToAPI(items)}, nil
+	return ListSettings200JSONResponse{Settings: settingsToAPI(items, h.settings)}, nil
 }
 
 func (h *Handlers) UpdateSettings(_ context.Context, req UpdateSettingsRequestObject) (UpdateSettingsResponseObject, error) {
@@ -31,7 +31,7 @@ func (h *Handlers) UpdateSettings(_ context.Context, req UpdateSettingsRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return UpdateSettings200JSONResponse{Settings: settingsToAPI(items)}, nil
+	return UpdateSettings200JSONResponse{Settings: settingsToAPI(items, h.settings)}, nil
 }
 
 func (h *Handlers) TestTmdbConnection(_ context.Context, req TestTmdbConnectionRequestObject) (TestTmdbConnectionResponseObject, error) {

@@ -50,14 +50,21 @@ var (
 )
 
 type Service struct {
-	store       store.Store
-	basePath    string
-	subscribers []chan string
-	mu          sync.Mutex
+	store        store.Store
+	basePath     string
+	envFallbacks map[string]string
+	subscribers  []chan string
+	mu           sync.Mutex
 }
 
-func NewService(s store.Store, basePath string) *Service {
-	return &Service{store: s, basePath: filepath.Clean(basePath)}
+func NewService(s store.Store, basePath string, envFallbacks map[string]string) *Service {
+	fb := make(map[string]string, len(envFallbacks))
+	for k, v := range envFallbacks {
+		if v != "" {
+			fb[k] = v
+		}
+	}
+	return &Service{store: s, basePath: filepath.Clean(basePath), envFallbacks: fb}
 }
 
 // Subscribe returns a channel that receives the key name whenever a setting is updated.
@@ -115,10 +122,19 @@ func (s *Service) Update(items []KeyValue) error {
 
 func (s *Service) Get(key string) (string, error) {
 	setting, err := s.store.GetSetting(key)
-	if err != nil {
-		return "", err
+	if err == nil {
+		return setting.Value, nil
 	}
-	return setting.Value, nil
+	if v, ok := s.envFallbacks[key]; ok {
+		return v, nil
+	}
+	return "", err
+}
+
+// HasEnvFallback reports whether a setting key has a non-empty environment variable fallback.
+func (s *Service) HasEnvFallback(key string) bool {
+	_, ok := s.envFallbacks[key]
+	return ok
 }
 
 func (s *Service) GetWithDefault(key, defaultValue string) string {

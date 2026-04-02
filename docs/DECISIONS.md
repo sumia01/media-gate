@@ -743,3 +743,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Add a GET request to the login URL before the POST in `Engine.Login`. The HTTP client's cookie jar captures the session cookie from the GET response, which is then automatically included in the subsequent POST.
 
 **Rationale**: This matches the behavior of Prowlarr/Jackett's Cardigann implementation. The pre-GET is lightweight (single extra request) and harmless for trackers that don't require it. The cookie jar handles propagation automatically.
+
+---
+
+## ADR-054: Environment variable fallback for TMDB/TVDB API keys
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: API keys were only configurable via the UI (DB-backed settings, ADR-014). Container and headless deployments benefit from injecting API keys via environment variables without requiring UI setup.
+
+**Decision**: Add `TMDB_APIKEY` and `TVDB_APIKEY` to the koanf config (also available as `MEDIAGATE_TMDB_APIKEY` / `MEDIAGATE_TVDB_APIKEY`). The settings service accepts an `envFallbacks` map at construction. `Get()` checks the DB first — if no DB entry exists, it falls back to the env value. DB always wins when both are set. The Settings API response includes `tmdbApiKeyFromEnv` / `tvdbApiKeyFromEnv` booleans so the frontend can show a subtle hint ("Configured via environment variable") when an env fallback is present.
+
+**Rationale**: DB-first priority ensures UI-saved keys are never overridden unexpectedly. Env fallback supports infrastructure-as-code workflows (Docker Compose, Kubernetes secrets) where API keys are injected at deploy time. The frontend hint is intentionally subtle — it informs without being intrusive, and the user can still test the connection to verify the env key works.

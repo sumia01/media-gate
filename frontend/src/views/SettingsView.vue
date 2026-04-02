@@ -10,6 +10,8 @@ const tmdbDirty = ref(false)
 const tvdbDirty = ref(false)
 const showTmdbKey = ref(false)
 const showTvdbKey = ref(false)
+const tmdbFromEnv = ref(false)
+const tvdbFromEnv = ref(false)
 
 const primarySource = ref('tmdb')
 const tmdbRateLimit = ref('4')
@@ -75,6 +77,8 @@ async function fetchSettings() {
   if (s) {
     tmdbKey.value = s.tmdbApiKey ?? ''
     tvdbKey.value = s.tvdbApiKey ?? ''
+    tmdbFromEnv.value = s.tmdbApiKeyFromEnv ?? false
+    tvdbFromEnv.value = s.tvdbApiKeyFromEnv ?? false
     primarySource.value = s.metadataPrimarySource ?? 'tmdb'
     tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
     tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
@@ -148,6 +152,8 @@ async function saveSettings() {
   if (s) {
     tmdbKey.value = s.tmdbApiKey ?? ''
     tvdbKey.value = s.tvdbApiKey ?? ''
+    tmdbFromEnv.value = s.tmdbApiKeyFromEnv ?? false
+    tvdbFromEnv.value = s.tvdbApiKeyFromEnv ?? false
     primarySource.value = s.metadataPrimarySource ?? 'tmdb'
     tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
     tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
@@ -273,6 +279,7 @@ onMounted(fetchSettings)
                   {{ tmdbTesting ? 'Testing...' : 'Test Connection' }}
                 </button>
               </div>
+              <p v-if="tmdbFromEnv" class="text-[10px] text-gray-500 mt-1.5">Configured via environment variable<template v-if="!tmdbKey"> (active)</template></p>
             </div>
 
             <!-- TMDB test result -->
@@ -325,6 +332,7 @@ onMounted(fetchSettings)
                   {{ tvdbTesting ? 'Testing...' : 'Test Connection' }}
                 </button>
               </div>
+              <p v-if="tvdbFromEnv" class="text-[10px] text-gray-500 mt-1.5">Configured via environment variable<template v-if="!tvdbKey"> (active)</template></p>
             </div>
 
             <!-- TVDB test result -->

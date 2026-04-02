@@ -2050,8 +2050,14 @@ components:
       properties:
         tmdbApiKey:
           type: string
+        tmdbApiKeyFromEnv:
+          type: boolean
+          description: True when the TMDB API key is provided via environment variable
         tvdbApiKey:
           type: string
+        tvdbApiKeyFromEnv:
+          type: boolean
+          description: True when the TVDB API key is provided via environment variable
         metadataPrimarySource:
           type: string
           enum: [tmdb, tvdb]
