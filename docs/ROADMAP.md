@@ -120,6 +120,7 @@
 - [x] Multi-copy handling (same media in different qualities)
 - [x] Series episode tracking (which seasons/episodes are present/missing)
 - [x] Season bundles vs standalone episodes vs complete series downloads (implemented as season pack preference setting with prefer_packs/prefer_episodes/packs_only modes)
+- [x] Library Copies UI — completed downloads split into dedicated section on media detail page, per-release delete with inline confirmation (reuses existing cleanupImportedFiles backend logic)
 - [ ] User management (if multi-user)
 
 ## Phase 4.5: Security Hardening ⬜
