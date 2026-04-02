@@ -839,3 +839,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Four separate `GET /discover/*` endpoints instead of a single aggregated endpoint. `recently-added` queries the local DB (cross-library, sorted by createdAt DESC, limit 20, metadata-enriched items only). `trending`, `popular-movies`, `popular-series` call TMDB's `/trending/all/week`, `/movie/popular`, `/tv/popular` respectively. New `DiscoverItem` schema (distinct from `MatchCandidate`) with `mediaType` and `rating` fields. TMDB endpoints return empty arrays (not errors) when API key is not configured. Frontend fetches all 4 sections in parallel on mount with independent loading skeletons.
 
 **Rationale**: Separate endpoints allow each section to load and fail independently — recently-added always works even without TMDB configuration. `DiscoverItem` avoids polluting `MatchCandidate` with fields irrelevant to matching (rating, mediaType) and vice versa (confidence, existingMediaId). `VoteAverage` was added to existing `MovieResult`/`TVResult` structs (zero-value ignored by existing consumers) to avoid duplicating types for popular endpoints.
+
+---
+
+## ADR-062: Remote indexer definitions from Prowlarr/Indexers GitHub repo
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: Only the embedded `ncore.yml` definition was available. Users needed access to the full Prowlarr indexer catalog (~550 definitions) when adding indexers, without requiring manual YAML management.
+
+**Decision**: On startup, load definitions from a disk cache (`.cache/definitions/`) if fresh (< 24h), otherwise fall back to the embedded `ncore.yml`. A background `RefreshWorker` (60s startup delay, 24h ticker) downloads the Prowlarr/Indexers GitHub tarball (`GET /repos/Prowlarr/Indexers/tarball/master`), extracts `definitions/v11/*.yml` files, parses them with `cardigann.ParseDefinition`, writes to disk cache, and hot-swaps the in-memory definition map under a `sync.RWMutex`. All cached engines are invalidated on refresh. Unparseable definitions are logged and skipped (never fail startup). The `ErrorBlock.Message` field was changed from `string` to a `StringOrText` type with custom `UnmarshalYAML` to handle both `message: "text"` and `message: {text: "text"}` forms used in v11 definitions. Three definitions with invalid YAML (unescaped regex backslashes) in the upstream repo are skipped.
+
+**Rationale**: The tarball approach downloads all ~550 definitions in a single HTTP call (~2-5MB compressed) instead of 550 individual file fetches. Disk caching ensures fast startup and offline operation. The embedded `ncore.yml` fallback guarantees at least one definition is always available. The `RWMutex` on the definitions map allows concurrent reads during search while still supporting hot-swap on refresh. The 24h refresh interval matches GitHub's unauthenticated rate limit (60 req/hour) with ample margin.
