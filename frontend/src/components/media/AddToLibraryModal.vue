@@ -104,8 +104,8 @@ async function handleAdd() {
     }
   }
 
-  // For series: include season monitor selections
-  if (isSeries.value && hasSeasons.value) {
+  // For series: include season monitor selections (only when monitored)
+  if (monitored.value && isSeries.value && hasSeasons.value) {
     body.seasonMonitors = props.externalSeasons!.map(s => ({
       seasonNumber: s.seasonNumber,
       monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
@@ -275,7 +275,7 @@ function toggleAllSeasons() {
         <!-- Actions -->
         <div class="flex gap-3">
           <button
-            v-if="isSeries && hasSeasons"
+            v-if="monitored && isSeries && hasSeasons"
             class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!selectedLibraryId"
             @click="goToSeasons"

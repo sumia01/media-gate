@@ -5,6 +5,7 @@ import type { SeasonSummary, Episode } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
+  monitored: boolean
   refreshKey?: number
 }>()
 
@@ -109,7 +110,7 @@ watch(() => props.refreshKey, fetchEpisodes)
               {{ season.availableEpisodes }}/{{ season.totalEpisodes }} episodes
             </span>
             <span
-              v-if="!season.monitored"
+              v-if="props.monitored && !season.monitored"
               class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-600/20 text-gray-400 cursor-pointer hover:bg-emerald-600/20 hover:text-emerald-300 transition-colors duration-200"
               title="Click to monitor this season"
               @click.stop="toggleSeasonMonitor(season.seasonNumber, false)"
@@ -117,7 +118,7 @@ watch(() => props.refreshKey, fetchEpisodes)
               unmonitored
             </span>
             <span
-              v-else
+              v-else-if="props.monitored"
               class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 cursor-pointer hover:bg-gray-600/20 hover:text-gray-400 transition-colors duration-200"
               title="Click to unmonitor this season"
               @click.stop="toggleSeasonMonitor(season.seasonNumber, true)"
