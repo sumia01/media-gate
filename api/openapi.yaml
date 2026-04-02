@@ -1025,6 +1025,90 @@ paths:
                     items:
                       $ref: "#/components/schemas/ExternalSeasonSummary"
 
+  /discover/recently-added:
+    get:
+      operationId: getRecentlyAdded
+      tags:
+        - discover
+      summary: Recently added media items across all libraries
+      responses:
+        "200":
+          description: Recently added media items
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MediaItem"
+
+  /discover/trending:
+    get:
+      operationId: getTrending
+      tags:
+        - discover
+      summary: Trending movies and series from TMDB
+      responses:
+        "200":
+          description: Trending items
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoverItem"
+
+  /discover/popular-movies:
+    get:
+      operationId: getPopularMovies
+      tags:
+        - discover
+      summary: Popular movies from TMDB
+      responses:
+        "200":
+          description: Popular movies
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoverItem"
+
+  /discover/popular-series:
+    get:
+      operationId: getPopularSeries
+      tags:
+        - discover
+      summary: Popular series from TMDB
+      responses:
+        "200":
+          description: Popular series
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoverItem"
+
   /media-profiles:
     get:
       operationId: listMediaProfiles
@@ -2670,3 +2754,35 @@ components:
           type: string
         newPassword:
           type: string
+
+    DiscoverItem:
+      type: object
+      required:
+        - source
+        - externalId
+        - title
+        - mediaType
+      properties:
+        source:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+        externalId:
+          type: integer
+        title:
+          type: string
+        overview:
+          type: string
+        year:
+          type: integer
+        posterUrl:
+          type: string
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+        rating:
+          type: number
+          format: float

@@ -31,6 +31,7 @@ type Store interface {
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
 	MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error)
 	ListMonitoredMediaItems() ([]MediaItem, error)
+	ListRecentMediaItems(limit int) ([]MediaItem, error)
 
 	CreateMediaMetadata(meta *MediaMetadata) error
 	GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error)

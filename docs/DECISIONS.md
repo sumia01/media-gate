@@ -827,3 +827,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: (1) Add a `StatusRecalculator` interface in the `matching` package (implemented by `sync.Service`) and inject it via `SetStatusRecalculator()` to avoid circular imports. Call `RecalcMediaItemStatus` at the end of `applyMatch`, after episodes are stored. (2) Call `RecalcMediaItemStatus` in the `ResyncMediaItem` handler after re-scanning files. (3) Inject `*eventbus.Bus` into the matching service via `SetBus()`. Publish `media.item_matched` from `applyMatch` and `media.resync_completed` from the resync handler so the frontend receives real-time status updates via SSE.
 
 **Rationale**: The existing `RecalcMediaItemStatus` function already had the correct partial/available logic (comparing aired episodes against media files). The bug was that it was never invoked after matching or resync. The `StatusRecalculator` interface avoids a `matching → sync` import cycle. Publishing SSE events ensures the frontend reflects the corrected status without requiring a manual page refresh — the frontend already listened for these event types but the backend never emitted them.
+
+---
+
+## ADR-061: Discover page with TMDB trending/popular and recently added
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: The home page (`/`) showed static demo data with hard-coded TMDB poster URLs. Needed real content: recently added items from the user's libraries and trending/popular content from TMDB.
+
+**Decision**: Four separate `GET /discover/*` endpoints instead of a single aggregated endpoint. `recently-added` queries the local DB (cross-library, sorted by createdAt DESC, limit 20, metadata-enriched items only). `trending`, `popular-movies`, `popular-series` call TMDB's `/trending/all/week`, `/movie/popular`, `/tv/popular` respectively. New `DiscoverItem` schema (distinct from `MatchCandidate`) with `mediaType` and `rating` fields. TMDB endpoints return empty arrays (not errors) when API key is not configured. Frontend fetches all 4 sections in parallel on mount with independent loading skeletons.
+
+**Rationale**: Separate endpoints allow each section to load and fail independently — recently-added always works even without TMDB configuration. `DiscoverItem` avoids polluting `MatchCandidate` with fields irrelevant to matching (rating, mediaType) and vice versa (confidence, existingMediaId). `VoteAverage` was added to existing `MovieResult`/`TVResult` structs (zero-value ignored by existing consumers) to avoid duplicating types for popular endpoints.

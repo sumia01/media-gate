@@ -111,7 +111,7 @@
 - [x] Typed settings API — replaced generic key-value array with explicit typed fields per setting (string/integer/enum), eliminating stringly-typed bugs
 - [x] Auto-download based on watchlist (implemented as auto-grab monitor worker)
 
-## Phase 4: Request System (Overseerr replacement) ⬜
+## Phase 4: Request System (Overseerr replacement) ✅
 - [x] Requested media items (source: request, status: requested) — foundation
 - [x] Quality profiles model + CRUD API (data model ready, frontend deferred)
 - [x] Quality profile assignment on media detail page (dropdown + PATCH endpoint)
@@ -140,6 +140,15 @@
 - [x] Frontend router guard redirects all routes to `/setup` when onboarding incomplete
 - [x] Existing installations auto-detected as completed (users exist → wizard never shown)
 - [x] Progress persistence — wizard resumes at correct step on page refresh via `onboarding_step` setting
+
+## Phase 4.7: Discover Page ✅
+- [x] TMDB client extensions — `TrendingAll(timeWindow)`, `PopularMovies()`, `PopularTV()` methods with `VoteAverage` field on result types
+- [x] Store method — `ListRecentMediaItems(limit)` for cross-library recently added query
+- [x] 4 new API endpoints — `GET /discover/recently-added`, `/discover/trending`, `/discover/popular-movies`, `/discover/popular-series`
+- [x] `DiscoverItem` schema in OpenAPI — source, externalId, title, overview, year, posterUrl, mediaType, rating
+- [x] Discover handlers — graceful degradation (empty array when TMDB key not configured)
+- [x] HomeView rewrite — 4 sections with independent loading, skeleton placeholders, click navigation to media detail / external preview
+- [x] Removed static demo data (`dummyData.ts`, `MediaCardA.vue`)
 
 ## Phase 5: Observability & Polish ⬜
 - [ ] Guided library creation at end of onboarding (post-wizard)

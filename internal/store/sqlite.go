@@ -446,6 +446,14 @@ func (s *SQLiteStore) ListMonitoredMediaItems() ([]MediaItem, error) {
 	return items, nil
 }
 
+func (s *SQLiteStore) ListRecentMediaItems(limit int) ([]MediaItem, error) {
+	var items []MediaItem
+	if err := s.db.Where("source != ?", "disk").Order("created_at DESC").Limit(limit).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (s *SQLiteStore) MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error) {
 	var count int64
 	err := s.db.Model(&MediaMetadata{}).
