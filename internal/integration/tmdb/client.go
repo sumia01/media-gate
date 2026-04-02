@@ -105,6 +105,48 @@ func (c *Client) GetTVSeason(seriesID, seasonNumber int) (*TVSeasonDetails, erro
 	return &details, nil
 }
 
+func (c *Client) TrendingAll(timeWindow string) ([]TrendingResult, error) {
+	body, err := c.get(fmt.Sprintf("/trending/all/%s", timeWindow))
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []TrendingResult `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Results, nil
+}
+
+func (c *Client) PopularMovies() ([]MovieResult, error) {
+	body, err := c.get("/movie/popular")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []MovieResult `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Results, nil
+}
+
+func (c *Client) PopularTV() ([]TVResult, error) {
+	body, err := c.get("/tv/popular")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []TVResult `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Results, nil
+}
+
 func (c *Client) get(path string) ([]byte, error) {
 	return c.getWithParams(path, nil)
 }
@@ -145,19 +187,33 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 // Types
 
 type MovieResult struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
-	Overview    string `json:"overview"`
-	ReleaseDate string `json:"release_date"`
-	PosterPath  string `json:"poster_path"`
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	Overview    string  `json:"overview"`
+	ReleaseDate string  `json:"release_date"`
+	PosterPath  string  `json:"poster_path"`
+	VoteAverage float64 `json:"vote_average"`
 }
 
 type TVResult struct {
-	ID           int    `json:"id"`
-	Name         string `json:"name"`
-	Overview     string `json:"overview"`
-	FirstAirDate string `json:"first_air_date"`
-	PosterPath   string `json:"poster_path"`
+	ID           int     `json:"id"`
+	Name         string  `json:"name"`
+	Overview     string  `json:"overview"`
+	FirstAirDate string  `json:"first_air_date"`
+	PosterPath   string  `json:"poster_path"`
+	VoteAverage  float64 `json:"vote_average"`
+}
+
+type TrendingResult struct {
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	MediaType    string  `json:"media_type"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
+	VoteAverage  float64 `json:"vote_average"`
 }
 
 type Genre struct {
