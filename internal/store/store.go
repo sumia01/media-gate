@@ -90,6 +90,22 @@ type Store interface {
 	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
 	DeleteDownload(id uint) error
 
+	// User CRUD
+	CreateUser(user *User) error
+	GetUser(id uint) (*User, error)
+	GetUserByEmail(email string) (*User, error)
+	ListUsers() ([]User, error)
+	UpdateUser(user *User) error
+	DeleteUser(id uint) error
+	CountUsers() (int64, error)
+
+	// RefreshToken CRUD
+	CreateRefreshToken(token *RefreshToken) error
+	GetRefreshTokenByToken(token string) (*RefreshToken, error)
+	DeleteRefreshToken(token string) error
+	DeleteRefreshTokensByUser(userID uint) error
+	DeleteExpiredRefreshTokens() error
+
 	// WithTx executes fn inside a database transaction.
 	// The Store passed to fn uses the transaction; if fn returns an error the transaction is rolled back.
 	WithTx(fn func(Store) error) error

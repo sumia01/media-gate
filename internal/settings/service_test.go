@@ -130,6 +130,19 @@ func (s *settingsStubStore) ListDownloads(*uint, *string) ([]store.Download, err
 func (s *settingsStubStore) DeleteDownload(uint) error                              { return nil }
 func (s *settingsStubStore) WithTx(fn func(store.Store) error) error                { return fn(s) }
 
+func (s *settingsStubStore) CreateUser(*store.User) error                               { return nil }
+func (s *settingsStubStore) GetUser(uint) (*store.User, error)                          { return nil, nil }
+func (s *settingsStubStore) GetUserByEmail(string) (*store.User, error)                 { return nil, store.ErrNotFound }
+func (s *settingsStubStore) ListUsers() ([]store.User, error)                           { return nil, nil }
+func (s *settingsStubStore) UpdateUser(*store.User) error                               { return nil }
+func (s *settingsStubStore) DeleteUser(uint) error                                      { return nil }
+func (s *settingsStubStore) CountUsers() (int64, error)                                 { return 0, nil }
+func (s *settingsStubStore) CreateRefreshToken(*store.RefreshToken) error               { return nil }
+func (s *settingsStubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) { return nil, store.ErrNotFound }
+func (s *settingsStubStore) DeleteRefreshToken(string) error                            { return nil }
+func (s *settingsStubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
+func (s *settingsStubStore) DeleteExpiredRefreshTokens() error                          { return nil }
+
 // --- Existing path validation tests ---
 
 func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {

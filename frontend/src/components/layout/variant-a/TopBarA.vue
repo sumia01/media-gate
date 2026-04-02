@@ -1,11 +1,29 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import { useAuth } from '@/composables/useAuth'
 
+const router = useRouter()
 const { jobs, hasActiveJob } = useJobQueue()
 const { openSearch } = useGlobalSearch()
+const { currentUser, logout } = useAuth()
 const showPanel = ref(false)
+const showUserMenu = ref(false)
+
+const userInitial = computed(() => {
+  const u = currentUser.value
+  if (u?.firstName) return u.firstName[0].toUpperCase()
+  if (u?.email) return u.email[0].toUpperCase()
+  return 'U'
+})
+
+async function handleLogout() {
+  showUserMenu.value = false
+  await logout()
+  router.push('/login')
+}
 
 function statusColor(status: string) {
   switch (status) {
@@ -100,11 +118,45 @@ function statusIcon(status: string) {
         </div>
       </div>
 
-      <button class="relative p-2 rounded-lg text-gray-500 hover:text-violet-300 transition-colors duration-200">
-        <span class="text-lg">&#128276;</span>
-        <span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-      </button>
-      <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300 cursor-pointer">U</div>
+      <!-- User menu -->
+      <div class="relative">
+        <button
+          class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300 cursor-pointer hover:ring-2 hover:ring-violet-500/50 transition-all"
+          @click="showUserMenu = !showUserMenu"
+        >
+          {{ userInitial }}
+        </button>
+
+        <Teleport to="body">
+          <div
+            v-if="showUserMenu"
+            class="fixed inset-0 z-40"
+            @click="showUserMenu = false"
+          />
+        </Teleport>
+        <div
+          v-if="showUserMenu"
+          class="absolute right-0 top-full mt-2 w-48 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
+        >
+          <div class="px-4 py-3 border-b border-violet-900/20">
+            <p class="text-sm font-medium text-gray-200 truncate">{{ currentUser?.email }}</p>
+          </div>
+          <div class="py-1">
+            <button
+              class="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors"
+              @click="showUserMenu = false; router.push('/profile')"
+            >
+              Profile
+            </button>
+            <button
+              class="w-full text-left px-4 py-2 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-600/10 transition-colors"
+              @click="handleLogout"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 </template>

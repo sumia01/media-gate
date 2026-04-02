@@ -153,3 +153,22 @@ type Download struct {
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time
 }
+
+type User struct {
+	ID           uint   `gorm:"primarykey"`
+	Email        string `gorm:"not null;uniqueIndex"`
+	PasswordHash string `gorm:"not null"`
+	FirstName    string
+	LastName     string
+	BirthYear    *int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type RefreshToken struct {
+	ID        uint      `gorm:"primarykey"`
+	UserID    uint      `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	Token     string    `gorm:"not null;uniqueIndex"`
+	ExpiresAt time.Time `gorm:"not null"`
+	CreatedAt time.Time
+}

@@ -122,7 +122,7 @@
 - [x] Series episode tracking (which seasons/episodes are present/missing)
 - [x] Season bundles vs standalone episodes vs complete series downloads (implemented as season pack preference setting with prefer_packs/prefer_episodes/packs_only modes)
 - [x] Library Copies UI — completed downloads split into dedicated section on media detail page, per-release delete with inline confirmation (reuses existing cleanupImportedFiles backend logic)
-- [ ] User management (if multi-user)
+- [x] User management — email/password auth with JWT access tokens + refresh token rotation, bcrypt hashing, remember-me, HTTP-only cookie refresh tokens, auth middleware on all API routes, SSE token query param fallback, default user bootstrap from env vars, login/profile/change-password/user-list/register/delete views
 
 ## Phase 4.5: Security Hardening ✅
 - [x] AES-256-GCM encryption for sensitive settings (API keys, passwords) at rest in the database

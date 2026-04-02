@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -50,6 +51,8 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&JobRecord{},
 		&Indexer{},
 		&Download{},
+		&User{},
+		&RefreshToken{},
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
@@ -189,6 +192,17 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 			)`,
 			columns: "id,media_item_id,episode_id,season_number,indexer_id,indexer_name,title,download_url,details_url,size,imdb_id,status,client_torrent_hash,save_path,seeding_required,linked_to_library,created_at,updated_at,completed_at",
 		},
+		{
+			table: "refresh_tokens",
+			newDDL: `CREATE TABLE "refresh_tokens" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+				"token" text NOT NULL,
+				"expires_at" datetime NOT NULL,
+				"created_at" datetime
+			)`,
+			columns: "id,user_id,token,expires_at,created_at",
+		},
 	}
 
 	for _, m := range migrations {
@@ -249,6 +263,8 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_episode_unique" ON "episodes"("media_item_id","season_number","episode_number")`,
 		`CREATE INDEX IF NOT EXISTS "idx_downloads_media_item_id" ON "downloads"("media_item_id")`,
 		`CREATE INDEX IF NOT EXISTS "idx_downloads_episode_id" ON "downloads"("episode_id")`,
+		`CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_user_id" ON "refresh_tokens"("user_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_refresh_tokens_token" ON "refresh_tokens"("token")`,
 	}
 	for _, ddl := range indexDDLs {
 		if _, err := db.Exec(ddl); err != nil {
@@ -281,6 +297,7 @@ func cleanupOrphans(db *sql.DB) {
 		{"downloads", `DELETE FROM downloads WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads.episode_id", `UPDATE downloads SET episode_id = NULL WHERE episode_id IS NOT NULL AND episode_id NOT IN (SELECT id FROM episodes)`},
 		{"media_items", `DELETE FROM media_items WHERE library_id NOT IN (SELECT id FROM libraries)`},
+		{"refresh_tokens", `DELETE FROM refresh_tokens WHERE user_id NOT IN (SELECT id FROM users)`},
 	}
 	for _, oq := range orphanQueries {
 		res, err := db.Exec(oq.query)
@@ -717,6 +734,84 @@ func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]Downlo
 
 func (s *SQLiteStore) DeleteDownload(id uint) error {
 	return deleteByID(s.db, &Download{}, id)
+}
+
+// --- User ---
+
+func (s *SQLiteStore) CreateUser(user *User) error {
+	return s.db.Create(user).Error
+}
+
+func (s *SQLiteStore) GetUser(id uint) (*User, error) {
+	return getByID[User](s.db, id)
+}
+
+func (s *SQLiteStore) GetUserByEmail(email string) (*User, error) {
+	var user User
+	if err := s.db.Where("email = ?", email).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *SQLiteStore) ListUsers() ([]User, error) {
+	var users []User
+	if err := s.db.Order("email ASC").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (s *SQLiteStore) UpdateUser(user *User) error {
+	return save(s.db, user)
+}
+
+func (s *SQLiteStore) DeleteUser(id uint) error {
+	return deleteByID(s.db, &User{}, id)
+}
+
+func (s *SQLiteStore) CountUsers() (int64, error) {
+	var count int64
+	if err := s.db.Model(&User{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// --- RefreshToken ---
+
+func (s *SQLiteStore) CreateRefreshToken(token *RefreshToken) error {
+	return s.db.Create(token).Error
+}
+
+func (s *SQLiteStore) GetRefreshTokenByToken(token string) (*RefreshToken, error) {
+	var rt RefreshToken
+	if err := s.db.Where("token = ?", token).First(&rt).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &rt, nil
+}
+
+func (s *SQLiteStore) DeleteRefreshToken(token string) error {
+	result := s.db.Where("token = ?", token).Delete(&RefreshToken{})
+	if result.Error != nil {
+		return result.Error
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteRefreshTokensByUser(userID uint) error {
+	return s.db.Where("user_id = ?", userID).Delete(&RefreshToken{}).Error
+}
+
+func (s *SQLiteStore) DeleteExpiredRefreshTokens() error {
+	return s.db.Where("expires_at < ?", time.Now()).Delete(&RefreshToken{}).Error
 }
 
 func (s *SQLiteStore) WithTx(fn func(Store) error) error {

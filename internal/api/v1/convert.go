@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strconv"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -11,6 +13,25 @@ import (
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
+
+func userToAPI(u *store.User) UserProfile {
+	p := UserProfile{
+		Id:        int64(u.ID),
+		Email:     openapi_types.Email(u.Email),
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
+	}
+	if u.FirstName != "" {
+		p.FirstName = &u.FirstName
+	}
+	if u.LastName != "" {
+		p.LastName = &u.LastName
+	}
+	if u.BirthYear != nil {
+		p.BirthYear = u.BirthYear
+	}
+	return p
+}
 
 func libraryToAPI(lib *store.Library) Library {
 	apiLib := Library{
