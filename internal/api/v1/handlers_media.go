@@ -66,6 +66,34 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 		return nil, err
 	}
 
+	// Upsert season monitors if provided.
+	if req.Body.SeasonMonitors != nil {
+		existing, err := h.store.ListSeasonMonitorsByMediaItem(item.ID)
+		if err != nil {
+			return nil, err
+		}
+		lookup := make(map[int]*store.SeasonMonitor, len(existing))
+		for i := range existing {
+			lookup[existing[i].SeasonNumber] = &existing[i]
+		}
+		for _, sm := range *req.Body.SeasonMonitors {
+			if mon, ok := lookup[sm.SeasonNumber]; ok {
+				mon.Monitored = sm.Monitored
+				if err := h.store.UpdateSeasonMonitor(mon); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := h.store.CreateSeasonMonitor(&store.SeasonMonitor{
+					MediaItemID:  item.ID,
+					SeasonNumber: sm.SeasonNumber,
+					Monitored:    sm.Monitored,
+				}); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
 	return UpdateMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
 }

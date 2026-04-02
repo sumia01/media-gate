@@ -1646,6 +1646,18 @@ components:
           format: int64
         monitored:
           type: boolean
+        seasonMonitors:
+          type: array
+          items:
+            type: object
+            required:
+              - seasonNumber
+              - monitored
+            properties:
+              seasonNumber:
+                type: integer
+              monitored:
+                type: boolean
 
     CreditPerson:
       type: object

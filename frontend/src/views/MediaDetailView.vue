@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { Library, MediaItem, MediaFile, MediaProfile } from '@/types/api'
+import type { Library, MediaItem, MediaFile, MediaProfile, SeasonSummary } from '@/types/api'
 import { useEventStream } from '@/composables/useEventStream'
 import { parseGenres, profileImageUrl, posterUrl, formatBytes } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -10,6 +10,7 @@ import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import DownloadList from '@/components/media/DownloadList.vue'
+import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,6 +32,8 @@ const indexerSearchEpisodeId = ref<number | undefined>()
 const episodeRefreshKey = ref(0)
 const downloadRefreshKey = ref(0)
 const replacingDownloadId = ref<number | null>(null)
+const showSeasonMonitorModal = ref(false)
+const seasonMonitorSeasons = ref<SeasonSummary[]>([])
 
 const metadata = computed(() => item.value?.metadata ?? null)
 
@@ -99,7 +102,7 @@ async function fetchProfiles() {
   profiles.value = data?.profiles ?? []
 }
 
-async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean }) {
+async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean; seasonMonitors?: { seasonNumber: number; monitored: boolean }[] }) {
   if (!item.value) return
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: item.value.id } },
@@ -115,7 +118,28 @@ async function onProfileChange(event: Event) {
 
 async function onMonitoredToggle(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
+  if (checked && item.value?.mediaType === 'series') {
+    // Revert checkbox — will be set by PATCH response after modal confirm
+    ;(event.target as HTMLInputElement).checked = false
+    // Fetch seasons to show in modal
+    const { data } = await client.GET('/media/{id}/episodes', {
+      params: { path: { id: item.value.id } },
+    })
+    seasonMonitorSeasons.value = data?.seasons ?? []
+    showSeasonMonitorModal.value = true
+    return
+  }
   await updateMediaItem({ monitored: checked })
+}
+
+async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[]) {
+  showSeasonMonitorModal.value = false
+  await updateMediaItem({ monitored: true, seasonMonitors: monitors })
+  episodeRefreshKey.value++
+}
+
+function onSeasonMonitorCancel() {
+  showSeasonMonitorModal.value = false
 }
 
 const searchDaysAgo = computed(() => {
@@ -548,6 +572,7 @@ watch(() => route.params.id, loadAll)
       <EpisodeGrid
         v-if="item.mediaType === 'series' && metadata"
         :mediaItemId="item.id"
+        :monitored="item.monitored ?? false"
         :refreshKey="episodeRefreshKey"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
@@ -650,6 +675,14 @@ watch(() => route.params.id, loadAll)
       :episodeId="indexerSearchEpisodeId"
       :mediaProfile="activeProfile"
       @close="closeIndexerSearch"
+    />
+
+    <!-- Season monitor modal (shown when enabling monitoring on a series) -->
+    <SeasonMonitorModal
+      v-if="showSeasonMonitorModal"
+      :seasons="seasonMonitorSeasons"
+      @confirm="onSeasonMonitorConfirm"
+      @cancel="onSeasonMonitorCancel"
     />
   </div>
 </template>

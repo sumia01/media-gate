@@ -755,3 +755,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Add `TMDB_APIKEY` and `TVDB_APIKEY` to the koanf config (also available as `MEDIAGATE_TMDB_APIKEY` / `MEDIAGATE_TVDB_APIKEY`). The settings service accepts an `envFallbacks` map at construction. `Get()` checks the DB first — if no DB entry exists, it falls back to the env value. DB always wins when both are set. The Settings API response includes `tmdbApiKeyFromEnv` / `tvdbApiKeyFromEnv` booleans so the frontend can show a subtle hint ("Configured via environment variable") when an env fallback is present.
 
 **Rationale**: DB-first priority ensures UI-saved keys are never overridden unexpectedly. Env fallback supports infrastructure-as-code workflows (Docker Compose, Kubernetes secrets) where API keys are injected at deploy time. The frontend hint is intentionally subtle — it informs without being intrusive, and the user can still test the connection to verify the env key works.
+
+---
+
+## ADR-055: Season monitor modal when enabling monitoring on detail page
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: When a series was added without monitoring and the user later enabled the monitor toggle on the detail page, all seasons defaulted to monitored (because missing SeasonMonitor rows default to `monitored=true`). The user had no opportunity to choose which seasons to monitor. Additionally, the Add-to-Library modal showed the season selection step even when monitor was toggled off, which was redundant.
+
+**Decision**: Three changes: (1) When toggling monitor ON for a series on the detail page, intercept the toggle and show a SeasonMonitorModal with per-season toggles (all on by default). On confirm, send `PATCH /media/{id}` with both `monitored: true` and a new `seasonMonitors` array field for atomic upsert. On cancel, leave the item unmonitored. (2) The `MediaItemUpdate` OpenAPI schema gains a `seasonMonitors` field, and the backend handler upserts season monitor records (create-or-update). (3) The Add-to-Library modal skips the season step when the monitor toggle is off, and omits `seasonMonitors` from the request body. (4) Season monitored/unmonitored badges in the EpisodeGrid are hidden when the media item itself is not monitored.
+
+**Rationale**: Monitoring is a deliberate choice — users should always explicitly pick which seasons to track before the auto-grab worker acts on them. Skipping the season step when unmonitored avoids a confusing extra click. Atomic `seasonMonitors` on PATCH keeps the API consistent with the existing create flow (POST) which already supports the same field.
