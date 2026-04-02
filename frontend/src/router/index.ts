@@ -24,6 +24,12 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/setup',
+      name: 'setup',
+      component: () => import('@/views/SetupView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/',
       component: LayoutA,
       children: [
@@ -91,9 +97,23 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.meta.public) return true
+  // Always allow access to the setup page itself.
+  if (to.name === 'setup') return true
 
-  const { isAuthenticated, refresh, fetchProfile } = useAuth()
+  const { isAuthenticated, refresh, fetchProfile, getSetupStatus } = useAuth()
+
+  // Check onboarding status — redirect to wizard if not completed.
+  try {
+    const status = await getSetupStatus()
+    if (status.needsSetup || !status.onboardingCompleted) {
+      return { name: 'setup' }
+    }
+  } catch {
+    // If status check fails, continue with normal auth flow.
+  }
+
+  // Public routes (login) don't need auth.
+  if (to.meta.public) return true
 
   if (isAuthenticated.value) return true
 

@@ -53,8 +53,9 @@ func main() {
 
 	posterDir := ".cache/posters"
 	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
-		settings.KeyTMDBApiKey: cfg.TMDB.ApiKey,
-		settings.KeyTVDBApiKey: cfg.TVDB.ApiKey,
+		settings.KeyTMDBApiKey:      cfg.TMDB.ApiKey,
+		settings.KeyTVDBApiKey:      cfg.TVDB.ApiKey,
+		settings.KeyLibraryBasePath: cfg.Library.BasePath,
 	}, cfg.Secret.Key)
 	if err := settingsSvc.MigrateEncryption(); err != nil {
 		slog.Error("failed to migrate encryption", "error", err)
@@ -105,7 +106,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
+	libSvc := library.NewService(db, settingsSvc, settingsSvc)
 	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc)
 
 	// Startup check: reconcile download hashes with torrent client.
@@ -138,6 +139,10 @@ func main() {
 	apiMux.HandleFunc("POST /api/v1/auth/login", handlers.LoginHandler())
 	apiMux.HandleFunc("POST /api/v1/auth/refresh", handlers.RefreshHandler())
 	apiMux.HandleFunc("POST /api/v1/auth/logout", handlers.LogoutHandler())
+
+	// Setup handlers (unauthenticated, first-run only).
+	apiMux.HandleFunc("GET /api/v1/setup/status", handlers.SetupStatusHandler())
+	apiMux.HandleFunc("POST /api/v1/auth/setup", handlers.SetupHandler())
 
 	// Mount generated API routes under /api/v1.
 	apiHandler := apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{

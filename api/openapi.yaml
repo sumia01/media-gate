@@ -2216,6 +2216,18 @@ components:
           type: integer
         workerImporterInterval:
           type: integer
+        libraryBasePath:
+          type: string
+          description: Base path for library directories
+        libraryBasePathFromEnv:
+          type: boolean
+          description: True when the library base path is provided via environment variable
+        onboardingStep:
+          type: integer
+          description: Current onboarding wizard step (0-6)
+        onboardingCompleted:
+          type: boolean
+          description: Whether the onboarding wizard has been completed
 
     ConnectionTestRequest:
       type: object

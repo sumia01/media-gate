@@ -33,6 +33,10 @@ const (
 	KeyWorkerMonitorInterval  = "worker_monitor_interval"
 	KeyWorkerDownloadInterval = "worker_download_interval"
 	KeyWorkerImporterInterval = "worker_importer_interval"
+
+	KeyLibraryBasePath     = "library_basepath"
+	KeyOnboardingStep      = "onboarding_step"
+	KeyOnboardingCompleted = "onboarding_completed"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -186,6 +190,15 @@ func (s *Service) Get(key string) (string, error) {
 func (s *Service) HasEnvFallback(key string) bool {
 	_, ok := s.envFallbacks[key]
 	return ok
+}
+
+// BasePath returns the resolved library base path (DB setting, then env fallback).
+func (s *Service) BasePath() string {
+	val, err := s.Get(KeyLibraryBasePath)
+	if err != nil || val == "" {
+		return s.basePath
+	}
+	return filepath.Clean(val)
 }
 
 func (s *Service) GetWithDefault(key, defaultValue string) string {
@@ -342,8 +355,9 @@ func (s *Service) MigrateEncryption() error {
 
 // validateDownloadPath ensures the path is within basePath and not used by any library.
 func (s *Service) validateDownloadPath(path string) error {
+	base := s.BasePath()
 	clean := filepath.Clean(path)
-	if !strings.HasPrefix(clean, s.basePath+string(filepath.Separator)) && clean != s.basePath {
+	if !strings.HasPrefix(clean, base+string(filepath.Separator)) && clean != base {
 		return ErrDownloadPathOutside
 	}
 	libs, err := s.store.ListLibraries()

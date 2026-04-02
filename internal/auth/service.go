@@ -253,7 +253,8 @@ func (s *Service) DeleteUser(id uint) error {
 }
 
 // Bootstrap creates the initial user from env vars if no users exist.
-// Returns nil if users already exist. Returns an error if no users exist and no credentials provided.
+// Returns nil if users already exist or if no credentials are provided
+// (the setup wizard will handle first-user creation in that case).
 func (s *Service) Bootstrap(defaultEmail, defaultPassword string) error {
 	count, err := s.store.CountUsers()
 	if err != nil {
@@ -264,7 +265,8 @@ func (s *Service) Bootstrap(defaultEmail, defaultPassword string) error {
 	}
 
 	if defaultEmail == "" || defaultPassword == "" {
-		return errors.New("no users in database and DEFAULTUSER_EMAIL/DEFAULTUSER_PASSWORD not set — cannot start without at least one user")
+		slog.Info("no users in database and no default user credentials — setup wizard required")
+		return nil
 	}
 
 	user, err := s.Register(defaultEmail, defaultPassword, "", "", nil)
@@ -273,6 +275,11 @@ func (s *Service) Bootstrap(defaultEmail, defaultPassword string) error {
 	}
 	slog.Info("created default user from environment", "email", user.Email)
 	return nil
+}
+
+// CountUsers returns the number of registered users.
+func (s *Service) CountUsers() (int64, error) {
+	return s.store.CountUsers()
 }
 
 // isDuplicateEmail checks if a GORM error is a unique constraint violation on email.

@@ -102,11 +102,16 @@ func (s *stubStore) DeleteRefreshToken(string) error                            
 func (s *stubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
 func (s *stubStore) DeleteExpiredRefreshTokens() error                          { return nil }
 
+// staticBasePath implements BasePathProvider for testing.
+type staticBasePath string
+
+func (s staticBasePath) BasePath() string { return string(s) }
+
 // newTestService creates a library service with a temp dir as basePath.
 func newTestService(t *testing.T) (*Service, string) {
 	t.Helper()
 	basePath := t.TempDir()
-	svc := NewService(&stubStore{}, basePath, nil)
+	svc := NewService(&stubStore{}, staticBasePath(basePath), nil)
 	return svc, basePath
 }
 
@@ -280,7 +285,7 @@ func TestTraversalDoesNotCreateFolderOutsideBase(t *testing.T) {
 	basePath := t.TempDir()
 	outsideDir := t.TempDir() // a separate temp dir simulating "outside"
 
-	svc := NewService(&stubStore{}, basePath, nil)
+	svc := NewService(&stubStore{}, staticBasePath(basePath), nil)
 
 	// Craft paths that attempt to land inside outsideDir
 	// Since both are under the OS temp dir, we can build a relative traversal.
@@ -326,7 +331,7 @@ func TestSymlinkTraversal_DocumentedLimitation(t *testing.T) {
 		t.Skip("cannot create symlinks on this OS")
 	}
 
-	svc := NewService(&stubStore{}, basePath, nil)
+	svc := NewService(&stubStore{}, staticBasePath(basePath), nil)
 
 	// The string-based check passes because the path starts with basePath
 	err := svc.validatePath(symlinkPath)

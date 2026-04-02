@@ -235,6 +235,15 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			if n, err := strconv.Atoi(v); err == nil {
 				s.WorkerImporterInterval = &n
 			}
+		case settings.KeyLibraryBasePath:
+			s.LibraryBasePath = &v
+		case settings.KeyOnboardingStep:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.OnboardingStep = &n
+			}
+		case settings.KeyOnboardingCompleted:
+			b := v == "true"
+			s.OnboardingCompleted = &b
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -244,6 +253,13 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 	if svc.HasEnvFallback(settings.KeyTVDBApiKey) {
 		t := true
 		s.TvdbApiKeyFromEnv = &t
+	}
+	// Always include the resolved base path (may come from env fallback, not DB).
+	basePath := svc.BasePath()
+	s.LibraryBasePath = &basePath
+	if svc.HasEnvFallback(settings.KeyLibraryBasePath) {
+		t := true
+		s.LibraryBasePathFromEnv = &t
 	}
 	return s
 }
@@ -291,6 +307,19 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.WorkerImporterInterval != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerImporterInterval, Value: strconv.Itoa(*s.WorkerImporterInterval)})
+	}
+	if s.LibraryBasePath != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyLibraryBasePath, Value: *s.LibraryBasePath})
+	}
+	if s.OnboardingStep != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOnboardingStep, Value: strconv.Itoa(*s.OnboardingStep)})
+	}
+	if s.OnboardingCompleted != nil {
+		val := "false"
+		if *s.OnboardingCompleted {
+			val = "true"
+		}
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOnboardingCompleted, Value: val})
 	}
 	return kvs
 }
