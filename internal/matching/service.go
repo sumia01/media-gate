@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
 	"github.com/sumia01/media-gate/internal/ratelimit"
@@ -37,11 +38,19 @@ type Candidate struct {
 	ExistingMediaID *uint
 }
 
+// StatusRecalculator recalculates a media item's status based on current files
+// and episodes. Implemented by sync.Service; defined here to avoid circular imports.
+type StatusRecalculator interface {
+	RecalcMediaItemStatus(itemID uint) error
+}
+
 type Service struct {
-	store      store.Store
-	settings   *settings.Service
-	posterDir  string
-	httpClient *http.Client
+	store        store.Store
+	settings     *settings.Service
+	posterDir    string
+	httpClient   *http.Client
+	statusRecalc StatusRecalculator
+	bus          *eventbus.Bus
 }
 
 func NewService(s store.Store, set *settings.Service, posterDir string) *Service {
@@ -53,14 +62,27 @@ func NewService(s store.Store, set *settings.Service, posterDir string) *Service
 	}
 }
 
+// SetStatusRecalculator injects the status recalculator after construction
+// to break the init cycle between matching and sync packages.
+func (s *Service) SetStatusRecalculator(r StatusRecalculator) {
+	s.statusRecalc = r
+}
+
+// SetBus injects the event bus for publishing media item events.
+func (s *Service) SetBus(b *eventbus.Bus) {
+	s.bus = b
+}
+
 // WithStore returns a shallow copy of the Service that uses the given store.
 // Useful for running operations inside a database transaction.
 func (s *Service) WithStore(st store.Store) *Service {
 	return &Service{
-		store:      st,
-		settings:   s.settings,
-		posterDir:  s.posterDir,
-		httpClient: s.httpClient,
+		store:        st,
+		settings:     s.settings,
+		posterDir:    s.posterDir,
+		httpClient:   s.httpClient,
+		statusRecalc: s.statusRecalc,
+		bus:          s.bus,
 	}
 }
 
@@ -384,6 +406,23 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 	// For series with season info, fetch and store episode lists
 	if mediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
 		s.fetchAndStoreEpisodes(item, source, apiKey, externalID, *meta.Seasons)
+	}
+
+	// Recalculate status now that episodes are stored — a series with only
+	// some aired episodes on disk should be "partial", not "available".
+	if s.statusRecalc != nil {
+		if err := s.statusRecalc.RecalcMediaItemStatus(item.ID); err != nil {
+			slog.Warn("applyMatch: status recalc failed", "media_item_id", item.ID, "error", err)
+		}
+	}
+
+	// Notify frontend so it can refresh the media item.
+	if s.bus != nil {
+		s.bus.Publish(eventbus.MediaItemMatched, eventbus.MediaItemPayload{
+			MediaItemID: item.ID,
+			LibraryID:   item.LibraryID,
+			Title:       item.Title,
+		})
 	}
 
 	return nil
