@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/sumia01/media-gate/internal/indexer/cardigann"
@@ -200,8 +201,12 @@ func (s *Service) Update(id uint, name *string, settings map[string]string, enab
 	if priority != nil {
 		indexer.Priority = *priority
 	}
-	if settings != nil {
-		settingsJSON, err := json.Marshal(settings)
+	if len(settings) > 0 {
+		merged, err := s.mergeSettings(indexer, settings)
+		if err != nil {
+			return nil, fmt.Errorf("merging settings: %w", err)
+		}
+		settingsJSON, err := json.Marshal(merged)
 		if err != nil {
 			return nil, fmt.Errorf("marshalling settings: %w", err)
 		}
@@ -431,6 +436,9 @@ func (s *Service) mergeSettings(indexer *store.Indexer, overrides map[string]str
 		return nil, err
 	}
 	for k, v := range overrides {
+		if strings.HasPrefix(v, "****") {
+			continue // skip masked values — keep the stored original
+		}
 		settings[k] = v
 	}
 	return settings, nil
