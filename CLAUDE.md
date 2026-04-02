@@ -94,6 +94,8 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 | `LOG_LEVEL` | `MEDIAGATE_LOG_LEVEL` | `Log.Level` | `info` | Log level (debug/info/warn/error) |
 | `LOG_FORMAT` | `MEDIAGATE_LOG_FORMAT` | `Log.Format` | `text` | Log format (text/json) |
 | `LIBRARY_BASEPATH` | `MEDIAGATE_LIBRARY_BASEPATH` | `Library.BasePath` | `/mnt` | Base path for library directories (path traversal guard) |
+| `TMDB_APIKEY` | `MEDIAGATE_TMDB_APIKEY` | `TMDB.ApiKey` | _(empty)_ | TMDB API key fallback (used when not set in DB/UI) |
+| `TVDB_APIKEY` | `MEDIAGATE_TVDB_APIKEY` | `TVDB.ApiKey` | _(empty)_ | TVDB API key fallback (used when not set in DB/UI) |
 
 ## Key Architecture Decisions
 

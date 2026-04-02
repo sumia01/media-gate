@@ -169,7 +169,7 @@ func jobToAPI(j *jobqueue.Job) Job {
 	return apiJob
 }
 
-func settingsToAPI(items []store.Setting) Settings {
+func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 	var s Settings
 	for _, item := range items {
 		v := item.Value
@@ -215,6 +215,14 @@ func settingsToAPI(items []store.Setting) Settings {
 				s.WorkerImporterInterval = &n
 			}
 		}
+	}
+	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
+		t := true
+		s.TmdbApiKeyFromEnv = &t
+	}
+	if svc.HasEnvFallback(settings.KeyTVDBApiKey) {
+		t := true
+		s.TvdbApiKeyFromEnv = &t
 	}
 	return s
 }

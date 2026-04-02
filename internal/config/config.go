@@ -15,6 +15,16 @@ type Config struct {
 	DB      DBConfig      `koanf:"db"`
 	Log     LogConfig     `koanf:"log"`
 	Library LibraryConfig `koanf:"library"`
+	TMDB    TMDBConfig    `koanf:"tmdb"`
+	TVDB    TVDBConfig    `koanf:"tvdb"`
+}
+
+type TMDBConfig struct {
+	ApiKey string `koanf:"apikey"`
+}
+
+type TVDBConfig struct {
+	ApiKey string `koanf:"apikey"`
 }
 
 type LibraryConfig struct {
