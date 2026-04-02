@@ -707,3 +707,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Replace the generic `Setting` and `SettingsUpdate` schemas with a single typed `Settings` object where each setting is a named field with its correct type (string, integer, or string enum). The same schema is used for both GET response and PUT request body — all fields are optional so PUT sends only changed fields. The DB layer remains a string key-value store; type conversion (string ↔ int) lives in the API handler layer via `settingsToAPI` and `settingsFromAPI` converter functions. The `sensitive` boolean field is removed from the API — the backend still masks sensitive values in GET responses, and the frontend knows which fields are sensitive by convention.
 
 **Rationale**: An explicit typed schema eliminates stringly-typed bugs, provides IDE autocompletion on both frontend and backend, and lets the OpenAPI code generators produce correct types (`*int` in Go, `number` in TypeScript). The settings key set is closed and known — there's no reason for a generic array. Keeping the DB layer as key-value strings avoids a migration and keeps the settings service (used by workers via `Get`/`GetWithDefault`) unchanged.
+
+---
+
+## ADR-051: Library Copies — completed downloads as file management UI
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: When torrents finish seeding, the download worker marks them `completed` and removes them from qBittorrent, but the `Download` DB records persist. Meanwhile, imported files live in release-isolated folders in the library. Users had no way to manage individual release copies (e.g., delete a 480p copy while keeping a 720p one) without deleting the entire media item or using the filesystem directly.
+
+**Decision**: Split the DownloadList component into two visual sections: "Downloads" (active torrents: pending through seeding) and "Library Copies" (completed downloads with `linkedToLibrary=true`). Library copies show simplified cards (no progress/speed/torrent actions) with an inline delete confirmation. Deleting a library copy calls the existing `DELETE /downloads/{id}?deleteFiles=true` endpoint, which already runs `cleanupImportedFiles` — removing the release folder from disk, deleting matching `MediaFile` DB records, cleaning up empty parent directories, and recalculating the media item status.
+
+**Rationale**: No backend changes needed — the `DeleteDownload` handler with `deleteFiles=true` already performs full release folder cleanup via `cleanupImportedFiles` (reconstructs release path from `BuildTargetDir` + `BuildReleaseFolderName`, removes disk files, deletes `MediaFile` records by path prefix, companion file check, empty parent removal, status recalc). The release folder isolation pattern (ADR established in Phase 3) ensures each torrent's files are self-contained in their own subfolder, making per-release deletion safe and clean. Frontend-only change keeps the scope minimal.
