@@ -307,6 +307,17 @@ func (h *Handlers) ResyncMediaItem(_ context.Context, req ResyncMediaItemRequest
 		return nil, err
 	}
 
+	if err := h.syncSvc.RecalcMediaItemStatus(uint(req.Id)); err != nil {
+		slog.Warn("resync: status recalc failed", "media_item_id", req.Id, "error", err)
+	}
+
+	h.bus.Publish(eventbus.ResyncCompleted, eventbus.ResyncPayload{
+		MediaItemID: uint(req.Id),
+		Updated:     updated,
+		Added:       added,
+		Removed:     removed,
+	})
+
 	return ResyncMediaItem200JSONResponse{
 		Updated: updated,
 		Added:   added,

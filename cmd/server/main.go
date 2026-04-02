@@ -78,9 +78,11 @@ func main() {
 
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
+	matchSvc.SetStatusRecalculator(syncSvc)
 
 	// Event bus + SSE broker.
 	bus := eventbus.New(1024)
+	matchSvc.SetBus(bus)
 	sseBroker := sse.NewBroker()
 	bus.SubscribeAll(func(e eventbus.Event) {
 		data, err := json.Marshal(e)
