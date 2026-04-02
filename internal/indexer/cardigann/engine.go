@@ -88,6 +88,19 @@ func (e *Engine) Login(ctx context.Context) error {
 	}
 
 	loginURL := e.resolveURL(e.def.Login.Path)
+
+	// Pre-GET: many trackers (e.g. nCore) set a session cookie on the login
+	// page that must be present on the subsequent POST, otherwise login fails.
+	preReq, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL, nil)
+	if err != nil {
+		return fmt.Errorf("creating login pre-request: %w", err)
+	}
+	preResp, err := e.httpClient.Do(preReq)
+	if err != nil {
+		return fmt.Errorf("login pre-request: %w", err)
+	}
+	preResp.Body.Close()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, loginURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("creating login request: %w", err)

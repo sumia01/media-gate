@@ -94,7 +94,15 @@ function openEdit(indexer: Indexer) {
   formPriority.value = indexer.priority
   formSeedMinRatio.value = indexer.seedMinRatio ?? 0
   formSeedMinTime.value = indexer.seedMinTime ?? 0
-  formSettings.value = { ...(indexer.settings ?? {}) }
+  // Clear masked (password) fields so the user sees an empty input
+  // instead of invisible "****..." text inside a type="password" field.
+  const settings = { ...(indexer.settings ?? {}) }
+  for (const [k, v] of Object.entries(settings)) {
+    if (isMasked(v)) {
+      settings[k] = ''
+    }
+  }
+  formSettings.value = settings
   testResult.value = null
   showForm.value = true
 }
@@ -110,9 +118,10 @@ async function submitForm() {
 
   const settings: Record<string, string> = {}
   for (const [k, v] of Object.entries(formSettings.value)) {
-    if (!isMasked(v)) {
-      settings[k] = v
-    }
+    if (isMasked(v)) continue
+    // When editing, skip empty password fields — they mean "keep current".
+    if (editing.value && v === '' && selectedDefinition.value?.settings?.find(s => s.name === k)?.type === 'password') continue
+    settings[k] = v
   }
 
   if (editing.value) {
@@ -372,7 +381,7 @@ onMounted(fetchAll)
               <input
                 v-model="formSettings[setting.name]"
                 :type="settingInputType(setting)"
-                :placeholder="setting.default || ''"
+                :placeholder="editing && setting.type === 'password' ? 'Unchanged — leave empty to keep current' : (setting.default || '')"
                 class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
               />
             </div>

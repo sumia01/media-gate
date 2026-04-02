@@ -719,3 +719,27 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Split the DownloadList component into two visual sections: "Downloads" (active torrents: pending through seeding) and "Library Copies" (completed downloads with `linkedToLibrary=true`). Library copies show simplified cards (no progress/speed/torrent actions) with an inline delete confirmation. Deleting a library copy calls the existing `DELETE /downloads/{id}?deleteFiles=true` endpoint, which already runs `cleanupImportedFiles` — removing the release folder from disk, deleting matching `MediaFile` DB records, cleaning up empty parent directories, and recalculating the media item status.
 
 **Rationale**: No backend changes needed — the `DeleteDownload` handler with `deleteFiles=true` already performs full release folder cleanup via `cleanupImportedFiles` (reconstructs release path from `BuildTargetDir` + `BuildReleaseFolderName`, removes disk files, deletes `MediaFile` records by path prefix, companion file check, empty parent removal, status recalc). The release folder isolation pattern (ADR established in Phase 3) ensures each torrent's files are self-contained in their own subfolder, making per-release deletion safe and clean. Frontend-only change keeps the scope minimal.
+
+---
+
+## ADR-052: Indexer settings merge and password masking safety
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: Editing an indexer and saving without changing the password caused the password to be lost. The backend masked password fields (replacing the value with `****...`) before sending to the frontend. On save, the frontend omitted masked values, but still sent a `settings: {}` object — the backend treated any non-nil settings as a full replacement, overwriting the stored JSON with an empty map. Additionally, `<input type="password">` hid the masked `****` prefix from users, making it impossible to tell whether the field contained a masked value or a real password.
+
+**Decision**: Three-layer fix: (1) Backend `Update` now uses `mergeSettings` instead of replacing the entire settings JSON — incoming keys overwrite, missing keys are preserved. (2) `mergeSettings` skips values starting with `****` to prevent masked placeholders from overwriting real credentials. (3) Frontend clears masked fields to empty on edit open, with a placeholder "Unchanged — leave empty to keep current"; empty password fields are excluded from the update request.
+
+**Rationale**: The merge approach matches how other optional fields (name, enabled, priority) already work in `Update` — only provided values change. The three layers provide defense in depth: frontend omits unchanged passwords, backend merge preserves missing keys, and the `****` prefix check catches any masked values that slip through.
+
+---
+
+## ADR-053: Login pre-GET for session cookie establishment
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: The Cardigann login engine sent a direct POST to the tracker login page. Some trackers (e.g. nCore) require a session cookie set by a GET request to the login page before accepting the POST — without it, the login fails even with correct credentials.
+
+**Decision**: Add a GET request to the login URL before the POST in `Engine.Login`. The HTTP client's cookie jar captures the session cookie from the GET response, which is then automatically included in the subsequent POST.
+
+**Rationale**: This matches the behavior of Prowlarr/Jackett's Cardigann implementation. The pre-GET is lightweight (single extra request) and harmless for trackers that don't require it. The cookie jar handles propagation automatically.
