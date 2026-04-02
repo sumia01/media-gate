@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { RouterView } from 'vue-router'
 import SidebarA from './SidebarA.vue'
 import TopBarA from './TopBarA.vue'
 import GlobalSearchOverlay from '@/components/media/GlobalSearchOverlay.vue'
@@ -17,7 +18,7 @@ const { searchOpen } = useGlobalSearch()
       <TopBarA />
 
       <main class="flex-1 overflow-y-auto p-8">
-        <slot />
+        <RouterView />
       </main>
     </div>
 

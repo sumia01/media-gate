@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { useAuth } from './useAuth'
 
 type EventCallback = (data: any) => void
 
@@ -11,7 +12,14 @@ const listeners = new Map<string, Set<EventCallback>>()
 function connect() {
   if (eventSource.value) return
 
-  const es = new EventSource('/api/v1/events')
+  const { getAccessToken } = useAuth()
+  const token = getAccessToken()
+  let url = '/api/v1/events'
+  if (token) {
+    url += `?token=${encodeURIComponent(token)}`
+  }
+
+  const es = new EventSource(url)
 
   es.onopen = () => {
     connected.value = true

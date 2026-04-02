@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
@@ -31,14 +32,15 @@ type Handlers struct {
 	matchSvc   *matching.Service
 	syncSvc    *mediasync.Service
 	indexerSvc *indexer.Service
+	authSvc    *auth.Service
 	bus        *eventbus.Bus
 	posterDir  string
 	qbitClient *qbittorrent.Client
 	qbitMu     sync.Mutex
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus, authSvc *auth.Service) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus, authSvc: authSvc}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

@@ -1,21 +1,37 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
+import { useAuth } from '@/composables/useAuth'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const route = useRoute()
 const { libraries, refreshLibraries } = useSidebarLibraries()
+const { currentUser } = useAuth()
+
+const userInitial = computed(() => {
+  const u = currentUser.value
+  if (u?.firstName) return u.firstName[0].toUpperCase()
+  if (u?.email) return u.email[0].toUpperCase()
+  return 'U'
+})
+
+const userName = computed(() => {
+  const u = currentUser.value
+  const parts = [u?.firstName, u?.lastName].filter(Boolean)
+  return parts.length ? parts.join(' ') : u?.email ?? 'User'
+})
 
 const staticTop = [
-  { icon: '◈', label: 'Discover', to: '/' },
+  { icon: '\u25C8', label: 'Discover', to: '/' },
 ]
 
 const staticBottom = [
-  { icon: '⛁', label: 'Libraries', to: '/libraries' },
-  { icon: '⇌', label: 'Indexers', to: '/indexers' },
-  { icon: '▦', label: 'Profiles', to: '/media-profiles' },
-  { icon: '⚙', label: 'Settings', to: '/settings' },
+  { icon: '\u26C1', label: 'Libraries', to: '/libraries' },
+  { icon: '\u21CC', label: 'Indexers', to: '/indexers' },
+  { icon: '\u25A6', label: 'Profiles', to: '/media-profiles' },
+  { icon: '\u2699', label: 'Settings', to: '/settings' },
+  { icon: '\u2661', label: 'Users', to: '/users' },
 ]
 
 function mediaTypeIcon(type: string) {
@@ -107,13 +123,13 @@ onMounted(refreshLibraries)
     </div>
 
     <!-- User -->
-    <div class="px-3 py-3 border-t border-violet-900/20">
+    <RouterLink to="/profile" class="block px-3 py-3 border-t border-violet-900/20 hover:bg-violet-600/10 transition-colors">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300 flex-shrink-0">U</div>
+        <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300 flex-shrink-0">{{ userInitial }}</div>
         <div v-if="!collapsed" class="overflow-hidden">
-          <p class="text-sm font-medium text-gray-300 truncate">User</p>
+          <p class="text-sm font-medium text-gray-300 truncate">{{ userName }}</p>
         </div>
       </div>
-    </div>
+    </RouterLink>
   </aside>
 </template>

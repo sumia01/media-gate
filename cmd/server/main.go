@@ -12,6 +12,7 @@ import (
 
 	"github.com/sumia01/media-gate/frontend"
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/config"
 	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/eventbus"
@@ -59,6 +60,21 @@ func main() {
 		slog.Error("failed to migrate encryption", "error", err)
 		os.Exit(1)
 	}
+
+	// Auth service.
+	if cfg.Secret.Key == "" {
+		fmt.Fprintln(os.Stderr, "SECRET_KEY (or MEDIAGATE_SECRET_KEY) is required for JWT signing")
+		os.Exit(1)
+	}
+	authSvc := auth.NewService(db, cfg.Secret.Key)
+	if err := authSvc.Bootstrap(cfg.DefaultUser.Email, cfg.DefaultUser.Password); err != nil {
+		slog.Error("auth bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+	if err := authSvc.CleanupExpiredTokens(); err != nil {
+		slog.Warn("failed to clean up expired tokens", "error", err)
+	}
+
 	syncSvc := sync.NewService(db)
 	matchSvc := matching.NewService(db, settingsSvc, posterDir)
 
@@ -90,7 +106,7 @@ func main() {
 	}
 
 	libSvc := library.NewService(db, cfg.Library.BasePath, settingsSvc)
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc)
 
 	// Startup check: reconcile download hashes with torrent client.
 	reconcileDownloadsWithTorrentClient(db, settingsSvc)
@@ -109,20 +125,31 @@ func main() {
 
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 
-	mux := http.NewServeMux()
+	// Build the API mux with all /api/ routes.
+	apiMux := http.NewServeMux()
 
 	// SSE endpoint for real-time frontend updates.
-	mux.Handle("GET /api/v1/events", sseBroker)
+	apiMux.Handle("GET /api/v1/events", sseBroker)
 
-	// Poster endpoint — raw binary, not part of generated strict server
-	mux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())
+	// Poster endpoint — raw binary, not part of generated strict server.
+	apiMux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())
+
+	// Manual auth handlers (need cookie access, not in OpenAPI spec).
+	apiMux.HandleFunc("POST /api/v1/auth/login", handlers.LoginHandler())
+	apiMux.HandleFunc("POST /api/v1/auth/refresh", handlers.RefreshHandler())
+	apiMux.HandleFunc("POST /api/v1/auth/logout", handlers.LogoutHandler())
 
 	// Mount generated API routes under /api/v1.
 	apiHandler := apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{
 		BaseURL: "/api/v1",
 	})
+	apiMux.Handle("/api/", apiHandler)
 
-	mux.Handle("/api/", apiHandler)
+	// Wrap all API routes with auth middleware.
+	authedAPI := auth.AuthMiddleware(authSvc)(apiMux)
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/", authedAPI)
 
 	// Serve the embedded Vue SPA for everything else.
 	spa, err := spaHandler()

@@ -791,3 +791,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Move password-type indexer fields (identified by `field.Type == "password"` in Cardigann definitions) from `Indexer.Settings` JSON to the shared `Settings` table. Key pattern: `indexer:{id}:{fieldName}` (e.g., `indexer:5:password`). Non-sensitive fields (username, text) remain in the JSON column. The `settings.Service` provides `SetIndexerSecret`, `GetIndexerSecrets`, and `DeleteIndexerSecrets` helpers. On indexer delete, cascade-delete removes related Setting rows via `DeleteSettingsByPrefix`. An idempotent `MigrateCredentials()` runs at startup to move existing credentials. Indexer secret keys are automatically excluded from the settings API (`List` filters out `indexer:*` keys).
 
 **Rationale**: Single canonical location for all secrets enables consistent encryption, masking, and auditing. The `indexer:{id}:{field}` key pattern provides natural namespacing. `DeleteSettingsByPrefix` enables clean cascade without FK constraints between Settings and Indexers. The API contract and frontend behavior are unchanged — indexer settings still appear as a `map[string]string` with masked password fields.
+
+---
+
+## ADR-058: JWT + refresh token authentication architecture
+**Date**: 2026-04-02
+**Status**: Accepted
+
+**Context**: All API endpoints and frontend routes were publicly accessible. Need email/password auth with session persistence (remember-me) without being overly complex. All users have equal access (no roles).
+
+**Decision**: Short-lived JWT access tokens (15 min, HS256, `Authorization: Bearer` header) + long-lived refresh tokens (24h default, 30d with remember-me, stored in DB + HTTP-only cookie). JWT signing key derived from existing `MEDIAGATE_SECRET_KEY` via `crypto.DeriveKey` (SHA-256). Passwords hashed with bcrypt. Refresh tokens are rotated on each use (old revoked, new issued). Login/Refresh/Logout are manual HTTP handlers (not in OpenAPI spec) because oapi-codegen strict server doesn't expose `http.ResponseWriter` for cookie access. SSE uses `?token=` query param fallback since EventSource can't set custom headers. Auth middleware skips public paths (login, refresh, health, poster images). Default user bootstrapped from `DEFAULTUSER_EMAIL`/`DEFAULTUSER_PASSWORD` env vars if no users exist; app exits if neither env vars nor DB users are found.
+
+**Rationale**: JWT + refresh token is a well-understood pattern that balances security (short access token TTL) with UX (transparent refresh). HTTP-only cookies for refresh tokens prevent XSS token theft. Manual handlers for cookie-dependent endpoints keep the OpenAPI-first approach clean for all other endpoints. Deriving the JWT key from the existing secret key avoids adding another config value. Poster images are public because `<img>` tags cannot set `Authorization` headers — these are non-sensitive cached assets anyway.

@@ -11,13 +11,14 @@ import (
 )
 
 type Config struct {
-	API     APIConfig     `koanf:"api"`
-	DB      DBConfig      `koanf:"db"`
-	Log     LogConfig     `koanf:"log"`
-	Library LibraryConfig `koanf:"library"`
-	TMDB    TMDBConfig    `koanf:"tmdb"`
-	TVDB    TVDBConfig    `koanf:"tvdb"`
-	Secret  SecretConfig  `koanf:"secret"`
+	API         APIConfig         `koanf:"api"`
+	DB          DBConfig          `koanf:"db"`
+	Log         LogConfig         `koanf:"log"`
+	Library     LibraryConfig     `koanf:"library"`
+	TMDB        TMDBConfig        `koanf:"tmdb"`
+	TVDB        TVDBConfig        `koanf:"tvdb"`
+	Secret      SecretConfig      `koanf:"secret"`
+	DefaultUser DefaultUserConfig `koanf:"defaultuser"`
 }
 
 type TMDBConfig struct {
@@ -30,6 +31,11 @@ type TVDBConfig struct {
 
 type SecretConfig struct {
 	Key string `koanf:"key"`
+}
+
+type DefaultUserConfig struct {
+	Email    string `koanf:"email"`
+	Password string `koanf:"password"`
 }
 
 type LibraryConfig struct {

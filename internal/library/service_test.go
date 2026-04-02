@@ -89,6 +89,19 @@ func (s *stubStore) ListDownloads(*uint, *string) ([]store.Download, error)     
 func (s *stubStore) DeleteDownload(uint) error                                  { return nil }
 func (s *stubStore) WithTx(fn func(store.Store) error) error                    { return fn(s) }
 
+func (s *stubStore) CreateUser(*store.User) error                               { return nil }
+func (s *stubStore) GetUser(uint) (*store.User, error)                          { return nil, nil }
+func (s *stubStore) GetUserByEmail(string) (*store.User, error)                 { return nil, store.ErrNotFound }
+func (s *stubStore) ListUsers() ([]store.User, error)                           { return nil, nil }
+func (s *stubStore) UpdateUser(*store.User) error                               { return nil }
+func (s *stubStore) DeleteUser(uint) error                                      { return nil }
+func (s *stubStore) CountUsers() (int64, error)                                 { return 0, nil }
+func (s *stubStore) CreateRefreshToken(*store.RefreshToken) error               { return nil }
+func (s *stubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) { return nil, store.ErrNotFound }
+func (s *stubStore) DeleteRefreshToken(string) error                            { return nil }
+func (s *stubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
+func (s *stubStore) DeleteExpiredRefreshTokens() error                          { return nil }
+
 // newTestService creates a library service with a temp dir as basePath.
 func newTestService(t *testing.T) (*Service, string) {
 	t.Helper()
