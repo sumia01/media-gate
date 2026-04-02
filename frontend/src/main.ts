@@ -11,6 +11,8 @@ configureAuth(
   getAccessToken,
   refresh,
   () => {
+    // Don't redirect to login during setup — the wizard handles its own auth.
+    if (router.currentRoute.value.name === 'setup') return
     logout()
     router.push('/login')
   },

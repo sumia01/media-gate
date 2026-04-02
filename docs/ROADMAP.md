@@ -131,8 +131,18 @@
 - [x] `internal/crypto` package — stdlib-only AES-256-GCM with `enc:` prefix format for migration detection
 - [x] Idempotent startup migrations — `MigrateEncryption` (plaintext → encrypted) and `MigrateCredentials` (Indexer JSON → Settings table)
 
+## Phase 4.6: Initial Setup Wizard ✅
+- [x] Setup wizard / onboarding flow — 6-step guided setup on first launch (account, base path, torrent client, indexer, TMDB, TVDB)
+- [x] `POST /api/v1/auth/setup` — unauthenticated first-user creation with auto-login
+- [x] `GET /api/v1/setup/status` — onboarding state endpoint (needsSetup, step, completed)
+- [x] Dynamic library base path — `LIBRARY_BASEPATH` moved from env-only to DB-backed setting with env fallback (`BasePathProvider` interface)
+- [x] Server starts without users — lenient `Bootstrap()` logs info instead of erroring when no users and no env vars
+- [x] Frontend router guard redirects all routes to `/setup` when onboarding incomplete
+- [x] Existing installations auto-detected as completed (users exist → wizard never shown)
+- [x] Progress persistence — wizard resumes at correct step on page refresh via `onboarding_step` setting
+
 ## Phase 5: Observability & Polish ⬜
-- [ ] Initial setup wizard / onboarding flow (guide through API keys, download client, library creation on first launch)
+- [ ] Guided library creation at end of onboarding (post-wizard)
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation

@@ -40,6 +40,10 @@ func isPublicPath(method, path string) bool {
 		return true
 	case method == http.MethodPost && path == "/api/v1/auth/refresh":
 		return true
+	case method == http.MethodPost && path == "/api/v1/auth/setup":
+		return true
+	case method == http.MethodGet && path == "/api/v1/setup/status":
+		return true
 	case method == http.MethodGet && path == "/api/v1/health":
 		return true
 	case method == http.MethodGet && strings.HasPrefix(path, "/api/v1/media/") && strings.HasSuffix(path, "/poster"):

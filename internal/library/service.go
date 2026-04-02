@@ -28,25 +28,31 @@ type SettingsGetter interface {
 	Get(key string) (string, error)
 }
 
+// BasePathProvider provides the resolved library base path.
+type BasePathProvider interface {
+	BasePath() string
+}
+
 type Service struct {
-	store    store.Store
-	basePath string
-	settings SettingsGetter
+	store        store.Store
+	basePathProv BasePathProvider
+	settings     SettingsGetter
 }
 
-func NewService(s store.Store, basePath string, sg SettingsGetter) *Service {
-	return &Service{store: s, basePath: filepath.Clean(basePath), settings: sg}
+func NewService(s store.Store, bp BasePathProvider, sg SettingsGetter) *Service {
+	return &Service{store: s, basePathProv: bp, settings: sg}
 }
 
-// BasePath returns the configured base path for libraries.
+// BasePath returns the current resolved base path for libraries.
 func (s *Service) BasePath() string {
-	return s.basePath
+	return s.basePathProv.BasePath()
 }
 
 // validatePath checks that the given path is inside basePath after cleaning.
 func (s *Service) validatePath(p string) error {
+	base := s.BasePath()
 	clean := filepath.Clean(p)
-	if !strings.HasPrefix(clean, s.basePath+string(filepath.Separator)) && clean != s.basePath {
+	if !strings.HasPrefix(clean, base+string(filepath.Separator)) && clean != base {
 		return ErrPathOutsideBase
 	}
 	return nil
@@ -113,7 +119,7 @@ func (s *Service) Scan(lib *store.Library) ([]ScanEntry, error) {
 // Returns the cleaned absolute path and directory entries.
 func (s *Service) Browse(path string) (string, []ScanEntry, error) {
 	if path == "" {
-		path = s.basePath
+		path = s.BasePath()
 	}
 	path = filepath.Clean(path)
 

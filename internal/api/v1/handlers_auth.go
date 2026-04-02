@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/auth"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -203,6 +205,103 @@ func (h *Handlers) DeleteUser(_ context.Context, req DeleteUserRequestObject) (D
 		return DeleteUser404JSONResponse{Code: 500, Message: "failed to delete user"}, nil
 	}
 	return DeleteUser204Response{}, nil
+}
+
+// --- Setup (first-run) handlers ---
+
+type SetupRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type SetupStatusResponse struct {
+	NeedsSetup          bool `json:"needsSetup"`
+	OnboardingCompleted bool `json:"onboardingCompleted"`
+	OnboardingStep      int  `json:"onboardingStep"`
+}
+
+// SetupStatusHandler handles GET /api/v1/setup/status (unauthenticated).
+func (h *Handlers) SetupStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		count, err := h.authSvc.CountUsers()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to check users"})
+			return
+		}
+
+		needsSetup := count == 0
+		onboardingCompleted := false
+		onboardingStep := 0
+
+		if !needsSetup {
+			// Existing installation without explicit onboarding setting → treat as completed.
+			completedVal := h.settings.GetWithDefault(settings.KeyOnboardingCompleted, "true")
+			onboardingCompleted = completedVal == "true"
+
+			stepVal := h.settings.GetWithDefault(settings.KeyOnboardingStep, "0")
+			if n, err := strconv.Atoi(stepVal); err == nil {
+				onboardingStep = n
+			}
+		}
+
+		writeJSON(w, http.StatusOK, SetupStatusResponse{
+			NeedsSetup:          needsSetup,
+			OnboardingCompleted: onboardingCompleted,
+			OnboardingStep:      onboardingStep,
+		})
+	}
+}
+
+// SetupHandler handles POST /api/v1/auth/setup (unauthenticated, first-user creation).
+func (h *Handlers) SetupHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		count, err := h.authSvc.CountUsers()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to check users"})
+			return
+		}
+		if count > 0 {
+			writeJSON(w, http.StatusForbidden, ErrorResponse{Code: 403, Message: "setup already completed"})
+			return
+		}
+
+		var req SetupRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Code: 400, Message: "invalid request body"})
+			return
+		}
+
+		user, err := h.authSvc.Register(req.Email, req.Password, "", "", nil)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Code: 400, Message: err.Error()})
+			return
+		}
+
+		accessToken, err := h.authSvc.GenerateAccessToken(user)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to generate token"})
+			return
+		}
+
+		refreshToken, err := h.authSvc.GenerateRefreshToken(user.ID, true)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to generate refresh token"})
+			return
+		}
+
+		setRefreshCookie(w, r, refreshToken.Token, h.authSvc.RefreshTTL(true))
+
+		// Record that the first onboarding step is done.
+		_ = h.settings.Update([]settings.KeyValue{
+			{Key: settings.KeyOnboardingStep, Value: "1"},
+			{Key: settings.KeyOnboardingCompleted, Value: "false"},
+		})
+
+		writeJSON(w, http.StatusOK, LoginResponse{
+			AccessToken: accessToken,
+			User:        userToAPI(user),
+		})
+	}
 }
 
 // --- Helpers ---
