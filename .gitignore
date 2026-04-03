@@ -4,6 +4,7 @@ media-gate
 *.exe
 *.db
 tmp/
+dist/
 
 # Frontend
 frontend/node_modules/

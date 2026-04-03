@@ -7,7 +7,7 @@ const emit = defineEmits<{ next: []; back: [] }>()
 const apiKey = ref('')
 const error = ref('')
 const saving = ref(false)
-const testResult = ref<{ success: boolean; message: string } | null>(null)
+const testResult = ref<{ success: boolean; message?: string } | null>(null)
 const testing = ref(false)
 
 onMounted(async () => {

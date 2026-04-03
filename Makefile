@@ -1,6 +1,8 @@
-.PHONY: tools generate frontend build dev clean
+.PHONY: tools generate frontend build dev clean \
+       build-linux-amd64 build-darwin-arm64 build-windows-amd64 build-all
 
-BINARY := media-gate
+BINARY   := media-gate
+DIST_DIR := dist
 
 ## tools: Install required Go dev tools (air, oapi-codegen)
 tools:
@@ -34,4 +36,28 @@ dev:
 ## clean: Remove build artifacts
 clean:
 	rm -f $(BINARY)
-	rm -rf frontend/dist tmp/
+	rm -rf frontend/dist tmp/ $(DIST_DIR)/
+
+## build-linux-amd64: Cross-compile prod binary for Linux x86_64
+build-linux-amd64:
+	docker build -f Dockerfile.build \
+		--build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 \
+		--output $(DIST_DIR)/ .
+	@mv $(DIST_DIR)/media-gate $(DIST_DIR)/media-gate-linux-amd64
+
+## build-darwin-arm64: Cross-compile prod binary for macOS Apple Silicon
+build-darwin-arm64:
+	docker build -f Dockerfile.build \
+		--build-arg TARGETOS=darwin --build-arg TARGETARCH=arm64 \
+		--output $(DIST_DIR)/ .
+	@mv $(DIST_DIR)/media-gate $(DIST_DIR)/media-gate-darwin-arm64
+
+## build-windows-amd64: Cross-compile prod binary for Windows x86_64
+build-windows-amd64:
+	docker build -f Dockerfile.build \
+		--build-arg TARGETOS=windows --build-arg TARGETARCH=amd64 \
+		--output $(DIST_DIR)/ .
+	@mv $(DIST_DIR)/media-gate.exe $(DIST_DIR)/media-gate-windows-amd64.exe
+
+## build-all: Build prod binaries for all platforms
+build-all: build-linux-amd64 build-darwin-arm64 build-windows-amd64
