@@ -38,6 +38,8 @@ func isPublicPath(method, path string) bool {
 	switch {
 	case method == http.MethodPost && path == "/api/v1/auth/login":
 		return true
+	case method == http.MethodPost && path == "/api/v1/auth/logout":
+		return true
 	case method == http.MethodPost && path == "/api/v1/auth/refresh":
 		return true
 	case method == http.MethodPost && path == "/api/v1/auth/setup":
