@@ -173,6 +173,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.API.Port)
 	slog.Info("starting server", "addr", addr)
+	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
