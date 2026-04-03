@@ -923,3 +923,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Added automatic retry with exponential backoff to the download worker. Three new fields on `Download`: `RetryCount` (int), `NextRetryAt` (*time.Time), `LastError` (string). Backoff schedule: 30s, 2m, 10m, 30m, 1h (5 retries max). A qBit health check (`TestConnection()`) runs before `sendPending` — if qBit is down, the entire send pass is skipped without consuming retry attempts. Manual retry via UI resets all retry state. Frontend shows last error for failed downloads and retry count/next attempt time for pending downloads in backoff.
 
 **Rationale**: Transient failures (qBit restart, indexer rate limit) are common in homelab environments. Burning downloads to "failed" on the first error forces unnecessary manual intervention. The health check prevents retry exhaustion when qBit is completely offline. The 5-retry/1h-max backoff caps total retry window at ~1.5h before giving up — long enough for typical restarts but short enough to surface real problems.
+
+---
+
+## ADR-069: Pure-Go SQLite and cross-platform prod builds
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: The project needed cross-platform release binaries (linux/amd64, darwin/arm64, windows/amd64). The original SQLite driver (`gorm.io/driver/sqlite` wrapping `mattn/go-sqlite3`) requires CGO, which makes cross-compilation significantly harder — each target needs a matching C cross-compiler. macOS targets are especially problematic as they require the macOS SDK, which cannot legally be distributed in Docker images. Zig CC was attempted as a universal C cross-compiler but failed on macOS targets due to missing system libraries (`libresolv`, `CoreFoundation`).
+
+**Decision**: Replaced `gorm.io/driver/sqlite` with `github.com/glebarez/sqlite` (wraps `modernc.org/sqlite`, a pure-Go SQLite implementation). Added `Dockerfile.build` (multi-stage: Node frontend build → Go cross-compile) and Makefile targets (`build-linux-amd64`, `build-darwin-arm64`, `build-windows-amd64`, `build-all`). Binaries output to `dist/` via Docker `--output`. All builds use `CGO_ENABLED=0`.
+
+**Rationale**: The pure-Go SQLite driver eliminates all CGO/C-toolchain complexity. Cross-compilation becomes trivial (`GOOS`/`GOARCH` flags only). The multi-stage Dockerfile handles frontend build + API code generation + Go compilation in one reproducible pipeline. The `glebarez/sqlite` driver is a drop-in replacement — only the import path changes, all GORM code remains identical. The ~10-15% performance difference vs C SQLite is negligible for a self-hosted media manager. Also fixed pre-existing TypeScript errors in setup wizard components (optional `message` field on `ConnectionTestResult`) and layout components (`noUncheckedIndexedAccess` compatibility).

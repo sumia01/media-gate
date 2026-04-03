@@ -178,7 +178,14 @@
 - [x] Frontend shows last error for failed downloads, retry count and countdown for pending downloads in backoff
 - [x] OpenAPI schema updated with retry fields
 
-## Phase 5: Observability & Polish ⬜
+## Phase 5.0: Cross-Platform Prod Builds ✅
+- [x] Pure-Go SQLite driver (`glebarez/sqlite` replacing CGO-dependent `mattn/go-sqlite3`)
+- [x] `Dockerfile.build` — multi-stage builder (Node frontend + Go cross-compile, `--output` extraction)
+- [x] Makefile targets: `build-linux-amd64`, `build-darwin-arm64`, `build-windows-amd64`, `build-all`
+- [x] All builds use `CGO_ENABLED=0` — no C compiler or SDK required
+- [x] TypeScript strict mode fixes (setup wizard `ConnectionTestResult`, layout `noUncheckedIndexedAccess`)
+
+## Phase 5.1: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation

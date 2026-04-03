@@ -11,9 +11,9 @@ const { currentUser } = useAuth()
 
 const userInitial = computed(() => {
   const u = currentUser.value
-  if (u?.firstName) return u.firstName[0].toUpperCase()
-  if (u?.email) return u.email[0].toUpperCase()
-  return 'U'
+  if (!u) return 'U'
+  if (u.firstName) return u.firstName.charAt(0).toUpperCase()
+  return u.email.charAt(0).toUpperCase()
 })
 
 const userName = computed(() => {

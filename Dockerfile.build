@@ -1,0 +1,51 @@
+# Multi-stage cross-platform builder (CGO-free)
+# Usage: docker build -f Dockerfile.build --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 --output dist/ .
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build the Vue frontend
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS frontend
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+COPY api/openapi.yaml /app/api/openapi.yaml
+RUN npm run generate:api && npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build the Go binary
+# ---------------------------------------------------------------------------
+FROM golang:1.26-bookworm AS builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+# Go module download (cached layer)
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Copy built frontend from stage 1
+COPY --from=frontend /app/frontend/dist/ ./frontend/dist/
+
+# Run Go code generation (oapi-codegen)
+RUN go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest && \
+    go generate ./...
+
+# Build the binary
+RUN EXT="" && \
+    if [ "$TARGETOS" = "windows" ]; then EXT=".exe"; fi && \
+    CGO_ENABLED=0 \
+    GOOS="$TARGETOS" \
+    GOARCH="$TARGETARCH" \
+    go build -trimpath -o "/out/media-gate${EXT}" ./cmd/server/
+
+# ---------------------------------------------------------------------------
+# Stage 3: Output — scratch stage for --output extraction
+# ---------------------------------------------------------------------------
+FROM scratch AS output
+COPY --from=builder /out/ /
