@@ -935,3 +935,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Replaced `gorm.io/driver/sqlite` with `github.com/glebarez/sqlite` (wraps `modernc.org/sqlite`, a pure-Go SQLite implementation). Added `Dockerfile.build` (multi-stage: Node frontend build → Go cross-compile) and Makefile targets (`build-linux-amd64`, `build-darwin-arm64`, `build-windows-amd64`, `build-all`). Binaries output to `dist/` via Docker `--output`. All builds use `CGO_ENABLED=0`.
 
 **Rationale**: The pure-Go SQLite driver eliminates all CGO/C-toolchain complexity. Cross-compilation becomes trivial (`GOOS`/`GOARCH` flags only). The multi-stage Dockerfile handles frontend build + API code generation + Go compilation in one reproducible pipeline. The `glebarez/sqlite` driver is a drop-in replacement — only the import path changes, all GORM code remains identical. The ~10-15% performance difference vs C SQLite is negligible for a self-hosted media manager. Also fixed pre-existing TypeScript errors in setup wizard components (optional `message` field on `ConnectionTestResult`) and layout components (`noUncheckedIndexedAccess` compatibility).
+
+---
+
+## ADR-070: Windows path support in setup wizard
+**Date**: 2026-04-04
+**Status**: Accepted
+
+**Context**: The setup wizard's Library Base Path step validated absolute paths by checking `startsWith('/')`, which only works for Unix paths. On Windows, absolute paths use drive letters (e.g. `F:\mediagate\dist\media\`), causing the wizard to reject valid paths with "Base path must be an absolute path".
+
+**Decision**: Extended the frontend validation in `SetupBasePath.vue` to accept both Unix (`/...`) and Windows (`X:\...` or `X:/...`) absolute paths using the regex `/^[a-zA-Z]:[/\\]/`. No backend changes needed — Go's `filepath.Clean` and `filepath.Separator` are already platform-aware.
+
+**Rationale**: With cross-platform binaries now available (Phase 5.0), Windows is a supported target. The frontend validation must match what the backend accepts on each platform.

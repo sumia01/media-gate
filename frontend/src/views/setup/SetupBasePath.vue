@@ -30,7 +30,7 @@ async function handleSubmit() {
     error.value = 'Base path is required'
     return
   }
-  if (!basePath.value.startsWith('/')) {
+  if (!basePath.value.startsWith('/') && !/^[a-zA-Z]:[/\\]/.test(basePath.value)) {
     error.value = 'Base path must be an absolute path'
     return
   }
@@ -83,7 +83,7 @@ async function handleSubmit() {
           Pre-filled from environment variable (MEDIAGATE_LIBRARY_BASEPATH)
         </p>
         <p class="text-xs text-gray-500 mt-1">
-          Example: <span class="font-mono text-gray-400">/mnt/media</span> or <span class="font-mono text-gray-400">/data</span>
+          Example: <span class="font-mono text-gray-400">/mnt/media</span>, <span class="font-mono text-gray-400">/data</span>, or <span class="font-mono text-gray-400">D:\media</span>
         </p>
       </div>
 
