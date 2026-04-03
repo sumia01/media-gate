@@ -131,6 +131,7 @@ type FieldDef struct {
 	Selector  string            `yaml:"selector"`
 	Attribute string            `yaml:"attribute"`
 	Optional  bool              `yaml:"optional"`
+	Default   string            `yaml:"default"`
 	Text      string            `yaml:"text"`
 	Filters   []Filter          `yaml:"filters"`
 	Case      map[string]string `yaml:"case"`

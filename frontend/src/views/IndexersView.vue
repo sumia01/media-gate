@@ -22,6 +22,7 @@ const formSeedMinTime = ref(0)
 const formSettings = ref<Record<string, string>>({})
 
 const testingId = ref<number | null>(null)
+const testedId = ref<number | null>(null)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const tryingIndexer = ref<Indexer | null>(null)
 
@@ -188,6 +189,7 @@ async function toggleEnabled(indexer: Indexer) {
 
 async function testConnection(indexer: Indexer) {
   testingId.value = indexer.id
+  testedId.value = indexer.id
   testResult.value = null
   const { data, error: err } = await client.POST('/indexers/{id}/test', {
     params: { path: { id: indexer.id } },
@@ -277,7 +279,7 @@ onMounted(fetchAll)
           </div>
 
           <!-- Inline test result -->
-          <div v-if="testResult && testingId === null && testResult.success !== undefined" class="mt-2">
+          <div v-if="testResult && testedId === indexer.id && testingId === null" class="mt-2">
             <span
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
               :class="testResult.success

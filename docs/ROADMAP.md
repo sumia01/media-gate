@@ -159,8 +159,8 @@
 - [ ] Notification system (TBD)
 
 ## Known Bugs ⬜
-- [ ] Indexer test button tests ALL configured indexers instead of only the one clicked
-- [ ] BitHU indexer search returns no results despite connection test succeeding
+- [x] Indexer test button tests ALL configured indexers instead of only the one clicked
+- [x] BitHU indexer search returns no results despite connection test succeeding
 
 ---
 
