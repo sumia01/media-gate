@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import client from '@/api/client'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -30,6 +30,52 @@ const selectedDefinition = computed(() =>
   definitions.value.find((d) => d.id === formDefinitionId.value),
 )
 
+// Definition search dropdown state
+const defSearch = ref('')
+const defDropdownOpen = ref(false)
+const defSearchInput = ref<HTMLInputElement | null>(null)
+
+function fuzzyMatch(text: string, query: string): boolean {
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  let qi = 0
+  for (let i = 0; i < lower.length && qi < q.length; i++) {
+    if (lower[i] === q[qi]) qi++
+  }
+  return qi === q.length
+}
+
+const filteredDefinitions = computed(() => {
+  if (!defSearch.value) return definitions.value
+  return definitions.value.filter(
+    (d) => fuzzyMatch(d.name, defSearch.value) || fuzzyMatch(d.language ?? '', defSearch.value),
+  )
+})
+
+function selectDefinition(def: IndexerDefinition) {
+  formDefinitionId.value = def.id
+  defSearch.value = `${def.name} (${def.language})`
+  defDropdownOpen.value = false
+  onDefinitionChange()
+}
+
+function onDefSearchFocus() {
+  defDropdownOpen.value = true
+  defSearch.value = ''
+}
+
+function onDefSearchBlur() {
+  // Delay to allow click on dropdown item to register
+  setTimeout(() => {
+    defDropdownOpen.value = false
+    if (selectedDefinition.value) {
+      defSearch.value = `${selectedDefinition.value.name} (${selectedDefinition.value.language})`
+    } else {
+      defSearch.value = ''
+    }
+  }, 150)
+}
+
 function resetForm() {
   formName.value = ''
   formDefinitionId.value = ''
@@ -39,6 +85,8 @@ function resetForm() {
   formSeedMinTime.value = 0
   formSettings.value = {}
   testResult.value = null
+  defSearch.value = ''
+  defDropdownOpen.value = false
 }
 
 function applyDefinitionDefaults(def: IndexerDefinition) {
@@ -116,6 +164,11 @@ function cancelForm() {
 
 async function submitForm() {
   error.value = ''
+
+  if (!editing.value && !formDefinitionId.value) {
+    error.value = 'Please select an indexer definition'
+    return
+  }
 
   const settings: Record<string, string> = {}
   for (const [k, v] of Object.entries(formSettings.value)) {
@@ -344,19 +397,35 @@ onMounted(fetchAll)
 
       <form class="space-y-4" @submit.prevent="submitForm">
         <!-- Definition picker (only for new) -->
-        <div v-if="!editing">
+        <div v-if="!editing" class="relative">
           <label class="block text-xs font-medium text-gray-400 mb-1.5">Indexer Definition</label>
-          <select
-            v-model="formDefinitionId"
-            required
-            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-            @change="onDefinitionChange"
+          <input
+            ref="defSearchInput"
+            v-model="defSearch"
+            type="text"
+            placeholder="Search definitions..."
+            autocomplete="off"
+            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            @focus="onDefSearchFocus"
+            @blur="onDefSearchBlur"
+          />
+          <ul
+            v-if="defDropdownOpen && filteredDefinitions.length"
+            class="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-lg bg-[#161b2e] border border-violet-800/30 shadow-lg"
           >
-            <option value="" disabled>Select a definition...</option>
-            <option v-for="def in definitions" :key="def.id" :value="def.id">
-              {{ def.name }} ({{ def.language }})
-            </option>
-          </select>
+            <li
+              v-for="def in filteredDefinitions"
+              :key="def.id"
+              class="px-3 py-2 text-sm text-gray-300 hover:bg-violet-600/20 hover:text-violet-200 cursor-pointer transition-colors duration-100"
+              :class="{ 'bg-violet-600/10 text-violet-300': def.id === formDefinitionId }"
+              @mousedown.prevent="selectDefinition(def)"
+            >
+              {{ def.name }} <span class="text-gray-500">({{ def.language }})</span>
+            </li>
+          </ul>
+          <p v-if="defDropdownOpen && defSearch && !filteredDefinitions.length" class="absolute z-50 mt-1 w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-500">
+            No matching definitions
+          </p>
           <p v-if="selectedDefinition?.description" class="mt-1 text-xs text-gray-500">
             {{ selectedDefinition.description }}
           </p>
