@@ -899,3 +899,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Added `Headers map[string][]string` to the `Search` struct. In the `Search()` method, after creating the HTTP request, each header value is rendered as a Go template (with the same `TemplateContext` used for inputs) and set on the request.
 
 **Rationale**: Simple addition — reuses existing `RenderTemplate` infrastructure. Connection tests for these indexers often succeed because they test login (which may have no auth requirement) rather than search, so the 401 only manifested during actual searches.
+
+---
+
+## ADR-067: Media detail search sends title as text query fallback
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: The IndexerSearchModal (opened from media detail page via "Search Indexers") only sent the IMDB ID to the search API, without the media title. Indexers that don't support IMDB-based search (e.g. Milkie) received an empty text query and returned no results. The IndexerTryModal (on the indexers page) already sent both title and IMDB ID correctly.
+
+**Decision**: Added `query: props.title` to the IndexerSearchModal's GET `/indexers/search` request, matching IndexerTryModal's behavior. Also fixed the title prop passed from MediaDetailView to use `item.title` (plain title) instead of `item.title (year)` — the year suffix caused poor search results on indexers that match by title text.
+
+**Rationale**: The Cardigann engine renders search URL templates using either `.Keywords` (text query) or `.Query.IMDBID`. When IMDB is not supported by a definition, `.Keywords` is the only fallback — it must be populated. Stripping the year avoids false negatives from indexers that don't include the year in their title format.

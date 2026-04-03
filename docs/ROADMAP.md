@@ -167,6 +167,7 @@
 - [x] Indexer test button scoping — test result shown only next to the tested indexer
 - [x] Try-it-out query fix — candidate title sent alongside IMDB ID for indexers that don't support IMDB search
 - [x] Try-it-out modal overflow fix — scrollable results within fixed-height modal
+- [x] Media detail search query fix — IndexerSearchModal now sends title (without year suffix) as text query fallback for indexers that don't support IMDB search
 
 ## Phase 5: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)

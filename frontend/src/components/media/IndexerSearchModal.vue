@@ -116,6 +116,7 @@ async function search() {
   const { data, error: err } = await client.GET('/indexers/search', {
     params: {
       query: {
+        query: props.title,
         imdbId: props.imdbId,
         type: searchType,
         indexerIds: selectedIndexerId.value || undefined,
