@@ -133,29 +133,29 @@ function statusIcon(status: string) {
             class="fixed inset-0 z-40"
             @click="showUserMenu = false"
           />
+          <div
+            v-if="showUserMenu"
+            class="fixed right-6 top-14 w-48 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
+          >
+            <div class="px-4 py-3 border-b border-violet-900/20">
+              <p class="text-sm font-medium text-gray-200 truncate">{{ currentUser?.email }}</p>
+            </div>
+            <div class="py-1">
+              <button
+                class="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors"
+                @click="showUserMenu = false; router.push('/profile')"
+              >
+                Profile
+              </button>
+              <button
+                class="w-full text-left px-4 py-2 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-600/10 transition-colors"
+                @click="handleLogout"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
         </Teleport>
-        <div
-          v-if="showUserMenu"
-          class="absolute right-0 top-full mt-2 w-48 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
-        >
-          <div class="px-4 py-3 border-b border-violet-900/20">
-            <p class="text-sm font-medium text-gray-200 truncate">{{ currentUser?.email }}</p>
-          </div>
-          <div class="py-1">
-            <button
-              class="w-full text-left px-4 py-2 text-sm text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors"
-              @click="showUserMenu = false; router.push('/profile')"
-            >
-              Profile
-            </button>
-            <button
-              class="w-full text-left px-4 py-2 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-600/10 transition-colors"
-              @click="handleLogout"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   </header>
