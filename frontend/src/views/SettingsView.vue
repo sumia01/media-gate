@@ -45,6 +45,11 @@ const qbDownloadPathDirty = ref(false)
 const qbCategory = ref('')
 const qbCategoryDirty = ref(false)
 
+const fsUrl = ref('')
+const fsUrlDirty = ref(false)
+const fsTest = ref<{ success: boolean; message: string } | null>(null)
+const fsTesting = ref(false)
+
 const seasonPackPref = ref('prefer_packs')
 const seasonPackPrefDirty = ref(false)
 
@@ -60,6 +65,7 @@ const anyDirty = computed(() =>
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
   qbDownloadPathDirty.value || qbCategoryDirty.value ||
+  fsUrlDirty.value ||
   seasonPackPrefDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value
 )
@@ -87,6 +93,7 @@ async function fetchSettings() {
     qbPassword.value = s.qbitPassword ?? ''
     qbDownloadPath.value = s.qbitDownloadPath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
+    fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
@@ -102,6 +109,7 @@ async function fetchSettings() {
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
+  fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
@@ -128,6 +136,7 @@ async function saveSettings() {
   if (qbPasswordDirty.value && !isMasked(qbPassword.value)) body.qbitPassword = qbPassword.value
   if (qbDownloadPathDirty.value) body.qbitDownloadPath = qbDownloadPath.value
   if (qbCategoryDirty.value) body.qbitCategory = qbCategory.value
+  if (fsUrlDirty.value) body.flaresolverrUrl = fsUrl.value
   if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
@@ -162,6 +171,7 @@ async function saveSettings() {
     qbPassword.value = s.qbitPassword ?? ''
     qbDownloadPath.value = s.qbitDownloadPath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
+    fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
@@ -177,6 +187,7 @@ async function saveSettings() {
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
   qbCategoryDirty.value = false
+  fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
@@ -225,6 +236,20 @@ async function testQbittorrent() {
     return
   }
   qbTest.value = { success: data!.success, message: data!.message ?? '' }
+}
+
+async function testFlaresolverr() {
+  fsTesting.value = true
+  fsTest.value = null
+  const body: Record<string, string> = {}
+  if (fsUrlDirty.value) body.url = fsUrl.value
+  const { data, error: err } = await client.POST('/settings/test-flaresolverr', { body })
+  fsTesting.value = false
+  if (err) {
+    fsTest.value = { success: false, message: 'Request failed' }
+    return
+  }
+  fsTest.value = { success: data!.success, message: data!.message ?? '' }
 }
 
 onMounted(fetchSettings)
@@ -447,6 +472,55 @@ onMounted(fetchSettings)
                 class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
                 @input="qbCategoryDirty = true"
               />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metadata section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Proxy</h2>
+
+      <div class="space-y-4">
+        <!-- FlareSolverr -->
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-sm font-semibold text-gray-200">FlareSolverr</span>
+            <span class="text-[10px] text-gray-500">Cloudflare Bypass Proxy</span>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
+              <p class="text-[10px] text-gray-500 mb-2">Required for indexers behind Cloudflare protection (e.g. 1337x). Run FlareSolverr as a Docker sidecar.</p>
+              <div class="flex gap-2">
+                <input
+                  v-model="fsUrl"
+                  type="text"
+                  placeholder="http://localhost:8191"
+                  class="flex-1 px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                  @input="fsUrlDirty = true"
+                />
+                <button
+                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
+                  :disabled="fsTesting"
+                  @click="testFlaresolverr"
+                >
+                  {{ fsTesting ? 'Testing...' : 'Test Connection' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- FlareSolverr test result -->
+            <div v-if="fsTest" class="flex items-center gap-2">
+              <span
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                :class="fsTest.success
+                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
+              >
+                <span>{{ fsTest.success ? '\u2713' : '\u2717' }}</span>
+                {{ fsTest.message }}
+              </span>
             </div>
           </div>
         </div>

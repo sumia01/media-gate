@@ -1,9 +1,12 @@
 package settings
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,6 +32,8 @@ const (
 	KeyQBitDownloadPath       = "qbit_download_path"
 	KeyQBitCategory           = "qbit_category"
 	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
+
+	KeyFlareSolverrURL = "flaresolverr_url"
 
 	KeyWorkerMonitorInterval  = "worker_monitor_interval"
 	KeyWorkerDownloadInterval = "worker_download_interval"
@@ -261,6 +266,41 @@ func (s *Service) TestQBit(urlVal, username, password *string) (bool, string, er
 	client := qbittorrent.NewClient(u, user, pass)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
+	}
+	return true, "Connection successful", nil
+}
+
+func (s *Service) TestFlareSolverr(urlVal *string) (bool, string, error) {
+	u, err := s.resolveKey(urlVal, KeyFlareSolverrURL)
+	if err != nil {
+		return false, "FlareSolverr URL not configured", nil
+	}
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"cmd":        "request.get",
+		"url":        "http://www.google.com",
+		"maxTimeout": 15000,
+	})
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Post(
+		strings.TrimRight(u, "/")+"/v1",
+		"application/json",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return false, fmt.Sprintf("Connection failed: %v", err), nil
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, fmt.Sprintf("Invalid response: %v", err), nil
+	}
+	if result.Status != "ok" {
+		return false, fmt.Sprintf("FlareSolverr error: %s", result.Message), nil
 	}
 	return true, "Connection successful", nil
 }

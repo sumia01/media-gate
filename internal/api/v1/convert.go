@@ -244,6 +244,8 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 		case settings.KeyOnboardingCompleted:
 			b := v == "true"
 			s.OnboardingCompleted = &b
+		case settings.KeyFlareSolverrURL:
+			s.FlaresolverrUrl = &v
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -320,6 +322,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 			val = "true"
 		}
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOnboardingCompleted, Value: val})
+	}
+	if s.FlaresolverrUrl != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyFlareSolverrURL, Value: *s.FlaresolverrUrl})
 	}
 	return kvs
 }

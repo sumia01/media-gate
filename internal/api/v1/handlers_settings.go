@@ -57,3 +57,11 @@ func (h *Handlers) TestQbittorrentConnection(_ context.Context, req TestQbittorr
 	}
 	return TestQbittorrentConnection200JSONResponse{Success: success, Message: &msg}, nil
 }
+
+func (h *Handlers) TestFlaresolverrConnection(_ context.Context, req TestFlaresolverrConnectionRequestObject) (TestFlaresolverrConnectionResponseObject, error) {
+	success, msg, err := h.settings.TestFlareSolverr(req.Body.Url)
+	if err != nil {
+		return nil, err
+	}
+	return TestFlaresolverrConnection200JSONResponse{Success: success, Message: &msg}, nil
+}

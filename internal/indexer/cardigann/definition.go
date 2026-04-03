@@ -99,20 +99,35 @@ type DownloadSelector struct {
 
 // Search describes how to perform searches and parse results.
 type Search struct {
-	Paths  []SearchPath      `yaml:"paths"`
-	Inputs map[string]string `yaml:"inputs"`
-	Rows   RowsBlock         `yaml:"rows"`
-	Fields map[string]FieldDef `yaml:"fields"`
+	Paths   []SearchPath             `yaml:"paths"`
+	Inputs  map[string]string        `yaml:"inputs"`
+	Headers map[string][]string      `yaml:"headers"`
+	Rows    RowsBlock                `yaml:"rows"`
+	Fields  map[string]FieldDef      `yaml:"fields"`
 }
 
 // SearchPath is a URL path used for searching.
 type SearchPath struct {
-	Path       string   `yaml:"path"`
-	Categories []string `yaml:"categories"`
+	Path       string        `yaml:"path"`
+	Categories []string      `yaml:"categories"`
+	Response   ResponseBlock `yaml:"response"`
+}
+
+// ResponseBlock describes the response format for a search path.
+type ResponseBlock struct {
+	Type string `yaml:"type"` // "json" or "" (default: HTML)
 }
 
 // RowsBlock specifies how to find result rows in the response.
 type RowsBlock struct {
+	Selector  string     `yaml:"selector"`
+	Attribute string     `yaml:"attribute"`
+	Multiple  bool       `yaml:"multiple"`
+	Count     CountBlock `yaml:"count"`
+}
+
+// CountBlock specifies a selector for the total result count (informational).
+type CountBlock struct {
 	Selector string `yaml:"selector"`
 }
 

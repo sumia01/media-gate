@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { RouterLink } from 'vue-router'
 import client from '@/api/client'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -25,6 +26,12 @@ const testingId = ref<number | null>(null)
 const testedId = ref<number | null>(null)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const tryingIndexer = ref<Indexer | null>(null)
+
+const flaresolverrConfigured = ref(false)
+
+const needsFlareSolverr = computed(() =>
+  selectedDefinition.value?.settings?.some(s => s.type === 'info_flaresolverr') ?? false
+)
 
 const selectedDefinition = computed(() =>
   definitions.value.find((d) => d.id === formDefinitionId.value),
@@ -112,9 +119,10 @@ function isMasked(value: string) {
 async function fetchAll() {
   loading.value = true
   error.value = ''
-  const [indexerRes, defRes] = await Promise.all([
+  const [indexerRes, defRes, settingsRes] = await Promise.all([
     client.GET('/indexers'),
     client.GET('/indexer-definitions'),
+    client.GET('/settings'),
   ])
   loading.value = false
   if (indexerRes.error) {
@@ -127,6 +135,7 @@ async function fetchAll() {
   }
   indexers.value = indexerRes.data?.indexers ?? []
   definitions.value = defRes.data?.definitions ?? []
+  flaresolverrConfigured.value = !!(settingsRes.data?.settings?.flaresolverrUrl)
 }
 
 function openAdd() {
@@ -447,7 +456,7 @@ onMounted(fetchAll)
         <div v-if="selectedDefinition?.settings?.length">
           <label class="block text-xs font-medium text-gray-400 mb-3">Indexer Settings</label>
           <div class="space-y-3">
-            <div v-for="setting in selectedDefinition.settings" :key="setting.name">
+            <div v-for="setting in selectedDefinition.settings.filter(s => !s.type.startsWith('info'))" :key="setting.name">
               <label class="block text-xs text-gray-500 mb-1">{{ setting.label }}</label>
               <input
                 v-model="formSettings[setting.name]"
@@ -507,6 +516,27 @@ onMounted(fetchAll)
               :class="formEnabled ? 'translate-x-5' : ''"
             />
           </button>
+        </div>
+
+        <!-- FlareSolverr warning -->
+        <div
+          v-if="needsFlareSolverr && !flaresolverrConfigured"
+          class="px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300"
+        >
+          This indexer requires FlareSolverr to bypass Cloudflare protection.
+          <RouterLink to="/settings" class="underline hover:text-amber-200 transition-colors">Configure it in Settings</RouterLink>
+        </div>
+
+        <!-- Info notes from definition -->
+        <div v-if="selectedDefinition?.settings?.some(s => s.type.startsWith('info') && s.default)" class="space-y-2 pt-2 border-t border-violet-800/20">
+          <div
+            v-for="setting in selectedDefinition.settings.filter(s => s.type.startsWith('info') && s.default)"
+            :key="setting.name"
+            class="px-3 py-2 rounded-lg bg-sky-500/5 border border-sky-500/15 text-xs text-gray-400"
+          >
+            <span class="font-medium text-gray-300">{{ setting.label }}:</span>
+            <span v-html="setting.default" />
+          </div>
         </div>
 
         <!-- Buttons -->

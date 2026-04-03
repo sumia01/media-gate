@@ -1,7 +1,9 @@
 package cardigann
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -43,6 +45,10 @@ type Engine struct {
 	loggedIn   bool
 }
 
+// defaultUserAgent mimics a standard browser to avoid being blocked by
+// Cloudflare or similar bot-detection on public indexers.
+const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
 // NewEngine creates a Cardigann engine for the given definition and user config.
 func NewEngine(def *Definition, config map[string]string) (*Engine, error) {
 	if len(def.Links) == 0 {
@@ -58,11 +64,24 @@ func NewEngine(def *Definition, config map[string]string) (*Engine, error) {
 		def:    def,
 		config: config,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			Jar:     jar,
+			Timeout:   30 * time.Second,
+			Jar:       jar,
+			Transport: &uaTransport{base: http.DefaultTransport},
 		},
 		baseURL: strings.TrimRight(def.Links[0], "/"),
 	}, nil
+}
+
+// uaTransport injects a browser User-Agent header into every outgoing request.
+type uaTransport struct {
+	base http.RoundTripper
+}
+
+func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", defaultUserAgent)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // TestConnection attempts to log in to the indexer.
@@ -101,7 +120,7 @@ func (e *Engine) Login(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating login pre-request: %w", err)
 	}
-	preResp, err := e.httpClient.Do(preReq)
+	preResp, err := e.doRequest(preReq)
 	if err != nil {
 		return fmt.Errorf("login pre-request: %w", err)
 	}
@@ -208,7 +227,7 @@ func (e *Engine) verifyLogin(ctx context.Context) error {
 		return fmt.Errorf("creating login test request: %w", err)
 	}
 
-	resp, err := e.httpClient.Do(req)
+	resp, err := e.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("login test request: %w", err)
 	}
@@ -250,12 +269,17 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 	}
 
 	searchPath := e.def.Search.Paths[0].Path
+	renderedPath, err := RenderTemplate(searchPath, tmplCtx)
+	if err != nil {
+		return nil, fmt.Errorf("rendering search path: %w", err)
+	}
+
 	rendered, err := RenderInputs(e.def.Search.Inputs, tmplCtx)
 	if err != nil {
 		return nil, fmt.Errorf("rendering search inputs: %w", err)
 	}
 
-	searchURL := e.resolveURL(searchPath)
+	searchURL := e.resolveURL(renderedPath)
 	params := url.Values{}
 	rawSuffix := ""
 
@@ -273,16 +297,41 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 	}
 	fullURL := searchURL + "?" + encoded + rawSuffix
 
+	slog.Debug("indexer search request",
+		"indexer", e.def.ID,
+		"url", fullURL,
+		"query", query.Q,
+		"type", query.Type,
+		"categories", categories,
+		"rendered_inputs", rendered,
+	)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating search request: %w", err)
 	}
 
-	resp, err := e.httpClient.Do(req)
+	for name, vals := range e.def.Search.Headers {
+		for _, v := range vals {
+			rendered, err := RenderTemplate(v, tmplCtx)
+			if err != nil {
+				return nil, fmt.Errorf("rendering search header %q: %w", name, err)
+			}
+			req.Header.Set(name, rendered)
+		}
+	}
+
+	resp, err := e.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("search request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	slog.Debug("indexer search response",
+		"indexer", e.def.ID,
+		"status", resp.StatusCode,
+		"content_type", resp.Header.Get("Content-Type"),
+	)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("search returned status %d", resp.StatusCode)
@@ -293,10 +342,30 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		return nil, fmt.Errorf("reading search response: %w", err)
 	}
 
+	slog.Debug("indexer search response body",
+		"indexer", e.def.ID,
+		"body_length", len(body),
+		"body_preview", truncate(string(body), 2000),
+	)
+
+	// JSON response path.
+	if e.def.Search.Paths[0].Response.Type == "json" {
+		return e.parseRowsJSON(body, tmplCtx)
+	}
+
+	// HTML response path.
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
 	if err != nil {
 		return nil, fmt.Errorf("parsing search response: %w", err)
 	}
+
+	rowSelector := e.def.Search.Rows.Selector
+	rowCount := doc.Find(rowSelector).Length()
+	slog.Debug("indexer search row matching",
+		"indexer", e.def.ID,
+		"row_selector", rowSelector,
+		"rows_found", rowCount,
+	)
 
 	return e.parseRows(doc, tmplCtx)
 }
@@ -359,7 +428,7 @@ func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("creating download request: %w", err)
 	}
 
-	resp, err := e.httpClient.Do(req)
+	resp, err := e.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("download request: %w", err)
 	}
@@ -392,6 +461,115 @@ func (e *Engine) readBody(r io.Reader) ([]byte, error) {
 	}
 
 	return io.ReadAll(limited)
+}
+
+// --- FlareSolverr integration ---
+
+type flareSolverrResponse struct {
+	Status   string               `json:"status"`
+	Message  string               `json:"message"`
+	Solution flareSolverrSolution `json:"solution"`
+}
+
+type flareSolverrSolution struct {
+	URL     string                `json:"url"`
+	Status  int                   `json:"status"`
+	Cookies []flareSolverrCookie  `json:"cookies"`
+	Headers map[string]string     `json:"headers"`
+	Response string               `json:"response"`
+}
+
+type flareSolverrCookie struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
+
+// needsFlareSolverr returns true if the definition has an info_flaresolverr setting,
+// indicating the indexer is behind Cloudflare protection.
+func (e *Engine) needsFlareSolverr() bool {
+	for _, s := range e.def.Settings {
+		if s.Type == "info_flaresolverr" {
+			return true
+		}
+	}
+	return false
+}
+
+// doFlareSolverr routes a GET request through FlareSolverr's POST /v1 API.
+// It sends the target URL to FlareSolverr, injects returned cookies into the jar,
+// and returns a synthetic *http.Response with the solved page body.
+func (e *Engine) doFlareSolverr(ctx context.Context, targetURL string) (*http.Response, error) {
+	fsURL := e.config["flaresolverr_url"]
+
+	payload, _ := json.Marshal(map[string]any{
+		"cmd":        "request.get",
+		"url":        targetURL,
+		"maxTimeout": 30000,
+	})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(fsURL, "/")+"/v1",
+		bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("creating FlareSolverr request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("FlareSolverr request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var fsResp flareSolverrResponse
+	if err := json.NewDecoder(resp.Body).Decode(&fsResp); err != nil {
+		return nil, fmt.Errorf("decoding FlareSolverr response: %w", err)
+	}
+	if fsResp.Status != "ok" {
+		return nil, fmt.Errorf("FlareSolverr error: %s", fsResp.Message)
+	}
+
+	// Inject cookies from FlareSolverr into the engine's jar for subsequent requests.
+	if baseURL, err := url.Parse(e.baseURL); err == nil {
+		var cookies []*http.Cookie
+		for _, c := range fsResp.Solution.Cookies {
+			cookies = append(cookies, &http.Cookie{
+				Name:   c.Name,
+				Value:  c.Value,
+				Domain: c.Domain,
+				Path:   c.Path,
+			})
+		}
+		if len(cookies) > 0 {
+			e.httpClient.Jar.SetCookies(baseURL, cookies)
+			slog.Debug("injected FlareSolverr cookies", "indexer", e.def.ID, "count", len(cookies))
+		}
+	}
+
+	// Return a synthetic response with the solved page content.
+	synth := &http.Response{
+		StatusCode: fsResp.Solution.Status,
+		Status:     fmt.Sprintf("%d OK", fsResp.Solution.Status),
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(fsResp.Solution.Response)),
+	}
+	if synth.StatusCode == 0 {
+		synth.StatusCode = 200
+	}
+	return synth, nil
+}
+
+// doRequest routes a request through FlareSolverr if this is a GET to an indexer
+// that needs it and FlareSolverr is configured. POST requests (login) always go direct.
+func (e *Engine) doRequest(req *http.Request) (*http.Response, error) {
+	if req.Method == http.MethodGet && e.needsFlareSolverr() && e.config["flaresolverr_url"] != "" {
+		slog.Debug("routing through FlareSolverr", "indexer", e.def.ID, "url", req.URL.String())
+		return e.doFlareSolverr(req.Context(), req.URL.String())
+	}
+	return e.httpClient.Do(req)
 }
 
 func (e *Engine) parseRows(doc *goquery.Document, tmplCtx *TemplateContext) ([]SearchResult, error) {
@@ -428,6 +606,12 @@ func (e *Engine) parseRow(row *goquery.Selection, tmplCtx *TemplateContext) (*Se
 		fields[name] = val
 	}
 
+	return e.buildSearchResult(fields, tmplCtx)
+}
+
+// buildSearchResult applies defaults, renders text templates, and constructs a SearchResult
+// from extracted field values. Shared by both HTML and JSON parsing paths.
+func (e *Engine) buildSearchResult(fields map[string]string, tmplCtx *TemplateContext) (*SearchResult, error) {
 	// Apply defaults for empty optional fields (default values may reference .Result).
 	for name, fieldDef := range e.def.Search.Fields {
 		if fieldDef.Default == "" || fields[name] != "" {
@@ -447,7 +631,7 @@ func (e *Engine) parseRow(row *goquery.Selection, tmplCtx *TemplateContext) (*Se
 		fields[name] = rendered
 	}
 
-	// Second pass: render any text fields that reference .Result
+	// Render any text fields that reference .Result
 	for name, fieldDef := range e.def.Search.Fields {
 		if fieldDef.Text == "" {
 			continue
@@ -637,4 +821,245 @@ func parseFloat(s string, defaultVal float64) float64 {
 		return defaultVal
 	}
 	return f
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "...[truncated]"
+}
+
+// --- JSON response support ---
+
+// resolveJSONPath navigates a JSON object/array tree using a dot-path selector.
+// Supports: simple keys, dot-separated paths, array indexing (key[N]), and "$" for root.
+func resolveJSONPath(data any, path string) (any, error) {
+	if path == "$" || path == "" {
+		return data, nil
+	}
+	path = strings.TrimPrefix(path, "$.")
+
+	segments := strings.Split(path, ".")
+	current := data
+
+	for _, seg := range segments {
+		// Check for array index: "key[N]"
+		if bracketIdx := strings.IndexByte(seg, '['); bracketIdx >= 0 {
+			key := seg[:bracketIdx]
+			indexStr := strings.TrimSuffix(seg[bracketIdx+1:], "]")
+			index, err := strconv.Atoi(indexStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid array index in %q", seg)
+			}
+
+			obj, ok := current.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("expected object for key %q, got %T", key, current)
+			}
+			arr, ok := obj[key].([]any)
+			if !ok {
+				return nil, fmt.Errorf("expected array for key %q", key)
+			}
+			if index < 0 || index >= len(arr) {
+				return nil, fmt.Errorf("index %d out of range for %q (len %d)", index, key, len(arr))
+			}
+			current = arr[index]
+			continue
+		}
+
+		obj, ok := current.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("expected object for key %q, got %T", seg, current)
+		}
+		val, exists := obj[seg]
+		if !exists {
+			return nil, fmt.Errorf("key %q not found", seg)
+		}
+		current = val
+	}
+
+	return current, nil
+}
+
+// jsonValueToString converts a JSON-unmarshalled value to string.
+// Numbers are formatted without scientific notation; bools use "True"/"False"
+// to match UNIT3D definition case map keys.
+func jsonValueToString(val any) string {
+	switch v := val.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case float64:
+		if v == float64(int64(v)) {
+			return strconv.FormatInt(int64(v), 10)
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		if v {
+			return "True"
+		}
+		return "False"
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// parseRowsJSON parses a JSON response body into search results.
+func (e *Engine) parseRowsJSON(body []byte, tmplCtx *TemplateContext) ([]SearchResult, error) {
+	var root any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, fmt.Errorf("parsing JSON response: %w", err)
+	}
+
+	rowsData, err := resolveJSONPath(root, e.def.Search.Rows.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("resolving rows selector %q: %w", e.def.Search.Rows.Selector, err)
+	}
+
+	items, ok := rowsData.([]any)
+	if !ok {
+		// Single object — wrap in array.
+		if obj, ok := rowsData.(map[string]any); ok {
+			items = []any{obj}
+		} else {
+			return nil, fmt.Errorf("rows selector %q resolved to %T, expected array", e.def.Search.Rows.Selector, rowsData)
+		}
+	}
+
+	attr := e.def.Search.Rows.Attribute
+	multiple := e.def.Search.Rows.Multiple
+
+	var results []SearchResult
+
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if attr == "" {
+			// No attribute: each array element is a row.
+			result, err := e.parseRowJSON(obj, nil, tmplCtx)
+			if err != nil {
+				slog.Debug("skipping JSON row", "error", err, "indexer", e.def.ID)
+				continue
+			}
+			results = append(results, *result)
+		} else if !multiple {
+			// Attribute without multiple: fields are under item[attribute].
+			subVal, exists := obj[attr]
+			if !exists {
+				continue
+			}
+			subObj, ok := subVal.(map[string]any)
+			if !ok {
+				continue
+			}
+			result, err := e.parseRowJSON(subObj, nil, tmplCtx)
+			if err != nil {
+				slog.Debug("skipping JSON row", "error", err, "indexer", e.def.ID)
+				continue
+			}
+			results = append(results, *result)
+		} else {
+			// Attribute with multiple: parent[attribute] is an array of sub-items.
+			subVal, exists := obj[attr]
+			if !exists {
+				continue
+			}
+			subArr, ok := subVal.([]any)
+			if !ok {
+				continue
+			}
+			for _, subItem := range subArr {
+				subObj, ok := subItem.(map[string]any)
+				if !ok {
+					continue
+				}
+				result, err := e.parseRowJSON(subObj, obj, tmplCtx)
+				if err != nil {
+					slog.Debug("skipping JSON sub-row", "error", err, "indexer", e.def.ID)
+					continue
+				}
+				results = append(results, *result)
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// parseRowJSON extracts fields from a single JSON object and builds a SearchResult.
+func (e *Engine) parseRowJSON(item map[string]any, parent map[string]any, tmplCtx *TemplateContext) (*SearchResult, error) {
+	fields := make(map[string]string)
+
+	for name, fieldDef := range e.def.Search.Fields {
+		val, err := e.extractFieldJSON(item, parent, fieldDef)
+		if err != nil {
+			if fieldDef.Optional {
+				continue
+			}
+			return nil, fmt.Errorf("field %q: %w", name, err)
+		}
+		fields[name] = val
+	}
+
+	return e.buildSearchResult(fields, tmplCtx)
+}
+
+// extractFieldJSON extracts a single field value from a JSON object.
+func (e *Engine) extractFieldJSON(item map[string]any, parent map[string]any, fieldDef FieldDef) (string, error) {
+	// Text-only field (no selector): template rendering happens in buildSearchResult.
+	if fieldDef.Text != "" && fieldDef.Selector == "" {
+		return fieldDef.Text, nil
+	}
+
+	// No selector and no text: nothing to extract.
+	if fieldDef.Selector == "" {
+		return "", nil
+	}
+
+	// Resolve the value from JSON.
+	var raw any
+	var err error
+
+	if strings.HasPrefix(fieldDef.Selector, "..") {
+		// Parent traversal: strip ".." and resolve against parent.
+		if parent == nil {
+			return "", nil
+		}
+		raw, err = resolveJSONPath(parent, fieldDef.Selector[2:])
+	} else {
+		raw, err = resolveJSONPath(item, fieldDef.Selector)
+	}
+
+	if err != nil {
+		if fieldDef.Optional {
+			return "", nil
+		}
+		return "", fmt.Errorf("resolving selector %q: %w", fieldDef.Selector, err)
+	}
+
+	value := jsonValueToString(raw)
+	value = strings.TrimSpace(value)
+
+	// Case mapping: compare extracted value against case keys.
+	if len(fieldDef.Case) > 0 {
+		if mapped, ok := fieldDef.Case[value]; ok {
+			value = mapped
+		} else if wildcard, ok := fieldDef.Case["*"]; ok {
+			value = wildcard
+		}
+	}
+
+	if len(fieldDef.Filters) > 0 {
+		value, err = ApplyFilters(value, fieldDef.Filters)
+		if err != nil {
+			return "", fmt.Errorf("applying filters: %w", err)
+		}
+	}
+
+	return value, nil
 }

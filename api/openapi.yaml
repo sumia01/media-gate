@@ -911,6 +911,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
+  /settings/test-flaresolverr:
+    post:
+      operationId: testFlaresolverrConnection
+      summary: Test FlareSolverr connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlareSolverrTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
   /search:
     get:
       operationId: globalSearch
@@ -2312,6 +2330,9 @@ components:
         onboardingCompleted:
           type: boolean
           description: Whether the onboarding wizard has been completed
+        flaresolverrUrl:
+          type: string
+          description: URL of a FlareSolverr instance for solving Cloudflare challenges (e.g. http://flaresolverr:8191)
 
     ConnectionTestRequest:
       type: object
@@ -2327,6 +2348,12 @@ components:
         username:
           type: string
         password:
+          type: string
+
+    FlareSolverrTestRequest:
+      type: object
+      properties:
+        url:
           type: string
 
     ConnectionTestResult:
