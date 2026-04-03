@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 )
 
 // SearchResult holds a single torrent result from an indexer search.
@@ -70,6 +72,10 @@ func (e *Engine) TestConnection(ctx context.Context) error {
 
 // Login authenticates with the indexer.
 func (e *Engine) Login(ctx context.Context) error {
+	if e.def.Login.Method == "cookie" {
+		return e.loginCookie(ctx)
+	}
+
 	if e.def.Login.Path == "" {
 		e.loggedIn = true
 		return nil
@@ -113,7 +119,7 @@ func (e *Engine) Login(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, err := e.readBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("reading login response: %w", err)
 	}
@@ -143,6 +149,54 @@ func (e *Engine) Login(ctx context.Context) error {
 	return nil
 }
 
+// loginCookie handles cookie-based authentication by injecting the user-provided
+// cookie string into the HTTP client's cookie jar and verifying the session.
+func (e *Engine) loginCookie(ctx context.Context) error {
+	tmplCtx := &TemplateContext{Config: e.config}
+
+	rendered, err := RenderInputs(e.def.Login.Inputs, tmplCtx)
+	if err != nil {
+		return fmt.Errorf("rendering cookie login inputs: %w", err)
+	}
+
+	cookieStr := rendered["cookie"]
+	if cookieStr == "" {
+		return fmt.Errorf("cookie login: no cookie value provided")
+	}
+
+	baseURL, err := url.Parse(e.baseURL)
+	if err != nil {
+		return fmt.Errorf("parsing base URL: %w", err)
+	}
+
+	// Parse the cookie string (format: "name=value; name2=value2; ...")
+	// and inject into the jar.
+	var cookies []*http.Cookie
+	for _, part := range strings.Split(cookieStr, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		eqIdx := strings.IndexByte(part, '=')
+		if eqIdx < 0 {
+			continue
+		}
+		cookies = append(cookies, &http.Cookie{
+			Name:  strings.TrimSpace(part[:eqIdx]),
+			Value: strings.TrimSpace(part[eqIdx+1:]),
+		})
+	}
+	e.httpClient.Jar.SetCookies(baseURL, cookies)
+
+	if err := e.verifyLogin(ctx); err != nil {
+		return fmt.Errorf("cookie login: %w", err)
+	}
+
+	e.loggedIn = true
+	slog.Debug("indexer cookie login successful", "indexer", e.def.ID)
+	return nil
+}
+
 func (e *Engine) verifyLogin(ctx context.Context) error {
 	if e.def.Login.Test.Path == "" {
 		return nil
@@ -160,7 +214,7 @@ func (e *Engine) verifyLogin(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, err := e.readBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("reading login test response: %w", err)
 	}
@@ -213,7 +267,11 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		params.Set(k, v)
 	}
 
-	fullURL := searchURL + "?" + params.Encode() + rawSuffix
+	encoded := params.Encode()
+	if encoded != "" && rawSuffix != "" {
+		encoded += "&"
+	}
+	fullURL := searchURL + "?" + encoded + rawSuffix
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
@@ -230,7 +288,7 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		return nil, fmt.Errorf("search returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, err := e.readBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading search response: %w", err)
 	}
@@ -319,6 +377,23 @@ func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
+// readBody reads an HTTP response body, converting from the definition's
+// encoding to UTF-8 if specified (e.g. ISO-8859-2 for Hungarian sites).
+func (e *Engine) readBody(r io.Reader) ([]byte, error) {
+	limited := io.LimitReader(r, 2<<20)
+
+	if enc := e.def.Encoding; enc != "" && !strings.EqualFold(enc, "UTF-8") {
+		encoding, err := ianaindex.IANA.Encoding(enc)
+		if err != nil {
+			slog.Warn("unknown encoding, reading as raw bytes", "encoding", enc, "indexer", e.def.ID)
+			return io.ReadAll(limited)
+		}
+		return io.ReadAll(transform.NewReader(limited, encoding.NewDecoder()))
+	}
+
+	return io.ReadAll(limited)
+}
+
 func (e *Engine) parseRows(doc *goquery.Document, tmplCtx *TemplateContext) ([]SearchResult, error) {
 	rowSelector := e.def.Search.Rows.Selector
 	if rowSelector == "" {
@@ -351,6 +426,25 @@ func (e *Engine) parseRow(row *goquery.Selection, tmplCtx *TemplateContext) (*Se
 			return nil, fmt.Errorf("field %q: %w", name, err)
 		}
 		fields[name] = val
+	}
+
+	// Apply defaults for empty optional fields (default values may reference .Result).
+	for name, fieldDef := range e.def.Search.Fields {
+		if fieldDef.Default == "" || fields[name] != "" {
+			continue
+		}
+		ctx := &TemplateContext{
+			Config:     tmplCtx.Config,
+			Keywords:   tmplCtx.Keywords,
+			Query:      tmplCtx.Query,
+			Categories: tmplCtx.Categories,
+			Result:     fields,
+		}
+		rendered, err := RenderTemplate(fieldDef.Default, ctx)
+		if err != nil {
+			continue
+		}
+		fields[name] = rendered
 	}
 
 	// Second pass: render any text fields that reference .Result
