@@ -851,3 +851,51 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: On startup, load definitions from a disk cache (`.cache/definitions/`) if fresh (< 24h), otherwise fall back to the embedded `ncore.yml`. A background `RefreshWorker` (60s startup delay, 24h ticker) downloads the Prowlarr/Indexers GitHub tarball (`GET /repos/Prowlarr/Indexers/tarball/master`), extracts `definitions/v11/*.yml` files, parses them with `cardigann.ParseDefinition`, writes to disk cache, and hot-swaps the in-memory definition map under a `sync.RWMutex`. All cached engines are invalidated on refresh. Unparseable definitions are logged and skipped (never fail startup). The `ErrorBlock.Message` field was changed from `string` to a `StringOrText` type with custom `UnmarshalYAML` to handle both `message: "text"` and `message: {text: "text"}` forms used in v11 definitions. Three definitions with invalid YAML (unescaped regex backslashes) in the upstream repo are skipped.
 
 **Rationale**: The tarball approach downloads all ~550 definitions in a single HTTP call (~2-5MB compressed) instead of 550 individual file fetches. Disk caching ensures fast startup and offline operation. The embedded `ncore.yml` fallback guarantees at least one definition is always available. The `RWMutex` on the definitions map allows concurrent reads during search while still supporting hot-swap on refresh. The 24h refresh interval matches GitHub's unauthenticated rate limit (60 req/hour) with ample margin.
+
+---
+
+## ADR-063: Cardigann engine — cookie login, encoding, and URL fixes
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: BitHU indexer returned no search results despite passing connection tests. Investigation revealed three issues: (1) cookie-based login method not implemented, (2) ISO-8859-2 encoded responses parsed as raw bytes producing garbled text, (3) URL `$raw` suffix concatenated without `&` separator.
+
+**Decision**: Added `loginCookie()` method that parses `name=value; name2=value2` cookie strings from definition inputs and injects them into the HTTP client's cookie jar. Added `readBody()` helper that detects the definition's `encoding` field and converts non-UTF-8 responses using `golang.org/x/text/encoding/ianaindex`. Fixed URL building to insert `&` between `params.Encode()` and `rawSuffix` when both are non-empty. Also added `FieldDef.Default` support with template rendering for definitions that use default values referencing `.Result`, and search path template rendering via `RenderTemplate`.
+
+**Rationale**: These are all standard Cardigann features used by many Prowlarr definitions. Cookie login is used by trackers like BitHU that authenticate via browser cookies. Encoding support is needed for Hungarian (ISO-8859-2), Russian (windows-1251), and other non-UTF-8 sites. The `$raw` separator fix prevents malformed query strings.
+
+---
+
+## ADR-064: FlareSolverr integration for Cloudflare-protected indexers
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: Public indexers like 1337x are behind Cloudflare protection, returning 403 to direct HTTP requests. FlareSolverr is a widely-used Docker sidecar that solves Cloudflare challenges via headless browser. Prowlarr definitions mark these indexers with `info_flaresolverr` setting type.
+
+**Decision**: Added a global `flaresolverr_url` setting (Settings UI with test connection). The engine's `doRequest()` wrapper checks if the definition has an `info_flaresolverr` setting and a URL is configured, then routes GET requests through FlareSolverr's `POST /v1` API. POST requests (login) always go direct. Cookies from FlareSolverr's solved response are injected into the engine's cookie jar for subsequent requests. The indexer add/edit form shows an amber warning banner when a definition needs FlareSolverr but it's not configured, with a link to Settings.
+
+**Rationale**: Transparent proxy approach — no changes to individual definitions. The `doRequest()` wrapper replaces `httpClient.Do` at all GET call sites (pre-login, verifyLogin, search, fetchURL) while login POST stays direct. FlareSolverr URL is injected into engine config at both `getOrCreateEngine` and `TestConnection` paths.
+
+---
+
+## ADR-065: JSON response parsing for Cardigann engine
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: ~97 cached indexer definitions use `response: type: json` in their search paths (Milkie, YTS, HHD/UNIT3D, ABNormal, etc.). The engine only supported HTML parsing via goquery, causing these definitions to silently fail.
+
+**Decision**: Added JSON response detection via `SearchPath.Response.Type` field. When `"json"`, the engine unmarshals the response body and uses `resolveJSONPath()` for dot-path traversal (simple keys, nested paths, `key[N]` array indexing, `$` for root, `..key` for parent traversal). Four JSON patterns supported: flat array behind a key (`rows.selector: torrents`), root array (`$`), attribute sub-object (`rows.attribute: attributes`), and nested arrays with parent access (`rows.attribute: torrents`, `rows.multiple: true`). `jsonValueToString()` handles float64→int formatting (no scientific notation) and bool→`"True"`/`"False"` (matching UNIT3D case map key convention). The existing `parseRow` was refactored: field extraction stays HTML/JSON-specific, but defaults/text-rendering/SearchResult-construction moved to shared `buildSearchResult()`.
+
+**Rationale**: Inline JSON path traversal (~40 lines) instead of external library — the selector syntax used in definitions is simple (dot-separated keys + array indexing + parent reference). The `buildSearchResult` refactor ensures defaults, text templates, filters, and result construction are identical for both HTML and JSON paths, avoiding logic duplication. Case mapping in JSON mode compares extracted string values (not CSS selector presence), with `"*"` as wildcard — matching Prowlarr's behavior.
+
+---
+
+## ADR-066: Search headers support for API-key authenticated indexers
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: Milkie and other API-based indexers authenticate via custom HTTP headers (e.g. `x-milkie-auth: {{ .Config.apikey }}`) defined in `search.headers`. The engine ignored this field, causing 401 responses.
+
+**Decision**: Added `Headers map[string][]string` to the `Search` struct. In the `Search()` method, after creating the HTTP request, each header value is rendered as a Go template (with the same `TemplateContext` used for inputs) and set on the request.
+
+**Rationale**: Simple addition — reuses existing `RenderTemplate` infrastructure. Connection tests for these indexers often succeed because they test login (which may have no auth requirement) rather than search, so the 401 only manifested during actual searches.

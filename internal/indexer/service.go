@@ -342,12 +342,16 @@ func (s *Service) TestConnection(id uint, overrideSettings map[string]string) (b
 		return false, "unknown definition", nil
 	}
 
-	settings, err := s.mergeSettings(indexer, overrideSettings)
+	mergedSettings, err := s.mergeSettings(indexer, overrideSettings)
 	if err != nil {
 		return false, "", err
 	}
 
-	engine, err := cardigann.NewEngine(def, settings)
+	if fsURL, err := s.settingsSvc.Get(settings.KeyFlareSolverrURL); err == nil && fsURL != "" {
+		mergedSettings["flaresolverr_url"] = fsURL
+	}
+
+	engine, err := cardigann.NewEngine(def, mergedSettings)
 	if err != nil {
 		return false, err.Error(), nil
 	}
@@ -494,6 +498,10 @@ func (s *Service) getOrCreateEngine(indexer *store.Indexer) (*engineEntry, error
 	}
 	for k, v := range secrets {
 		cfg[k] = v
+	}
+
+	if fsURL, err := s.settingsSvc.Get(settings.KeyFlareSolverrURL); err == nil && fsURL != "" {
+		cfg["flaresolverr_url"] = fsURL
 	}
 
 	engine, err := cardigann.NewEngine(def, cfg)
@@ -696,9 +704,6 @@ func maskValue(v string) string {
 func definitionToInfo(def *cardigann.Definition) DefinitionInfo {
 	settings := make([]SettingFieldInfo, 0)
 	for _, s := range def.Settings {
-		if s.Type == "info" {
-			continue
-		}
 		settings = append(settings, SettingFieldInfo{
 			Name:    s.Name,
 			Type:    s.Type,

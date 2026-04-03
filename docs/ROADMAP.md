@@ -152,6 +152,22 @@
 - [x] HomeView rewrite — 4 sections with independent loading, skeleton placeholders, click navigation to media detail / external preview
 - [x] Removed static demo data (`dummyData.ts`, `MediaCardA.vue`)
 
+## Phase 4.8: Cardigann Engine Hardening ✅
+- [x] Cookie-based login (`login.method: cookie`) — cookie string injection into HTTP client jar + session verification
+- [x] Character encoding support — `readBody()` converts non-UTF-8 responses (e.g. ISO-8859-2) via `golang.org/x/text/encoding/ianaindex`
+- [x] URL building fix — proper `&` separator between encoded params and `$raw` suffix
+- [x] Search path template rendering — `RenderTemplate` on `search.paths[].path` for dynamic URLs
+- [x] Browser User-Agent header — `uaTransport` RoundTripper injects Chrome UA on all requests
+- [x] Field `default` support — `FieldDef.Default` with template rendering referencing `.Result`
+- [x] Search headers support — `search.headers` with template rendering (e.g. `x-milkie-auth: {{ .Config.apikey }}`)
+- [x] JSON response parsing — `response: type: json` detection, `resolveJSONPath` for dot-path/array-index/parent traversal, `jsonValueToString` with proper number/bool formatting, `parseRowsJSON` handling flat arrays, root arrays, attribute sub-objects, and nested arrays with `multiple: true`
+- [x] FlareSolverr integration — global URL setting, `doRequest()` wrapper routing GET requests through FlareSolverr `/v1` API for Cloudflare-protected indexers, cookie injection from solved responses, Settings UI with test connection, indexer form warning when FlareSolverr needed but not configured
+- [x] Fuzzy-searchable dropdown for indexer definition picker
+- [x] Info settings display — read-only `info_*` type settings shown in indexer add/edit form
+- [x] Indexer test button scoping — test result shown only next to the tested indexer
+- [x] Try-it-out query fix — candidate title sent alongside IMDB ID for indexers that don't support IMDB search
+- [x] Try-it-out modal overflow fix — scrollable results within fixed-height modal
+
 ## Phase 5: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration

@@ -112,10 +112,10 @@ async function selectCandidate(candidate: MatchCandidate) {
     return
   }
 
-  await searchIndexer(data.imdbId)
+  await searchIndexer(data.imdbId, candidate.title ?? query.value)
 }
 
-async function searchIndexer(imdbId: string) {
+async function searchIndexer(imdbId: string, queryText: string) {
   step.value = 'results'
   loadingResults.value = true
   resultsError.value = ''
@@ -125,6 +125,7 @@ async function searchIndexer(imdbId: string) {
   const { data, error: err } = await client.GET('/indexers/search', {
     params: {
       query: {
+        query: queryText,
         imdbId,
         type: searchType,
         indexerIds: String(props.indexerId),
@@ -189,7 +190,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
     </div>
 
     <!-- Step 1: Meta search -->
-    <div v-if="step === 'search'">
+    <div v-if="step === 'search'" class="flex flex-col min-h-0">
       <!-- Search bar -->
       <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20 mb-4">
         <!-- Media type toggle -->
@@ -226,7 +227,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
       <ErrorBanner :message="searchError" />
 
       <!-- Candidate results area -->
-      <div class="rounded-lg">
+      <div class="rounded-lg overflow-y-auto min-h-0">
         <!-- Loading -->
         <div v-if="searching || fetchingDetail" class="flex items-center justify-center py-8">
           <span class="text-gray-500 text-sm animate-pulse">
@@ -285,7 +286,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
     </div>
 
     <!-- Step 2: Indexer results -->
-    <div v-else>
+    <div v-else class="flex flex-col min-h-0">
       <!-- Back button + selected title -->
       <div class="flex items-center gap-3 mb-4">
         <button
@@ -315,7 +316,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
       </div>
 
       <!-- Results table -->
-      <div v-else class="overflow-x-auto">
+      <div v-else class="overflow-y-auto min-h-0">
         <table class="w-full text-sm">
           <thead class="sticky top-0 bg-[#0f1225]">
             <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
