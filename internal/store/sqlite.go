@@ -186,11 +186,14 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 				"save_path" text,
 				"seeding_required" numeric NOT NULL DEFAULT false,
 				"linked_to_library" numeric NOT NULL DEFAULT false,
+				"retry_count" integer NOT NULL DEFAULT 0,
+				"next_retry_at" datetime,
+				"last_error" text,
 				"created_at" datetime,
 				"updated_at" datetime,
 				"completed_at" datetime
 			)`,
-			columns: "id,media_item_id,episode_id,season_number,indexer_id,indexer_name,title,download_url,details_url,size,imdb_id,status,client_torrent_hash,save_path,seeding_required,linked_to_library,created_at,updated_at,completed_at",
+			columns: "id,media_item_id,episode_id,season_number,indexer_id,indexer_name,title,download_url,details_url,size,imdb_id,status,client_torrent_hash,save_path,seeding_required,linked_to_library,retry_count,next_retry_at,last_error,created_at,updated_at,completed_at",
 		},
 		{
 			table: "refresh_tokens",

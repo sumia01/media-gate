@@ -168,6 +168,15 @@
 - [x] Try-it-out query fix — candidate title sent alongside IMDB ID for indexers that don't support IMDB search
 - [x] Try-it-out modal overflow fix — scrollable results within fixed-height modal
 - [x] Media detail search query fix — IndexerSearchModal now sends title (without year suffix) as text query fallback for indexers that don't support IMDB search
+- [x] Download retry with exponential backoff — automatic retry (5 attempts, 30s→1h backoff) for transient failures (qBit unreachable, indexer fetch errors), qBit health check skips send pass when offline, manual retry resets state, UI shows last error and retry countdown
+
+## Phase 4.9: Download Retry Resilience ✅
+- [x] Download retry with exponential backoff (30s, 2m, 10m, 30m, 1h — max 5 retries)
+- [x] qBit health check before send pass — skip entirely when unreachable, don't consume retries
+- [x] `RetryCount`, `NextRetryAt`, `LastError` fields on Download model + SQLite DDL
+- [x] Manual retry resets retry state (count, backoff, error)
+- [x] Frontend shows last error for failed downloads, retry count and countdown for pending downloads in backoff
+- [x] OpenAPI schema updated with retry fields
 
 ## Phase 5: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
