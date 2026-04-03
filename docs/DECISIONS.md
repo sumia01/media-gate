@@ -947,3 +947,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Extended the frontend validation in `SetupBasePath.vue` to accept both Unix (`/...`) and Windows (`X:\...` or `X:/...`) absolute paths using the regex `/^[a-zA-Z]:[/\\]/`. No backend changes needed — Go's `filepath.Clean` and `filepath.Separator` are already platform-aware.
 
 **Rationale**: With cross-platform binaries now available (Phase 5.0), Windows is a supported target. The frontend validation must match what the backend accepts on each platform.
+
+---
+
+## ADR-071: Open browser on startup on Windows
+**Date**: 2026-04-04
+**Status**: Accepted
+
+**Context**: When users launch the Windows binary, they need to manually open a browser and navigate to `http://localhost:<port>`. This is a friction point for non-technical users who expect a desktop-app-like experience.
+
+**Decision**: On Windows, the server opens the default browser at `http://localhost:<port>` immediately before `ListenAndServe`. Implemented via build-tag-separated files: `browser_windows.go` (calls `rundll32 url.dll,FileProtocolHandler`) and `browser_other.go` (no-op). The command is fire-and-forget (`exec.Command.Start()`).
+
+**Rationale**: Minimal code, zero dependencies. Build tags keep the Windows-specific import (`os/exec`) out of other platforms. `rundll32 url.dll` is the standard Windows API for opening URLs in the default browser.
