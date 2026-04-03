@@ -2613,6 +2613,16 @@ components:
           type: integer
           format: int64
           description: Current upload speed in bytes/sec
+        retryCount:
+          type: integer
+          description: Number of retry attempts so far
+        nextRetryAt:
+          type: string
+          format: date-time
+          description: When the next retry attempt is scheduled
+        lastError:
+          type: string
+          description: Error message from the last failed attempt
 
     DownloadCreate:
       type: object

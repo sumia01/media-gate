@@ -127,6 +127,12 @@ func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadSta
 	}
 
 	dl.Status = string(req.Body.Status)
+	// Reset retry state when manually setting back to pending
+	if dl.Status == "pending" {
+		dl.RetryCount = 0
+		dl.NextRetryAt = nil
+		dl.LastError = ""
+	}
 	if err := h.store.UpdateDownload(dl); err != nil {
 		return nil, err
 	}

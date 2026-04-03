@@ -911,3 +911,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Added `query: props.title` to the IndexerSearchModal's GET `/indexers/search` request, matching IndexerTryModal's behavior. Also fixed the title prop passed from MediaDetailView to use `item.title` (plain title) instead of `item.title (year)` — the year suffix caused poor search results on indexers that match by title text.
 
 **Rationale**: The Cardigann engine renders search URL templates using either `.Keywords` (text query) or `.Query.IMDBID`. When IMDB is not supported by a definition, `.Keywords` is the only fallback — it must be populated. Stripping the year avoids false negatives from indexers that don't include the year in their title format.
+
+---
+
+## ADR-068: Download worker retry with exponential backoff
+**Date**: 2026-04-03
+**Status**: Accepted
+
+**Context**: When qBittorrent is temporarily unreachable (restart, network blip) or an indexer's torrent download fails transiently (rate limit, Cloudflare), `sendPending` immediately marks downloads as `"failed"`. Users must manually click "Retry" in the UI. The monitor worker's auto-grabs are effectively wasted on the first transient error.
+
+**Decision**: Added automatic retry with exponential backoff to the download worker. Three new fields on `Download`: `RetryCount` (int), `NextRetryAt` (*time.Time), `LastError` (string). Backoff schedule: 30s, 2m, 10m, 30m, 1h (5 retries max). A qBit health check (`TestConnection()`) runs before `sendPending` — if qBit is down, the entire send pass is skipped without consuming retry attempts. Manual retry via UI resets all retry state. Frontend shows last error for failed downloads and retry count/next attempt time for pending downloads in backoff.
+
+**Rationale**: Transient failures (qBit restart, indexer rate limit) are common in homelab environments. Burning downloads to "failed" on the first error forces unnecessary manual intervention. The health check prevents retry exhaustion when qBit is completely offline. The 5-retry/1h-max backoff caps total retry window at ~1.5h before giving up — long enough for typical restarts but short enough to surface real problems.

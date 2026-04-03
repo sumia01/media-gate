@@ -149,6 +149,9 @@ type Download struct {
 	SavePath          string
 	SeedingRequired   bool `gorm:"not null;default:false"`
 	LinkedToLibrary   bool `gorm:"not null;default:false"`
+	RetryCount        int        `gorm:"not null;default:0"`
+	NextRetryAt       *time.Time
+	LastError         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time

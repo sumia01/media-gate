@@ -15,6 +15,16 @@ import (
 
 const defaultPollInterval = 5 * time.Second
 
+const maxRetries = 5
+
+var retryBackoff = [maxRetries]time.Duration{
+	30 * time.Second,
+	2 * time.Minute,
+	10 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+}
+
 type Service struct {
 	store      store.Store
 	settings   *settings.Service
@@ -79,7 +89,14 @@ func (s *Service) processOnce() {
 		return
 	}
 
-	s.sendPending(client)
+	// Health check: if qBit is unreachable, skip sendPending entirely
+	// so pending downloads don't burn retry attempts.
+	if err := client.TestConnection(); err != nil {
+		slog.Warn("download worker: qBittorrent unreachable, skipping send", "error", err)
+	} else {
+		s.sendPending(client)
+	}
+
 	s.pollActive(client)
 }
 
@@ -123,6 +140,8 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		return
 	}
 
+	now := time.Now()
+
 	downloadPath := s.settings.GetWithDefault(settings.KeyQBitDownloadPath, "")
 	category := s.settings.GetWithDefault(settings.KeyQBitCategory, "media-gate-dl")
 
@@ -135,6 +154,11 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 	for i := range downloads {
 		dl := &downloads[i]
 
+		// Skip downloads in backoff
+		if dl.NextRetryAt != nil && dl.NextRetryAt.After(now) {
+			continue
+		}
+
 		opts := qbittorrent.AddTorrentOptions{
 			SavePath: downloadPath,
 			Category: category,
@@ -146,11 +170,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		if err != nil {
 			slog.Error("download worker: failed to fetch torrent",
 				"download_id", dl.ID, "title", dl.Title, "error", err)
-			dl.Status = "failed"
-			_ = s.store.UpdateDownload(dl)
-			s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
-				DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
-			})
+			s.handleRetry(dl, err)
 			continue
 		}
 
@@ -169,11 +189,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 			if err != nil {
 				slog.Error("download worker: failed to add torrent",
 					"download_id", dl.ID, "title", dl.Title, "error", err)
-				dl.Status = "failed"
-				_ = s.store.UpdateDownload(dl)
-				s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
-					DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
-				})
+				s.handleRetry(dl, err)
 				continue
 			}
 		}
@@ -181,6 +197,9 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		dl.Status = "downloading"
 		dl.ClientTorrentHash = hash
 		dl.SavePath = downloadPath
+		dl.RetryCount = 0
+		dl.NextRetryAt = nil
+		dl.LastError = ""
 		if err := s.store.UpdateDownload(dl); err != nil {
 			slog.Error("download worker: failed to update download status", "download_id", dl.ID, "error", err)
 		}
@@ -190,6 +209,29 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Hash: hash, Status: "downloading",
 		})
 	}
+}
+
+// handleRetry increments retry count and schedules backoff, or fails permanently.
+func (s *Service) handleRetry(dl *store.Download, lastErr error) {
+	dl.LastError = lastErr.Error()
+
+	if dl.RetryCount < maxRetries {
+		dl.RetryCount++
+		next := time.Now().Add(retryBackoff[dl.RetryCount-1])
+		dl.NextRetryAt = &next
+		slog.Warn("download worker: scheduling retry",
+			"download_id", dl.ID, "title", dl.Title,
+			"retry", dl.RetryCount, "next_retry_at", next)
+	} else {
+		dl.Status = "failed"
+		slog.Error("download worker: max retries exceeded, marking failed",
+			"download_id", dl.ID, "title", dl.Title, "retries", dl.RetryCount)
+		s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
+			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
+		})
+	}
+
+	_ = s.store.UpdateDownload(dl)
 }
 
 // pollActive checks downloads in "downloading" status against qBittorrent.

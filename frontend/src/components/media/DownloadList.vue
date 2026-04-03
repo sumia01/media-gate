@@ -195,6 +195,20 @@ function formatSpeed(bytesPerSec?: number): string {
   return mb.toFixed(1) + ' MB/s'
 }
 
+function formatRetryTime(dateStr: string): string {
+  const target = new Date(dateStr)
+  const now = new Date()
+  const diffMs = target.getTime() - now.getTime()
+  if (diffMs <= 0) return 'soon'
+  const diffSec = Math.floor(diffMs / 1000)
+  if (diffSec < 60) return `in ${diffSec}s`
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `in ${diffMin}m`
+  const diffHr = Math.floor(diffMin / 60)
+  const remMin = diffMin % 60
+  return remMin > 0 ? `in ${diffHr}h ${remMin}m` : `in ${diffHr}h`
+}
+
 // SSE event handler for download state changes
 function handleDownloadEvent(data: any) {
   if (data.mediaItemId === props.mediaItemId) {
@@ -284,6 +298,23 @@ watch(() => props.refreshKey, fetchDownloads)
                 </div>
 
                 <p class="text-sm font-medium text-gray-200 truncate mt-1">{{ dl.title }}</p>
+
+                <!-- Last error message -->
+                <p
+                  v-if="dl.lastError && (dl.status === 'failed' || dl.status === 'import_failed')"
+                  class="text-[10px] text-red-400/80 truncate mt-1"
+                  :title="dl.lastError"
+                >
+                  {{ dl.lastError }}
+                </p>
+
+                <!-- Retry backoff info -->
+                <p
+                  v-if="dl.status === 'pending' && dl.retryCount && dl.nextRetryAt"
+                  class="text-[10px] text-amber-400/70 mt-1"
+                >
+                  Retry {{ dl.retryCount }}/5 &mdash; next attempt {{ formatRetryTime(dl.nextRetryAt) }}
+                </p>
 
                 <!-- Progress bar -->
                 <div
