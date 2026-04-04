@@ -2,9 +2,11 @@ package apiv1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
+	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -83,4 +85,63 @@ func (h *Handlers) DeleteMediaProfile(_ context.Context, req DeleteMediaProfileR
 	}
 
 	return DeleteMediaProfile204Response{}, nil
+}
+
+func (h *Handlers) TestMediaProfileSearch(ctx context.Context, req TestMediaProfileSearchRequestObject) (TestMediaProfileSearchResponseObject, error) {
+	profile, err := h.store.GetMediaProfile(uint(req.Id))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return TestMediaProfileSearch404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media profile not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	searchType := "movie-search"
+	if req.Params.MediaType == TestMediaProfileSearchParamsMediaTypeSeries {
+		searchType = "tv-search"
+	}
+
+	params := indexer.SearchParams{
+		Query: req.Params.Query,
+		Type:  searchType,
+		Limit: 150,
+	}
+	if req.Params.Season != nil {
+		params.Season = *req.Params.Season
+	}
+
+	results, err := h.indexerSvc.Search(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := applyProfileFilter(results, profile)
+
+	apiResults := make([]TorrentResult, len(filtered))
+	for i := range filtered {
+		apiResults[i] = torrentResultToAPI(&filtered[i])
+	}
+
+	return TestMediaProfileSearch200JSONResponse{
+		ProfileName:   profile.Name,
+		TotalResults:  len(results),
+		FilteredCount: len(filtered),
+		Results:       apiResults,
+	}, nil
+}
+
+func applyProfileFilter(results []indexer.TorrentResult, profile *store.MediaProfile) []indexer.TorrentResult {
+	var resolutions, sources, excludeTags []string
+	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
+	if profile.Sources != "" {
+		_ = json.Unmarshal([]byte(profile.Sources), &sources)
+	}
+	if profile.ExcludeTags != "" {
+		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
+	}
+
+	return indexer.FilterByProfile(results, resolutions, sources, excludeTags)
 }

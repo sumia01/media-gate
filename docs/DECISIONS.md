@@ -959,3 +959,15 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: On Windows, the server opens the default browser at `http://localhost:<port>` immediately before `ListenAndServe`. Implemented via build-tag-separated files: `browser_windows.go` (calls `rundll32 url.dll,FileProtocolHandler`) and `browser_other.go` (no-op). The command is fire-and-forget (`exec.Command.Start()`).
 
 **Rationale**: Minimal code, zero dependencies. Build tags keep the Windows-specific import (`os/exec`) out of other platforms. `rundll32 url.dll` is the standard Windows API for opening URLs in the default browser.
+
+---
+
+## ADR-072: Profile test-search with shared filter logic
+**Date**: 2026-04-04
+**Status**: Accepted
+
+**Context**: Users had no way to verify that a media profile (quality profile) would produce the expected filtering results before enabling auto-grab on a library. The only option was to enable monitoring and wait — no dry-run capability existed.
+
+**Decision**: Added a `GET /media-profiles/{id}/test-search` endpoint that searches all enabled indexers for a given title and filters results using the same profile logic as the monitor auto-grab worker. The core filtering logic (`indexer.FilterByProfile` in `internal/indexer/filter.go`) is a single shared function called by both the monitor worker and the test-search handler. Frontend adds a "Test" button to each profile row, opening a 3-step wizard modal (search media → [pick season for series] → view filtered results with auto-grab pick highlighted).
+
+**Rationale**: Extracting `FilterByProfile` into the `indexer` package ensures the test endpoint and the monitor always use identical filtering logic — if the filter changes, both paths update automatically. The `indexer` package is the natural home because it owns `TorrentResult` and already depends on `fileparse` for title parsing. The alternative (duplicating filter code in monitor and handler) would risk silent divergence, defeating the purpose of a test feature.

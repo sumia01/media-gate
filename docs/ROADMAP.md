@@ -185,7 +185,16 @@
 - [x] All builds use `CGO_ENABLED=0` — no C compiler or SDK required
 - [x] TypeScript strict mode fixes (setup wizard `ConnectionTestResult`, layout `noUncheckedIndexedAccess`)
 
-## Phase 5.1: Observability & Polish ⬜
+## Phase 5.1: Profile Test Search ⬜
+- [x] `GET /media-profiles/{id}/test-search` API endpoint — searches indexers and applies profile filter server-side
+- [x] Shared `indexer.FilterByProfile` function (`internal/indexer/filter.go`) — single source of truth for profile-based result filtering, used by both monitor auto-grab and test-search endpoint
+- [x] `ProfileTestSearchResult` OpenAPI schema — returns profile name, total/filtered counts, filtered torrent results
+- [x] `TestProfileModal.vue` — 3-step wizard modal (TMDB/TVDB media search → season selection for series → filtered indexer results with auto-grab pick highlighted)
+- [x] "Test" button on each profile row in the Profiles page
+- [ ] Optional: IMDb ID passthrough for more precise indexer search
+- [ ] Optional: Season dropdown from external media detail
+
+## Phase 5.2: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation

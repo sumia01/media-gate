@@ -1227,6 +1227,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /media-profiles/{id}/test-search:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: testMediaProfileSearch
+      summary: Test a media profile against indexer search results
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Media title to search for
+        - name: mediaType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [movie, series]
+        - name: season
+          in: query
+          schema:
+            type: string
+          description: Season number (for series)
+      responses:
+        "200":
+          description: Profile test search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileTestSearchResult"
+        "404":
+          description: Media profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /indexer-definitions:
     get:
       operationId: listIndexerDefinitions
@@ -1965,6 +2008,28 @@ components:
           type: array
           items:
             type: string
+
+    ProfileTestSearchResult:
+      type: object
+      required:
+        - profileName
+        - totalResults
+        - filteredCount
+        - results
+      properties:
+        profileName:
+          type: string
+        totalResults:
+          type: integer
+          description: Total indexer results before profile filtering
+        filteredCount:
+          type: integer
+          description: Results remaining after profile filtering
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TorrentResult"
+          description: Filtered results sorted by seeders descending
 
     MediaFile:
       type: object
