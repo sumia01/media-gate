@@ -89,7 +89,7 @@ prompt NET_CONFIG  "IP (dhcp or ip/cidr,gw=x.x.x.x)" "dhcp"
 echo
 echo -e "${BOLD}── GitHub Release Settings ──${NC}"
 prompt    GH_REPO  "GitHub repo (owner/repo)" "sumia01/media-gate"
-prompt_secret GH_TOKEN "GitHub Personal Access Token (fine-grained, read-only Contents)"
+prompt    GH_TOKEN "GitHub Personal Access Token (fine-grained, read-only Contents)"
 [[ -z "$GH_TOKEN" ]] && die "GitHub token is required."
 prompt    GH_TAG   "Release tag (latest or vX.Y.Z)" "latest"
 
