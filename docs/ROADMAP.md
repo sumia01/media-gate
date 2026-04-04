@@ -194,7 +194,17 @@
 - [ ] Optional: IMDb ID passthrough for more precise indexer search
 - [ ] Optional: Season dropdown from external media detail
 
-## Phase 5.2: Observability & Polish ⬜
+## Phase 5.2: CI/CD & Proxmox LXC Deployment ⬜
+- [x] GitHub Actions release workflow — `v*` tag push triggers frontend build + Go cross-compile for 3 platforms, creates GitHub Release with binary assets
+- [x] Public Gist sync — deploy script auto-published to Gist on each release for easy access from Proxmox hosts
+- [x] Proxmox LXC deploy script — interactive `pct create` with Debian 12, binary download via GitHub PAT, systemd service, security hardening
+- [x] Optional CIFS NAS mount — credentials file, fstab entry, mount verification
+- [x] DB migration support — `pct push` existing DB + matching secret key for container rebuilds/host moves
+- [x] In-place update script — `media-gate-update` downloads latest (or specific) release, swaps binary, restarts service
+- [ ] GitHub repo: add `GIST_TOKEN` secret (PAT with `gist` scope)
+- [ ] GitHub repo: first `git tag v1.0.0 && git push --tags` to test pipeline
+
+## Phase 5.3: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
