@@ -63,5 +63,5 @@ jobs:
         with:
           auth: ${{ secrets.GIST_TOKEN }}
           gist_url: https://gist.github.com/sumia01/1bdddb0df0709950c7a11d78e269b02d
-          gist_filename: media-gate-lxc-install.sh
-          file_path: deploy/proxmox-lxc.sh
+          gist_title: media-gate-lxc-install.sh
+          github_file: deploy/proxmox-lxc.sh
