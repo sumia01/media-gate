@@ -32,10 +32,10 @@ prompt() {
     local var_name="$1" prompt_text="$2" default="${3:-}"
     local input
     if [[ -n "$default" ]]; then
-        read -rp "$(echo -e "${BOLD}${prompt_text}${NC} [${default}]: ")" input
+        read -rp "$(echo -e "${BOLD}${prompt_text}${NC} [${default}]: ")" input </dev/tty
         eval "$var_name=\"${input:-$default}\""
     else
-        read -rp "$(echo -e "${BOLD}${prompt_text}${NC}: ")" input
+        read -rp "$(echo -e "${BOLD}${prompt_text}${NC}: ")" input </dev/tty
         eval "$var_name=\"$input\""
     fi
 }
@@ -43,7 +43,7 @@ prompt() {
 prompt_secret() {
     local var_name="$1" prompt_text="$2"
     local input
-    read -srp "$(echo -e "${BOLD}${prompt_text}${NC}: ")" input
+    read -srp "$(echo -e "${BOLD}${prompt_text}${NC}: ")" input </dev/tty
     echo
     eval "$var_name=\"$input\""
 }
@@ -51,7 +51,7 @@ prompt_secret() {
 confirm() {
     local prompt_text="$1" default="${2:-N}"
     local yn
-    read -rp "$(echo -e "${BOLD}${prompt_text}${NC} [y/N]: ")" yn
+    read -rp "$(echo -e "${BOLD}${prompt_text}${NC} [y/N]: ")" yn </dev/tty
     [[ "${yn,,}" == "y" ]]
 }
 
