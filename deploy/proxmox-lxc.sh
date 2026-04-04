@@ -84,6 +84,8 @@ prompt SWAP        "Swap (MB)"              "256"
 prompt CORES       "CPU cores"              "2"
 prompt BRIDGE      "Network bridge"         "vmbr0"
 prompt NET_CONFIG  "IP (dhcp or ip/cidr,gw=x.x.x.x)" "dhcp"
+prompt_secret ROOT_PASS "Root password for the LXC container"
+[[ -z "$ROOT_PASS" ]] && die "Root password is required."
 
 # --- GitHub settings ---
 echo
@@ -177,6 +179,11 @@ else
     NET_STRING="name=eth0,bridge=${BRIDGE},ip=${NET_CONFIG}"
 fi
 
+LXC_FEATURES="nesting=1"
+if [[ "$SETUP_CIFS" == true ]]; then
+    LXC_FEATURES="nesting=1,mount=cifs"
+fi
+
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_NAME}" \
     --hostname "$HOSTNAME" \
     --storage "$STORAGE" \
@@ -186,7 +193,8 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_NAME}" \
     --cores "$CORES" \
     --net0 "$NET_STRING" \
     --unprivileged 1 \
-    --features nesting=1 \
+    --features "$LXC_FEATURES" \
+    --password "$ROOT_PASS" \
     --start 0 \
     || die "pct create failed."
 
