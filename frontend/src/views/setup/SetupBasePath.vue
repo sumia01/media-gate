@@ -60,7 +60,7 @@ async function handleSubmit() {
       <h2 class="text-lg font-semibold text-gray-200">Library Base Path</h2>
       <p class="text-sm text-gray-500 mt-1">
         This is the root directory where all your media libraries will live. All library folders and the
-        download directory must be inside this path. Media Gate cannot access files outside of it.
+        download directory must be inside this path. MediaGate cannot access files outside of it.
       </p>
     </div>
 

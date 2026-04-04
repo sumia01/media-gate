@@ -48,11 +48,9 @@ onMounted(refreshLibraries)
   >
     <!-- Brand -->
     <div class="flex items-center h-16 px-4 gap-3">
-      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm text-violet-400 flex-shrink-0">
-        MG
-      </div>
-      <span v-if="!collapsed" class="font-semibold text-sm tracking-tight text-violet-400 transition-opacity duration-200">
-        Media Gate
+      <img src="/small_logo.png" alt="MediaGate" class="w-8 h-8 flex-shrink-0" />
+      <span v-if="!collapsed" class="font-semibold text-sm tracking-tight text-[#c4b5fd] transition-opacity duration-200" style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.3)">
+        MediaGate
       </span>
     </div>
 
