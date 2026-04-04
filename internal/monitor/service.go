@@ -393,18 +393,7 @@ func (s *Service) filterByProfile(results []indexer.TorrentResult, item *store.M
 		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
 	}
 
-	var filtered []indexer.TorrentResult
-	for _, r := range results {
-		if len(excludeTags) > 0 && fileparse.ContainsExcludedTag(r.Title, excludeTags) {
-			continue
-		}
-		res := fileparse.ParseResolution(r.Title)
-		src := fileparse.ParseSource(r.Title)
-		if fileparse.MatchesProfile(res, src, resolutions, sources) {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
+	return indexer.FilterByProfile(results, resolutions, sources, excludeTags)
 }
 
 func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {

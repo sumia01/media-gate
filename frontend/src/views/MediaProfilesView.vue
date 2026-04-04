@@ -4,6 +4,7 @@ import client from '@/api/client'
 import type { MediaProfile, MediaProfileCreate } from '@/types/api'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import TestProfileModal from '@/components/media/TestProfileModal.vue'
 
 const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)
@@ -13,6 +14,7 @@ const showForm = ref(false)
 const editing = ref<MediaProfile | null>(null)
 const form = ref<MediaProfileCreate>({ name: '', resolutions: [], languages: [] })
 const excludeTagsInput = ref('')
+const testingProfile = ref<MediaProfile | null>(null)
 
 const resolutionOptions = ['2160p', '1080p', '720p', '480p']
 const sourceOptions = ['webdl', 'webrip', 'bluray', 'hdtv', 'dvd']
@@ -221,6 +223,12 @@ onMounted(fetchProfiles)
         <!-- Actions -->
         <div class="flex items-center gap-1 flex-shrink-0">
           <button
+            class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
+            @click="testingProfile = profile"
+          >
+            Test
+          </button>
+          <button
             class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
             @click="openEdit(profile)"
           >
@@ -346,5 +354,13 @@ onMounted(fetchProfiles)
         </div>
       </form>
     </BaseModal>
+
+    <!-- Test profile modal -->
+    <TestProfileModal
+      v-if="testingProfile"
+      :profile-id="testingProfile.id"
+      :profile-name="testingProfile.name"
+      @close="testingProfile = null"
+    />
   </div>
 </template>
