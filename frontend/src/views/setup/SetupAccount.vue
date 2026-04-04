@@ -46,7 +46,7 @@ async function handleSubmit() {
     <div>
       <h2 class="text-lg font-semibold text-gray-200">Create Admin Account</h2>
       <p class="text-sm text-gray-500 mt-1">
-        Set up the first user account. This will be the administrator of your Media Gate instance.
+        Set up the first user account. This will be the administrator of your MediaGate instance.
       </p>
     </div>
 

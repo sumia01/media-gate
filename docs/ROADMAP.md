@@ -204,11 +204,17 @@
 - [ ] GitHub repo: add `GIST_TOKEN` secret (PAT with `gist` scope)
 - [ ] GitHub repo: first `git tag v1.0.0 && git push --tags` to test pipeline
 
-## Phase 5.3: Observability & Polish ⬜
+## Phase 5.4: Observability & Polish ⬜
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
 - [ ] Notification system (TBD)
+
+## Phase 5.3: Branding ✅
+- [x] Custom logo image (`small_logo.png`) replacing text "MG" placeholder on login, setup wizard, and sidebar
+- [x] Page title set to "MediaGate"
+- [x] Brand text color matched to logo inner line color (`#c4b5fd`) with subtle white glow effect
+- [x] Consistent branding across all entry points (login, setup, sidebar header)
 
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

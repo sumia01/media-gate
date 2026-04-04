@@ -31,10 +31,8 @@ async function handleSubmit() {
     <div class="w-full max-w-sm">
       <!-- Brand -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-violet-600/20 text-violet-400 font-black text-lg mb-3">
-          MG
-        </div>
-        <h1 class="text-xl font-semibold text-gray-200">Media Gate</h1>
+        <img src="/small_logo.png" alt="MediaGate" class="w-14 h-14 mb-3 mx-auto" />
+        <h1 class="text-xl font-semibold text-[#c4b5fd]" style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.3)">MediaGate</h1>
       </div>
 
       <!-- Card -->

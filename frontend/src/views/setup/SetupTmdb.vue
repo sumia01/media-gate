@@ -67,7 +67,7 @@ async function handleSubmit() {
     <div>
       <h2 class="text-lg font-semibold text-gray-200">TMDB API Key</h2>
       <p class="text-sm text-gray-500 mt-1">
-        Media Gate uses The Movie Database (TMDB) for movie and TV show metadata. A free API key is required.
+        MediaGate uses The Movie Database (TMDB) for movie and TV show metadata. A free API key is required.
       </p>
     </div>
 

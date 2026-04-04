@@ -87,7 +87,7 @@ async function handleSubmit() {
     <div>
       <h2 class="text-lg font-semibold text-gray-200">Torrent Client</h2>
       <p class="text-sm text-gray-500 mt-1">
-        Media Gate uses a torrent client to download media. Configure the connection to your client below.
+        MediaGate uses a torrent client to download media. Configure the connection to your client below.
       </p>
     </div>
 
@@ -159,7 +159,7 @@ async function handleSubmit() {
             class="w-full px-3 py-2.5 rounded-lg bg-[#161b2e] border border-violet-800/30 text-gray-200 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/50 transition-colors"
             placeholder="media-gate"
           />
-          <p class="text-xs text-gray-500 mt-1">Optional. Torrents added by Media Gate will use this category.</p>
+          <p class="text-xs text-gray-500 mt-1">Optional. Torrents added by MediaGate will use this category.</p>
         </div>
       </div>
 
