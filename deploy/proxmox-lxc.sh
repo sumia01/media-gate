@@ -180,8 +180,9 @@ else
 fi
 
 LXC_FEATURES="nesting=1"
+LXC_UNPRIVILEGED=1
 if [[ "$SETUP_CIFS" == true ]]; then
-    LXC_FEATURES="nesting=1,mount=cifs"
+    LXC_UNPRIVILEGED=0
 fi
 
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_NAME}" \
@@ -192,7 +193,7 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE_NAME}" \
     --swap "$SWAP" \
     --cores "$CORES" \
     --net0 "$NET_STRING" \
-    --unprivileged 1 \
+    --unprivileged "$LXC_UNPRIVILEGED" \
     --features "$LXC_FEATURES" \
     --password "$ROOT_PASS" \
     --start 0 \
