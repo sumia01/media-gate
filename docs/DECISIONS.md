@@ -971,3 +971,19 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 **Decision**: Added a `GET /media-profiles/{id}/test-search` endpoint that searches all enabled indexers for a given title and filters results using the same profile logic as the monitor auto-grab worker. The core filtering logic (`indexer.FilterByProfile` in `internal/indexer/filter.go`) is a single shared function called by both the monitor worker and the test-search handler. Frontend adds a "Test" button to each profile row, opening a 3-step wizard modal (search media → [pick season for series] → view filtered results with auto-grab pick highlighted).
 
 **Rationale**: Extracting `FilterByProfile` into the `indexer` package ensures the test endpoint and the monitor always use identical filtering logic — if the filter changes, both paths update automatically. The `indexer` package is the natural home because it owns `TorrentResult` and already depends on `fileparse` for title parsing. The alternative (duplicating filter code in monitor and handler) would risk silent divergence, defeating the purpose of a test feature.
+
+---
+
+## ADR-073: GitHub Actions release pipeline and Proxmox LXC deployment
+**Date**: 2026-04-04
+**Status**: Accepted
+
+**Context**: The project had cross-platform build targets (`make build-linux-amd64`, etc.) using Docker, but no CI/CD pipeline for automated releases. Deploying to a Proxmox homelab required manual binary copying and service setup. The repository is private, so release assets need authenticated access.
+
+**Decision**: Added two components:
+
+1. **GitHub Actions release workflow** (`.github/workflows/release.yml`): Triggers on `v*` tag push. Builds frontend (Node 22), runs Go code generation (oapi-codegen), cross-compiles 3 binaries (linux/amd64, darwin/arm64, windows/amd64) with `CGO_ENABLED=0 go build -trimpath`, creates a GitHub Release with auto-generated notes and binary assets. Also syncs `deploy/proxmox-lxc.sh` to a public Gist via `popsiclestick/gist-sync-action` (requires `GIST_TOKEN` secret with `gist` scope).
+
+2. **Proxmox LXC deploy script** (`deploy/proxmox-lxc.sh`): Interactive bash script run on a Proxmox host. Creates an unprivileged Debian 12 LXC container via `pct create`, downloads the binary from GitHub Release API using a fine-grained PAT, sets up a `mediagate` system user, systemd service with security hardening (`ProtectSystem=strict`, `NoNewPrivileges`), and installs an update script (`/usr/local/bin/media-gate-update`). Optional features: CIFS NAS mount (credentials in `/etc/cifs-credentials`, fstab entry), DB migration from existing install (`pct push` + matching secret key). The deploy script is distributed via public Gist to solve the bootstrap problem (private repo, no PAT yet).
+
+**Rationale**: The Actions workflow replicates `Dockerfile.build` logic natively (no Docker-in-Docker), runs in GitHub's free tier (2000 min/month for private repos). Semver tags give explicit control over what becomes a release. The Gist sync solves the chicken-and-egg problem of accessing a private repo's deploy script without a PAT. The LXC script supports DB migration (existing secret key + `pct push`) for moving between Proxmox hosts or rebuilding containers. CIFS mount inside the LXC (rather than host bind mount) keeps containers self-contained and portable across multiple Proxmox hosts.
