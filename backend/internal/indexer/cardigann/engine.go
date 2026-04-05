@@ -33,7 +33,6 @@ type SearchResult struct {
 	ImdbID               string
 	DownloadVolumeFactor float64
 	UploadVolumeFactor   float64
-	Description          string
 }
 
 // Engine executes a Cardigann definition: login, search, and result parsing.
@@ -369,11 +368,6 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 	return e.parseRows(doc, tmplCtx)
 }
 
-// Caps returns the definition's capabilities.
-func (e *Engine) Caps() *Caps {
-	return &e.def.Caps
-}
-
 // FetchDownload fetches a download URL using the engine's authenticated session.
 // If the response is HTML instead of a torrent file, it uses the definition's
 // download selectors to extract the real download link and fetches that.
@@ -658,7 +652,6 @@ func (e *Engine) buildSearchResult(fields map[string]string, tmplCtx *TemplateCo
 		Download:    e.maybeResolveURL(fields["download"]),
 		Size:        fields["size"],
 		ImdbID:      extractImdbID(fields["imdbid"]),
-		Description: fields["description"],
 	}
 
 	r.Category, r.CategoryDesc = e.mapCategory(fields["category"])

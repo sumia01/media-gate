@@ -1028,3 +1028,25 @@ The Go module name (`github.com/sumia01/media-gate`) is unchanged. Since `go.mod
 Updated files: `Makefile` (all Go commands prefixed with `cd backend &&`), `Dockerfile.build` (builder stage `WORKDIR /app/backend`), `.github/workflows/release.yml` (`go-version-file: backend/go.mod`, working-directory for Go steps), `.air.toml` (removed irrelevant exclude dirs), `.gitignore` (updated paths), `backend/internal/api/v1/generate.go` (one extra `../` level for `api/` spec path).
 
 **Rationale**: Clean separation of concerns at the filesystem level. The Go module root trick (keeping the module name unchanged) avoids touching ~25 Go files with import path updates. The `api/` stays shared to avoid duplication or complex symlink setups. The build pipeline (`make build`, `make dev`, Docker, CI) all verified working after the move.
+
+---
+
+## ADR-076: Dead code removal
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: A comprehensive backend review identified 36 dead code items across exported methods, event constants, and struct fields. Cleaning these up reduces cognitive load and prevents accidental use of non-functional code paths.
+
+**Decision**: Removed confirmed dead code:
+
+1. **Unused exported methods** (4): `RevokeAllUserTokens` (auth), `BroadcastJSON` (SSE), `AddTorrent` + `extractHash` + `btihRegexp` + `postMultipart` (qBittorrent), `Caps()` (Cardigann engine).
+2. **Unused event constants** (5): `ImportStarted`, `MediaItemSynced`, `MediaItemRemoved`, `MediaItemDeleteReq`, `MediaItemDeletePayload` type.
+3. **Dead internal struct field** (1): `SearchResult.Description` — set by Cardigann parser but never propagated to `TorrentResult`.
+
+Intentionally kept items after deeper analysis:
+- `TemplateContext.False` — used by 69+ Prowlarr YAML definitions as `{{ .False }}` in Go templates at runtime.
+- `SearchQuery.Year` / `SearchQuery.Genre` — referenced by 15+ YAML definitions; unimplemented features, not dead code.
+- YAML schema fields (`LegacyLinks`, `Caps.Modes`, `AllowRawSearch`, `CountBlock`, `SearchPath.Categories`) — part of the Prowlarr definition format; removing them would silently drop parsed data. Go's `yaml.v3` ignores unknown fields, so they don't break parsing, but they document the upstream schema.
+- External API response fields (16 TMDB/TVDB fields) — standard practice for modeling full API responses; low value removing them.
+
+**Rationale**: Only removed items with zero runtime callers/consumers. Kept YAML-template-consumed fields that the initial review incorrectly flagged — external YAML definitions form part of the runtime codepath even though no Go code references the fields directly.

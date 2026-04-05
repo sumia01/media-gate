@@ -223,6 +223,15 @@
 - [x] Update Makefile, Dockerfile.build, GitHub Actions, .air.toml, .gitignore for new paths
 - [x] Go import paths unchanged (module root = `backend/`, module name unchanged)
 
+## Phase 5.6: Security hardening round 2 ✅
+→ See ADR-075
+
+## Phase 5.7: Dead code cleanup ✅
+- [x] Remove unused exported methods: `RevokeAllUserTokens`, `BroadcastJSON`, `AddTorrent`/`extractHash`/`btihRegexp`/`postMultipart`, `Caps()`
+- [x] Remove unused event constants: `ImportStarted`, `MediaItemSynced`, `MediaItemRemoved`, `MediaItemDeleteReq`, `MediaItemDeletePayload`
+- [x] Remove dead struct field: `SearchResult.Description`
+- [x] Verified: Cardigann YAML schema fields and template-consumed fields are NOT dead (used at runtime by external definitions)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
