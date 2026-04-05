@@ -17,6 +17,10 @@ func (h *Handlers) CreateLibrary(_ context.Context, req CreateLibraryRequestObje
 		Path:      req.Body.Path,
 		MediaType: string(req.Body.MediaType),
 	}
+	if req.Body.MediaProfileId != nil {
+		pid := uint(*req.Body.MediaProfileId)
+		lib.MediaProfileID = &pid
+	}
 
 	if err := h.lib.Create(lib); err != nil {
 		return CreateLibrary400JSONResponse{
@@ -71,6 +75,12 @@ func (h *Handlers) UpdateLibrary(_ context.Context, req UpdateLibraryRequestObje
 	lib.Name = req.Body.Name
 	lib.Path = req.Body.Path
 	lib.MediaType = string(req.Body.MediaType)
+	if req.Body.MediaProfileId != nil {
+		pid := uint(*req.Body.MediaProfileId)
+		lib.MediaProfileID = &pid
+	} else {
+		lib.MediaProfileID = nil
+	}
 
 	if err := h.lib.Update(lib); err != nil {
 		return nil, err

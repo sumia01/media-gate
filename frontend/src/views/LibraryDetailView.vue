@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { Library, MediaItem } from '@/types/api'
+import type { Library, MediaItem, MediaProfile } from '@/types/api'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useEventStream } from '@/composables/useEventStream'
@@ -17,6 +17,7 @@ const { openSearch, setActiveLibrary } = useGlobalSearch()
 const { on, off } = useEventStream()
 
 const library = ref<Library | null>(null)
+const profiles = ref<MediaProfile[]>([])
 const items = ref<MediaItem[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -91,6 +92,22 @@ async function handleSync() {
   await triggerSync(library.value.id)
 }
 
+async function onProfileChange(event: Event) {
+  if (!library.value) return
+  const val = (event.target as HTMLSelectElement).value
+  const profileId = val ? Number(val) : undefined
+  const { data } = await client.PUT('/libraries/{id}', {
+    params: { path: { id: library.value.id } },
+    body: {
+      name: library.value.name,
+      path: library.value.path,
+      mediaType: library.value.mediaType,
+      ...(profileId ? { mediaProfileId: profileId } : {}),
+    },
+  })
+  if (data) library.value = data
+}
+
 async function handleMatch() {
   if (!library.value) return
   showMatchModal.value = true
@@ -104,6 +121,8 @@ async function handleMatchChoice(fullRematch: boolean) {
 
 async function loadAll() {
   const id = Number(route.params.id)
+  const profileRes = await client.GET('/media-profiles')
+  profiles.value = profileRes.data?.profiles ?? []
   await fetchLibrary(id)
   await fetchMedia(id)
 }
@@ -158,6 +177,16 @@ watch(() => route.params.id, loadAll)
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         <span v-if="library" class="text-xs text-gray-500 font-mono hidden md:inline">{{ library.path }}</span>
+        <!-- Default profile select -->
+        <select
+          v-if="library && profiles.length"
+          class="text-xs bg-[#161b2e] border border-violet-900/20 rounded-lg px-2.5 py-2 text-gray-300 focus:outline-none focus:border-violet-500/50 transition-colors duration-200"
+          :value="library.mediaProfileId ?? ''"
+          @change="onProfileChange"
+        >
+          <option value="">No profile</option>
+          <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select>
         <button
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
           @click="openAddSearch"
