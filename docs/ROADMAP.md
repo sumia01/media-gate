@@ -216,6 +216,13 @@
 - [x] Brand text color matched to logo inner line color (`#c4b5fd`) with subtle white glow effect
 - [x] Consistent branding across all entry points (login, setup, sidebar header)
 
+## Phase 5.5: Backend directory restructuring ✅
+- [x] Move all Go backend files (`cmd/`, `internal/`, `go.mod`, `go.sum`, `.air.toml`, `.env.example`) into `backend/` subdirectory
+- [x] Move `frontend/embed.go` to `backend/frontend/embed.go` (must stay within Go module root)
+- [x] Keep `api/` at repo root (shared by backend go:generate and frontend openapi-typescript)
+- [x] Update Makefile, Dockerfile.build, GitHub Actions, .air.toml, .gitignore for new paths
+- [x] Go import paths unchanged (module root = `backend/`, module name unchanged)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

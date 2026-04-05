@@ -3,15 +3,18 @@ media-gate
 /server
 *.exe
 *.db
-tmp/
+backend/tmp/
 dist/
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 
+# Backend embed copy of frontend dist
+backend/frontend/dist/
+
 # Generated code
-internal/api/v1/gen.go
+backend/internal/api/v1/gen.go
 frontend/src/api/schema.d.ts
 
 # Runtime cache
@@ -23,6 +26,7 @@ frontend/src/api/schema.d.ts
 
 # Environment
 .env
+backend/.env
 
 # IDE
 .vscode/
@@ -30,3 +34,4 @@ frontend/src/api/schema.d.ts
 *.swp
 *.swo
 *~
+tmp/

@@ -6,21 +6,23 @@ DIST_DIR := dist
 
 ## tools: Install required Go dev tools (air, oapi-codegen)
 tools:
-	go install github.com/air-verse/air@latest
-	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	cd backend && go install github.com/air-verse/air@latest
+	cd backend && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 ## generate: Run oapi-codegen (Go) and openapi-typescript (frontend) code generation
 generate:
-	go generate ./...
+	cd backend && go generate ./...
 	cd frontend && npm run generate:api
 
-## frontend: Build the Vue SPA into frontend/dist/
+## frontend: Build the Vue SPA into frontend/dist/ and copy to backend embed location
 frontend:
 	cd frontend && npm ci && npm run build
+	rm -rf backend/frontend/dist
+	cp -r frontend/dist backend/frontend/dist
 
 ## build: Full build — generate code, build frontend, compile Go binary
 build: generate frontend
-	go build -o $(BINARY) ./cmd/server/
+	cd backend && go build -o ../$(BINARY) ./cmd/server/
 
 ## dev: Start Air (Go backend with hot-reload) and Vite (frontend dev server) in parallel
 dev:
@@ -29,14 +31,14 @@ dev:
 		exit 1; \
 	fi
 	@trap 'kill 0' EXIT; \
-	air & \
+	cd backend && air & \
 	cd frontend && npm run dev & \
 	wait
 
 ## clean: Remove build artifacts
 clean:
 	rm -f $(BINARY)
-	rm -rf frontend/dist tmp/ $(DIST_DIR)/
+	rm -rf frontend/dist backend/frontend/dist backend/tmp/ $(DIST_DIR)/
 
 ## build-linux-amd64: Cross-compile prod binary for Linux x86_64
 build-linux-amd64:

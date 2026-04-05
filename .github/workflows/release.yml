@@ -28,24 +28,31 @@ jobs:
           npm run generate:api
           npm run build
 
+      - name: Copy frontend dist to backend embed location
+        run: |
+          rm -rf backend/frontend/dist
+          cp -r frontend/dist backend/frontend/dist
+
       # ── Go ────────────────────────────────────────────────────
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
 
       - name: Go generate
+        working-directory: backend
         run: |
           go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
           go generate ./...
 
       # ── Cross-compile ─────────────────────────────────────────
       - name: Build binaries
+        working-directory: backend
         run: |
-          mkdir -p dist
+          mkdir -p ../dist
 
-          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -o dist/media-gate-linux-amd64       ./cmd/server/
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -o dist/media-gate-darwin-arm64       ./cmd/server/
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o dist/media-gate-windows-amd64.exe ./cmd/server/
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -o ../dist/media-gate-linux-amd64       ./cmd/server/
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -o ../dist/media-gate-darwin-arm64       ./cmd/server/
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o ../dist/media-gate-windows-amd64.exe ./cmd/server/
 
       # ── GitHub Release ────────────────────────────────────────
       - name: Create release
