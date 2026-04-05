@@ -167,7 +167,7 @@ async function download(result: TorrentResult, idx: number) {
 
   const { error: err } = await client.POST('/downloads', {
     body: {
-      mediaItemId: props.mediaItemId,
+      mediaItemId: props.mediaItemId!,
       episodeId: props.episodeId,
       seasonNumber: props.seasonNumber,
       indexerId: result.indexerId,
