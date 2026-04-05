@@ -56,9 +56,11 @@ const seasonPackPrefDirty = ref(false)
 const monitorInterval = ref('900')
 const downloadInterval = ref('5')
 const importerInterval = ref('10')
+const metadataRefreshInterval = ref('21600')
 const monitorIntervalDirty = ref(false)
 const downloadIntervalDirty = ref(false)
 const importerIntervalDirty = ref(false)
+const metadataRefreshIntervalDirty = ref(false)
 
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
@@ -67,7 +69,8 @@ const anyDirty = computed(() =>
   qbDownloadPathDirty.value || qbCategoryDirty.value ||
   fsUrlDirty.value ||
   seasonPackPrefDirty.value ||
-  monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value
+  monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
+  metadataRefreshIntervalDirty.value
 )
 
 async function fetchSettings() {
@@ -98,6 +101,7 @@ async function fetchSettings() {
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
+    metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -114,6 +118,7 @@ async function fetchSettings() {
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
+  metadataRefreshIntervalDirty.value = false
 }
 
 function isMasked(value: string) {
@@ -141,6 +146,7 @@ async function saveSettings() {
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
+  if (metadataRefreshIntervalDirty.value) body.workerMetadataRefreshInterval = Number(metadataRefreshInterval.value)
 
   if (Object.keys(body).length === 0) {
     saving.value = false
@@ -176,6 +182,7 @@ async function saveSettings() {
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
+    metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
   }
   tmdbDirty.value = false
   tvdbDirty.value = false
@@ -192,6 +199,7 @@ async function saveSettings() {
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
+  metadataRefreshIntervalDirty.value = false
 }
 
 async function testTmdb() {
@@ -605,7 +613,7 @@ onMounted(fetchSettings)
       <div class="space-y-4">
         <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
           <p class="text-[10px] text-gray-500 mb-4">Poll intervals for background workers. Changes take effect immediately without restart.</p>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Monitor interval -->
             <div>
               <label class="block text-xs font-medium text-gray-400 mb-1.5">Monitor Interval (seconds)</label>
@@ -649,6 +657,21 @@ onMounted(fetchSettings)
                 @input="importerIntervalDirty = true"
               />
               <p class="text-[10px] text-gray-500 mt-1">How often to import completed downloads. Default: 10</p>
+            </div>
+
+            <!-- Metadata Refresh interval -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Metadata Refresh (seconds)</label>
+              <input
+                v-model="metadataRefreshInterval"
+                type="number"
+                min="3600"
+                max="604800"
+                placeholder="21600"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="metadataRefreshIntervalDirty = true"
+              />
+              <p class="text-[10px] text-gray-500 mt-1">How often to check for new seasons. Default: 21600 (6 hours)</p>
             </div>
           </div>
         </div>

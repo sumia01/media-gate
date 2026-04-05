@@ -2383,6 +2383,8 @@ components:
           type: integer
         workerImporterInterval:
           type: integer
+        workerMetadataRefreshInterval:
+          type: integer
         libraryBasePath:
           type: string
           description: Base path for library directories
