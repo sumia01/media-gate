@@ -152,18 +152,6 @@ function formatDate(unix: number): string {
     day: '2-digit',
   })
 }
-
-function volumeLabel(dl: number | undefined, ul: number | undefined): string {
-  const parts: string[] = []
-  if (dl !== undefined && dl !== 1) {
-    if (dl === 0) parts.push('Freeleech')
-    else parts.push(`DL: ${dl}x`)
-  }
-  if (ul !== undefined && ul !== 1) {
-    parts.push(`UL: ${ul}x`)
-  }
-  return parts.join(' / ')
-}
 </script>
 
 <template>
@@ -335,7 +323,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
           </button>
         </div>
 
-        <!-- Results table -->
+        <!-- Results table (desktop) -->
         <div v-else class="overflow-auto min-h-0">
           <!-- Auto-grab legend -->
           <div class="flex items-center gap-1.5 mb-3 text-xs text-gray-500">
@@ -343,7 +331,7 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
             <span>Auto-grab pick (highest seeders)</span>
           </div>
 
-          <table class="w-full text-sm">
+          <table class="hidden md:table w-full text-sm">
             <thead class="sticky top-0 bg-[#0f1225]">
               <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
                 <th class="px-3 py-2.5">Title</th>
@@ -386,12 +374,6 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
                     <span v-else class="text-gray-200 truncate max-w-lg" :title="result.title">
                       {{ result.title }}
                     </span>
-                    <span
-                      v-if="volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor)"
-                      class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
-                    >
-                      {{ volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor) }}
-                    </span>
                   </div>
                 </td>
 
@@ -427,6 +409,46 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
               </tr>
             </tbody>
           </table>
+
+          <!-- Results cards (mobile) -->
+          <div class="md:hidden space-y-2">
+            <div
+              v-for="(result, idx) in results"
+              :key="'m-' + idx"
+              :class="[
+                'px-3 py-2.5 rounded-lg border border-violet-900/20',
+                idx === 0 ? 'bg-emerald-500/15' : 'bg-[#161b2e]',
+              ]"
+            >
+              <!-- Row 1: Title -->
+              <div class="flex items-center gap-1.5 mb-1.5">
+                <span
+                  v-if="idx === 0"
+                  class="text-[9px] font-bold uppercase px-1 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
+                >
+                  Auto-grab
+                </span>
+                <span class="text-xs text-gray-200 truncate" :title="result.title">{{ result.title }}</span>
+              </div>
+              <!-- Row 2: Size, S, L, Indexer, Open -->
+              <div class="flex items-center gap-2.5 text-[11px]">
+                <span class="text-gray-400">{{ formatSize(result.size) }}</span>
+                <span class="text-green-400">S:{{ result.seeders }}</span>
+                <span class="text-red-400">L:{{ result.leechers }}</span>
+                <span class="text-gray-500 truncate">{{ result.indexerName }}</span>
+                <a
+                  v-if="result.detailsUrl"
+                  :href="result.detailsUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="ml-auto text-gray-400 hover:text-violet-300 transition-colors"
+                  title="Open on tracker"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
+              </div>
+            </div>
+          </div>
 
           <p class="mt-3 text-xs text-gray-600">{{ results.length }} results</p>
         </div>

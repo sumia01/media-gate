@@ -160,18 +160,6 @@ function formatDate(unix: number): string {
     day: '2-digit',
   })
 }
-
-function volumeLabel(dl: number | undefined, ul: number | undefined): string {
-  const parts: string[] = []
-  if (dl !== undefined && dl !== 1) {
-    if (dl === 0) parts.push('Freeleech')
-    else parts.push(`DL: ${dl}x`)
-  }
-  if (ul !== undefined && ul !== 1) {
-    parts.push(`UL: ${ul}x`)
-  }
-  return parts.join(' / ')
-}
 </script>
 
 <template>
@@ -315,9 +303,9 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
         <p class="text-sm">No results found on {{ indexerName }}.</p>
       </div>
 
-      <!-- Results table -->
+      <!-- Results table (desktop) -->
       <div v-else class="overflow-y-auto min-h-0">
-        <table class="w-full text-sm">
+        <table class="hidden md:table w-full text-sm">
           <thead class="sticky top-0 bg-[#0f1225]">
             <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
               <th class="px-3 py-2.5">Title</th>
@@ -350,12 +338,6 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
                   </a>
                   <span v-else class="text-gray-200 truncate max-w-md" :title="result.title">
                     {{ result.title }}
-                  </span>
-                  <span
-                    v-if="volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor)"
-                    class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
-                  >
-                    {{ volumeLabel(result.downloadVolumeFactor, result.uploadVolumeFactor) }}
                   </span>
                 </div>
               </td>
@@ -409,6 +391,44 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
             </tr>
           </tbody>
         </table>
+
+        <!-- Results cards (mobile) -->
+        <div class="md:hidden space-y-2">
+          <div
+            v-for="(result, idx) in results"
+            :key="'m-' + idx"
+            class="px-3 py-2.5 rounded-lg bg-[#161b2e] border border-violet-900/20"
+          >
+            <!-- Row 1: Title -->
+            <div class="flex items-center gap-1.5 mb-1.5">
+              <span class="text-xs text-gray-200 truncate" :title="result.title">{{ result.title }}</span>
+            </div>
+            <!-- Row 2: Size, S, L, Open, Download -->
+            <div class="flex items-center gap-2.5 text-[11px]">
+              <span class="text-gray-400">{{ formatSize(result.size) }}</span>
+              <span class="text-green-400">S:{{ result.seeders }}</span>
+              <span class="text-red-400">L:{{ result.leechers }}</span>
+              <span class="ml-auto flex items-center gap-1.5">
+                <a
+                  v-if="result.detailsUrl"
+                  :href="result.detailsUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-gray-400 hover:text-violet-300 transition-colors"
+                  title="Open on tracker"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
+                <button
+                  class="text-gray-400 hover:text-emerald-300 transition-colors"
+                  @click="dummyDownload(result.title)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
 
         <p class="mt-3 text-xs text-gray-600">{{ results.length }} results</p>
       </div>

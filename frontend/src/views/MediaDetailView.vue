@@ -286,7 +286,7 @@ watch(() => route.params.id, loadAll)
 <template>
   <div>
     <!-- Top bar: back nav + actions -->
-    <div class="flex items-center justify-between mb-6 gap-4">
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
       <router-link
         v-if="library"
         :to="{ name: 'library-detail', params: { id: library.id } }"
@@ -296,7 +296,7 @@ watch(() => route.params.id, loadAll)
         Back to {{ library.name }}
       </router-link>
 
-      <div v-if="item" class="flex items-center gap-3 flex-wrap justify-end">
+      <div v-if="item" class="flex items-center gap-2 flex-wrap">
         <!-- Quality profile -->
         <div class="flex items-center gap-2">
           <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
@@ -323,7 +323,7 @@ watch(() => route.params.id, loadAll)
         </label>
 
         <!-- Divider -->
-        <div class="w-px h-6 bg-violet-900/30"></div>
+        <div class="w-px h-6 bg-violet-900/30 hidden md:block"></div>
 
         <!-- Action buttons -->
         <button
@@ -349,13 +349,13 @@ watch(() => route.params.id, loadAll)
         </button>
         <button
           v-if="metadata"
-          class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+          class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
           @click="handleUnmatch"
         >
           Unmatch
         </button>
         <button
-          class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+          class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
           @click="handleDelete"
         >
           Delete
@@ -371,9 +371,9 @@ watch(() => route.params.id, loadAll)
     <!-- Content -->
     <div v-else-if="item">
       <!-- Hero section -->
-      <div class="flex gap-8">
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8">
         <!-- Poster -->
-        <div class="flex-shrink-0 w-[300px]">
+        <div class="flex-shrink-0 w-full max-w-[250px] mx-auto md:w-[300px] md:max-w-none md:mx-0">
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
               v-if="item.status !== 'new'"
@@ -470,7 +470,7 @@ watch(() => route.params.id, loadAll)
           </div>
 
           <!-- Cast -->
-          <div v-if="cast.length" class="mb-6">
+          <div v-if="cast.length" class="hidden md:block mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Cast</h3>
             <div class="flex flex-wrap gap-3">
               <div
@@ -496,7 +496,7 @@ watch(() => route.params.id, loadAll)
           </div>
 
           <!-- Crew -->
-          <div v-if="crew.length" class="mb-6">
+          <div v-if="crew.length" class="hidden md:block mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Crew</h3>
             <div class="flex flex-wrap gap-3">
               <div
@@ -522,7 +522,7 @@ watch(() => route.params.id, loadAll)
           </div>
 
           <!-- Match source + IMDb cards -->
-          <div v-if="metadata" class="flex flex-wrap gap-3 mb-6">
+          <div v-if="metadata" class="hidden md:flex flex-wrap gap-3 mb-6">
             <!-- Source card -->
             <div class="inline-flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
               <span
@@ -593,7 +593,7 @@ watch(() => route.params.id, loadAll)
       />
 
       <!-- Files section -->
-      <div class="mt-8">
+      <div class="hidden md:block mt-8">
         <button
           class="flex items-center gap-3 group cursor-pointer"
           @click="filesExpanded = !filesExpanded"

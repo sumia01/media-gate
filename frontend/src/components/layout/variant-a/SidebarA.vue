@@ -5,6 +5,7 @@ import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import { useAuth } from '@/composables/useAuth'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
+const props = defineProps<{ isMobile: boolean }>()
 const route = useRoute()
 const { libraries, refreshLibraries } = useSidebarLibraries()
 const { currentUser } = useAuth()
@@ -38,13 +39,20 @@ function mediaTypeIcon(type: string) {
   return type === 'movie' ? '◻' : '▤'
 }
 
+function closeMobile() {
+  if (props.isMobile) collapsed.value = true
+}
+
 onMounted(refreshLibraries)
 </script>
 
 <template>
   <aside
+    v-show="!isMobile || !collapsed"
     class="h-screen flex flex-col flex-shrink-0 bg-[#0c0f1a] border-r border-violet-900/20 transition-all duration-300"
-    :class="collapsed ? 'w-16' : 'w-56'"
+    :class="isMobile
+      ? 'fixed inset-y-0 left-0 z-40 w-56'
+      : collapsed ? 'w-16' : 'w-56'"
   >
     <!-- Brand -->
     <div class="flex items-center h-16 px-4 gap-3">
@@ -65,6 +73,7 @@ onMounted(refreshLibraries)
         :class="route.path === item.to
           ? 'bg-violet-600/20 text-violet-300'
           : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
+        @click="closeMobile"
       >
         <span class="text-base w-5 text-center flex-shrink-0">{{ item.icon }}</span>
         <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
@@ -84,6 +93,7 @@ onMounted(refreshLibraries)
           :class="route.path === '/library/' + lib.id
             ? 'bg-violet-600/20 text-violet-300'
             : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
+          @click="closeMobile"
         >
           <span class="text-base w-5 text-center flex-shrink-0">{{ mediaTypeIcon(lib.mediaType) }}</span>
           <span v-if="!collapsed" class="truncate">{{ lib.name }}</span>
@@ -102,6 +112,7 @@ onMounted(refreshLibraries)
           :class="(route.path === item.to || route.path.startsWith(item.to + '/')) && item.to !== '/'
             ? 'bg-violet-600/20 text-violet-300'
             : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
+          @click="closeMobile"
         >
           <span class="text-base w-5 text-center flex-shrink-0">{{ item.icon }}</span>
           <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
@@ -115,13 +126,19 @@ onMounted(refreshLibraries)
         class="w-full flex items-center justify-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
         @click="collapsed = !collapsed"
       >
-        <span class="text-base transition-transform duration-300" :class="collapsed ? 'rotate-180' : ''">&#xAB;</span>
-        <span v-if="!collapsed">Collapse</span>
+        <template v-if="isMobile">
+          <span class="text-base">&times;</span>
+          <span>Close</span>
+        </template>
+        <template v-else>
+          <span class="text-base transition-transform duration-300" :class="collapsed ? 'rotate-180' : ''">&#xAB;</span>
+          <span v-if="!collapsed">Collapse</span>
+        </template>
       </button>
     </div>
 
     <!-- User -->
-    <RouterLink to="/profile" class="block px-3 py-3 border-t border-violet-900/20 hover:bg-violet-600/10 transition-colors">
+    <RouterLink to="/profile" class="block px-3 py-3 border-t border-violet-900/20 hover:bg-violet-600/10 transition-colors" @click="closeMobile">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300 flex-shrink-0">{{ userInitial }}</div>
         <div v-if="!collapsed" class="overflow-hidden">

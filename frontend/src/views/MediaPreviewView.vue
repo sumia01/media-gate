@@ -86,7 +86,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
 <template>
   <div>
     <!-- Top bar -->
-    <div class="flex items-center justify-between mb-6 gap-4">
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
       <button
         class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-violet-300 transition-colors duration-200 flex-shrink-0"
         @click="router.back()"
@@ -113,9 +113,9 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
     <!-- Content -->
     <div v-else-if="detail">
       <!-- Hero section -->
-      <div class="flex gap-8">
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8">
         <!-- Poster -->
-        <div class="flex-shrink-0 w-[300px]">
+        <div class="flex-shrink-0 w-full max-w-[250px] mx-auto md:w-[300px] md:max-w-none md:mx-0">
           <div class="aspect-[2/3] rounded-lg overflow-hidden bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center">
             <img
               v-if="detail.posterUrl"
@@ -181,7 +181,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
           </div>
 
           <!-- Cast -->
-          <div v-if="cast.length" class="mb-6">
+          <div v-if="cast.length" class="hidden md:block mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Cast</h3>
             <div class="flex flex-wrap gap-3">
               <div
@@ -207,7 +207,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
           </div>
 
           <!-- Crew -->
-          <div v-if="crew.length" class="mb-6">
+          <div v-if="crew.length" class="hidden md:block mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Crew</h3>
             <div class="flex flex-wrap gap-3">
               <div
@@ -233,7 +233,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
           </div>
 
           <!-- Source + IMDb cards -->
-          <div class="flex flex-wrap gap-3 mb-6">
+          <div class="hidden md:flex flex-wrap gap-3 mb-6">
             <!-- Source card -->
             <div class="inline-flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
               <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300">

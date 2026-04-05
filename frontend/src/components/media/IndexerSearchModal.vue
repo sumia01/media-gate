@@ -176,18 +176,6 @@ function formatDate(unix: number): string {
     day: '2-digit',
   })
 }
-
-function volumeLabel(dl: number | undefined, ul: number | undefined): string {
-  const parts: string[] = []
-  if (dl !== undefined && dl !== 1) {
-    if (dl === 0) parts.push('Freeleech')
-    else parts.push(`DL: ${dl}x`)
-  }
-  if (ul !== undefined && ul !== 1) {
-    parts.push(`UL: ${ul}x`)
-  }
-  return parts.join(' / ')
-}
 </script>
 
 <template>
@@ -283,9 +271,9 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
       <p class="text-sm">No results found.</p>
     </div>
 
-    <!-- Results table -->
+    <!-- Results table (desktop) -->
     <div v-else class="overflow-auto min-h-0">
-      <table class="w-full text-sm">
+      <table class="hidden md:table w-full text-sm">
         <thead class="sticky top-0 bg-[#0f1225]">
           <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
             <th v-if="props.mediaProfile" class="w-8 px-0 py-2.5"></th>
@@ -335,12 +323,6 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
                 </a>
                 <span v-else class="text-gray-200 truncate max-w-md" :title="item.result.title">
                   {{ item.result.title }}
-                </span>
-                <span
-                  v-if="volumeLabel(item.result.downloadVolumeFactor, item.result.uploadVolumeFactor)"
-                  class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
-                >
-                  {{ volumeLabel(item.result.downloadVolumeFactor, item.result.uploadVolumeFactor) }}
                 </span>
               </div>
             </td>
@@ -408,6 +390,65 @@ function volumeLabel(dl: number | undefined, ul: number | undefined): string {
           </tr>
         </tbody>
       </table>
+
+      <!-- Results cards (mobile) -->
+      <div class="md:hidden space-y-2">
+        <div
+          v-for="item in sortedResults"
+          :key="'m-' + item.originalIndex"
+          :class="[
+            'px-3 py-2.5 rounded-lg border border-violet-900/20',
+            matchRowClass(item.matchLevel) || 'bg-[#161b2e]',
+          ]"
+        >
+          <!-- Row 1: Title -->
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <svg
+              v-if="props.mediaProfile && item.profileMatch"
+              class="w-3.5 h-3.5 flex-shrink-0 text-amber-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            </svg>
+            <span class="text-xs text-gray-200 truncate" :title="item.result.title">{{ item.result.title }}</span>
+          </div>
+          <!-- Row 2: Size, S, L, Indexer, Open, Download -->
+          <div class="flex items-center gap-2.5 text-[11px]">
+            <span class="text-gray-400">{{ formatSize(item.result.size) }}</span>
+            <span class="text-green-400">S:{{ item.result.seeders }}</span>
+            <span class="text-red-400">L:{{ item.result.leechers }}</span>
+            <span class="text-gray-500 truncate">{{ item.result.indexerName }}</span>
+            <span class="ml-auto flex items-center gap-1.5">
+              <a
+                v-if="item.result.detailsUrl"
+                :href="item.result.detailsUrl"
+                target="_blank"
+                rel="noopener"
+                class="text-gray-400 hover:text-violet-300 transition-colors"
+                title="Open on tracker"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
+              <button
+                v-if="downloadedIdx.has(item.originalIndex)"
+                class="text-emerald-400"
+                disabled
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+              </button>
+              <button
+                v-else
+                class="text-gray-400 hover:text-emerald-300 transition-colors"
+                :disabled="downloadingIdx.has(item.originalIndex)"
+                @click="download(item.result, item.originalIndex)"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
 
       <p class="mt-3 text-xs text-gray-600">{{ results.length }} results</p>
     </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
+import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
@@ -11,6 +12,9 @@ const { openSearch } = useGlobalSearch()
 const { currentUser, logout } = useAuth()
 const showPanel = ref(false)
 const showUserMenu = ref(false)
+
+const isMobile = inject<Ref<boolean>>('isMobile')
+const toggleSidebar = inject<() => void>('toggleSidebar')
 
 const userInitial = computed(() => {
   const u = currentUser.value
@@ -47,7 +51,18 @@ function statusIcon(status: string) {
 </script>
 
 <template>
-  <header class="h-16 flex items-center gap-4 px-6 flex-shrink-0 sticky top-0 z-10 bg-[#0c0f1a]/80 backdrop-blur-md border-b border-violet-900/20">
+  <header class="h-16 flex items-center gap-4 px-4 md:px-6 flex-shrink-0 sticky top-0 z-10 bg-[#0c0f1a]/80 backdrop-blur-md border-b border-violet-900/20">
+    <!-- Hamburger (mobile only) -->
+    <button
+      v-if="isMobile"
+      class="p-2 rounded-lg text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
+      @click="toggleSidebar?.()"
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+
     <!-- Search -->
     <div class="flex-1 max-w-2xl">
       <div
