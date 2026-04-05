@@ -29,9 +29,10 @@ const (
 
 // Media item events.
 const (
-	MediaItemMatched EventType = "media.item_matched"
-	MediaItemDeleted EventType = "media.item_deleted"
-	ResyncCompleted  EventType = "media.resync_completed"
+	MediaItemMatched  EventType = "media.item_matched"
+	MediaItemDeleted  EventType = "media.item_deleted"
+	ResyncCompleted   EventType = "media.resync_completed"
+	MetadataRefreshed EventType = "media.metadata_refreshed"
 )
 
 // Monitor worker events.

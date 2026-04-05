@@ -253,6 +253,15 @@
 - [x] Torrent result lists: card layout on mobile (title row + size/S/L/indexer/icon-actions row), table preserved on desktop
 - [x] Removed freeleech/volume labels (`volumeLabel`) from all torrent result lists (desktop + mobile)
 
+## Phase 6.1: Metadata refresh worker ✅
+→ See ADR-081
+- [x] `metarefresh.Service` with `worker.Loop` — periodic TMDB/TVDB check for new seasons on monitored series
+- [x] `matching.RefreshSeriesMetadata` — compares stored vs external season count, fetches only new seasons (no delete+recreate)
+- [x] Skips ended/canceled series, 500ms inter-item rate limiting
+- [x] `MetadataRefreshed` SSE event with `MediaItemPayload`
+- [x] `KeyWorkerMetadataRefreshInterval` setting (default 6 hours, min 1 hour, configurable in UI)
+- [x] Settings UI: metadata refresh interval input in Workers section
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

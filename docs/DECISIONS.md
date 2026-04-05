@@ -1125,3 +1125,18 @@ Result: handlers are 5-15 line HTTP adapters (validate → call service → map 
 6. **Removed `volumeLabel`**: Freeleech/DL/UL volume badges removed from all 4 torrent list components entirely (both desktop and mobile) — the feature was not functioning as intended.
 
 **Rationale**: `md:` breakpoint (768px) aligns with Tailwind defaults and covers phone/tablet split well. The approach keeps desktop layout completely unchanged while adding mobile-only overrides. Hiding secondary information (cast, crew, external links, files) on mobile reduces scroll depth while keeping actionable elements (episodes, downloads, action buttons) accessible. Card layout for torrent results fits phone widths without horizontal scrolling. SVG icons for Open/Download replace text labels to save horizontal space.
+
+## ADR-081: Metadata refresh worker — automatic new season detection
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: When a series is added and matched, episodes are fetched from TMDB/TVDB and stored. The monitor worker then auto-grabs missing episodes from indexers. However, if a new season is added to TMDB/TVDB after the initial match, the system never discovers it — there is no periodic metadata refresh. Users must manually re-match to pick up new seasons.
+
+**Decision**: Added a `metarefresh.Service` (`backend/internal/metarefresh/`) background worker that periodically checks TMDB/TVDB for new seasons on monitored series:
+
+1. **`matching.RefreshSeriesMetadata(item, meta)`** — new public method on matching.Service. Calls `GetTV` (TMDB) or `GetSeries` (TVDB) to get current season count, compares to stored `meta.Seasons`. If increased, fetches episodes only for new seasons via `fetchEpisodesFromSource` + `store.CreateEpisode` (no delete+recreate). Also updates `meta.Status` if changed (e.g. "Returning Series" → "Ended").
+2. **`metarefresh.Service`** — uses `worker.Loop` with 6-hour default interval (`KeyWorkerMetadataRefreshInterval`), 2-minute startup delay. Lists all monitored series, skips items without metadata or with "Ended"/"Canceled" status. Calls `RefreshSeriesMetadata`, then `RecalcMediaItemStatus` and publishes `MetadataRefreshed` event on changes. 500ms sleep between items for API courtesy.
+3. **`MetadataRefreshed` event** — new event type in eventbus, uses existing `MediaItemPayload`. Pushed to frontend via SSE.
+4. **Settings UI** — `workerMetadataRefreshInterval` field in OpenAPI Settings schema, convert.go bidirectional mapping, SettingsView.vue input (min 3600s / 1 hour, default 21600s / 6 hours).
+
+**Rationale**: Centralizing TMDB/TVDB client access in matching.Service (via the existing private `cachedTMDB`/`cachedTVDB` and `fetchEpisodesFromSource`) avoids duplicating API client logic. Only fetching new seasons (not delete-all+recreate) prevents briefly removing episodes from the DB, which could confuse the concurrently running monitor worker. Skipping ended/canceled series avoids wasting API calls on shows that won't get new seasons. The 6-hour default is appropriate since metadata changes infrequently (new seasons appear weeks/months apart). The implicit monitoring behavior (missing SeasonMonitor row = monitored) means newly discovered seasons are automatically eligible for auto-grab without any user intervention.

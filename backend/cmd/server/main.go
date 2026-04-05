@@ -26,6 +26,7 @@ import (
 	"github.com/sumia01/media-gate/internal/logging"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/media"
+	"github.com/sumia01/media-gate/internal/metarefresh"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store"
@@ -144,6 +145,10 @@ func main() {
 	monitorSvc := monitor.NewService(db, indexerSvc, settingsSvc, bus)
 	monitorSvc.Start()
 	defer monitorSvc.Stop()
+
+	metaRefreshSvc := metarefresh.NewService(db, matchSvc, syncSvc, settingsSvc, bus)
+	metaRefreshSvc.Start()
+	defer metaRefreshSvc.Stop()
 
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 

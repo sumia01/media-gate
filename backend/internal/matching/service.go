@@ -870,6 +870,93 @@ func (s *Service) TMDBClient() *tmdb.Client {
 	return s.cachedTMDB(apiKey)
 }
 
+// RefreshSeriesMetadata checks TMDB/TVDB for new seasons on a matched series.
+// If the season count increased, it fetches episodes for the new seasons only
+// and updates the metadata. Returns true if the metadata was updated.
+func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.MediaMetadata) (bool, error) {
+	apiKey, err := s.resolveAPIKey(meta.Source)
+	if err != nil {
+		return false, err
+	}
+
+	var newSeasons int
+	var newStatus string
+
+	switch meta.Source {
+	case "tmdb":
+		details, err := s.cachedTMDB(apiKey).GetTV(meta.ExternalID)
+		if err != nil {
+			return false, fmt.Errorf("fetching TMDB TV %d: %w", meta.ExternalID, err)
+		}
+		newSeasons = details.NumberOfSeasons
+		newStatus = details.Status
+	case "tvdb":
+		details, err := s.cachedTVDB(apiKey).GetSeries(meta.ExternalID)
+		if err != nil {
+			return false, fmt.Errorf("fetching TVDB series %d: %w", meta.ExternalID, err)
+		}
+		newSeasons = len(details.Seasons)
+		newStatus = details.Status.Name
+	default:
+		return false, fmt.Errorf("unknown source: %s", meta.Source)
+	}
+
+	oldSeasons := 0
+	if meta.Seasons != nil {
+		oldSeasons = *meta.Seasons
+	}
+
+	statusChanged := newStatus != "" && newStatus != meta.Status
+	seasonsChanged := newSeasons > oldSeasons
+
+	if !seasonsChanged && !statusChanged {
+		return false, nil
+	}
+
+	if seasonsChanged {
+		for season := oldSeasons + 1; season <= newSeasons; season++ {
+			episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
+			if err != nil {
+				slog.Warn("metadata refresh: failed to fetch episodes",
+					"item_id", item.ID, "season", season, "source", meta.Source, "error", err)
+				continue
+			}
+			for _, ep := range episodes {
+				var runtime *int
+				if ep.runtime > 0 {
+					r := ep.runtime
+					runtime = &r
+				}
+				_ = s.store.CreateEpisode(&store.Episode{
+					MediaItemID:   item.ID,
+					SeasonNumber:  ep.seasonNumber,
+					EpisodeNumber: ep.episodeNumber,
+					Title:         ep.title,
+					Overview:      ep.overview,
+					AirDate:       ep.airDate,
+					Runtime:       runtime,
+				})
+			}
+		}
+		meta.Seasons = &newSeasons
+	}
+
+	if statusChanged {
+		meta.Status = newStatus
+	}
+
+	if err := s.store.UpdateMediaMetadata(meta); err != nil {
+		return false, fmt.Errorf("updating metadata: %w", err)
+	}
+
+	slog.Info("metadata refreshed",
+		"item_id", item.ID, "title", item.Title,
+		"old_seasons", oldSeasons, "new_seasons", newSeasons,
+		"status", meta.Status)
+
+	return true, nil
+}
+
 // cachedTMDB returns a cached TMDB client for the given key, re-creating if the key changed.
 func (s *Service) cachedTMDB(apiKey string) *tmdb.Client {
 	s.tmdbMu.Lock()

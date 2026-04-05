@@ -34,9 +34,10 @@ const (
 
 	KeyFlareSolverrURL = "flaresolverr_url"
 
-	KeyWorkerMonitorInterval  = "worker_monitor_interval"
-	KeyWorkerDownloadInterval = "worker_download_interval"
-	KeyWorkerImporterInterval = "worker_importer_interval"
+	KeyWorkerMonitorInterval         = "worker_monitor_interval"
+	KeyWorkerDownloadInterval        = "worker_download_interval"
+	KeyWorkerImporterInterval        = "worker_importer_interval"
+	KeyWorkerMetadataRefreshInterval = "worker_metadata_refresh_interval"
 
 	KeyGlobalExcludeTags = "global_exclude_tags"
 
