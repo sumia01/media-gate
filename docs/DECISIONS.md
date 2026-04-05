@@ -1108,3 +1108,20 @@ Intentionally skipped: fetch-by-ID + 404 pattern (Go generics can't express type
 Result: handlers are 5-15 line HTTP adapters (validate → call service → map to API type). Net: -308 lines, 371 added → simpler handlers, testable services.
 
 **Rationale**: Self-hosted media manager where all integration targets (qBit, FlareSolverr, TMDB, TVDB) are admin-configured — no untrusted input reaches URL fetch paths, making SSRF protection more harmful than helpful (blocks legitimate local services). The service layer pattern aligns with the existing architecture (library.Service, auth.Service) and makes business logic independently testable. Setter injection (`SetBus`, `SetStatusRecalculator`) breaks circular imports without adding complexity.
+
+## ADR-080: Mobile responsive UI — first pass
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: The app had zero mobile-specific responsive behavior. The sidebar was always visible, detail page hero sections used fixed `w-[300px]` poster widths in row flex layouts, action buttons overflowed on narrow screens, and torrent result tables were unusable on phones.
+
+**Decision**: Added mobile-first responsive layout using `md:` (768px) as the mobile/desktop breakpoint:
+
+1. **Sidebar**: Auto-collapsed (hidden) on mobile, opens as fixed overlay (`z-40`) with backdrop. Hamburger button in TopBarA via provide/inject toggle. Desktop behavior unchanged (w-16/w-56). Nav links auto-close sidebar on mobile.
+2. **Library detail**: Header switches to `flex-col` on mobile, buttons `flex-wrap`, library path hidden on mobile.
+3. **Media detail page**: Back link on own row, action buttons wrap (Unmatch/Delete hidden on mobile), hero stacks vertically (poster centered at max-w-250px above info), cast/crew/external link cards/files section hidden on mobile. Episodes and downloads remain visible.
+4. **Discover/preview page**: Same stacked hero and hidden sections treatment.
+5. **Torrent result lists**: All 4 components (IndexerSearchModal, IndexerSearchView, IndexerTryModal, TestProfileModal) show desktop table (`hidden md:table`) and mobile card list (`md:hidden`). Mobile cards use 2-row layout: title on row 1, size/S/L/indexer + icon buttons (external-link, download-arrow) on row 2.
+6. **Removed `volumeLabel`**: Freeleech/DL/UL volume badges removed from all 4 torrent list components entirely (both desktop and mobile) — the feature was not functioning as intended.
+
+**Rationale**: `md:` breakpoint (768px) aligns with Tailwind defaults and covers phone/tablet split well. The approach keeps desktop layout completely unchanged while adding mobile-only overrides. Hiding secondary information (cast, crew, external links, files) on mobile reduces scroll depth while keeping actionable elements (episodes, downloads, action buttons) accessible. Card layout for torrent results fits phone widths without horizontal scrolling. SVG icons for Open/Download replace text labels to save horizontal space.

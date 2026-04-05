@@ -243,6 +243,16 @@
 - [x] `applyProfileFields` merging 85%-identical create/update profile functions
 - [x] `derefString` helper replacing duplicated optional `*string` deref blocks
 
+## Phase 6.0: Mobile responsive UI ✅
+→ See ADR-080
+- [x] Sidebar: auto-collapsed on mobile (<768px), overlay with backdrop, hamburger in topbar
+- [x] Reduced main content padding on mobile (p-4 vs p-8)
+- [x] Library detail view: header wraps to column layout, buttons flex-wrap, path hidden
+- [x] Media detail page: stacked hero (poster above info), action bar wraps, Unmatch/Delete hidden, cast/crew/external links/files hidden
+- [x] Discover/preview page: same stacked hero treatment, cast/crew/external links hidden
+- [x] Torrent result lists: card layout on mobile (title row + size/S/L/indexer/icon-actions row), table preserved on desktop
+- [x] Removed freeleech/volume labels (`volumeLabel`) from all torrent result lists (desktop + mobile)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
