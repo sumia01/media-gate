@@ -297,6 +297,15 @@ if [[ "$SETUP_CIFS" == true ]]; then
     RW_PATHS="/var/lib/media-gate ${NAS_MOUNT}"
 fi
 
+# Ports below 1024 require CAP_NET_BIND_SERVICE (and NoNewPrivileges must be off)
+PRIV_PORT_LINES=""
+NO_NEW_PRIVS="true"
+if [[ "$APP_PORT" -lt 1024 ]]; then
+    PRIV_PORT_LINES="AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE"
+    NO_NEW_PRIVS="false"
+fi
+
 lxc_exec "
 cat > /etc/systemd/system/media-gate.service <<'SVCEOF'
 [Unit]
@@ -314,7 +323,8 @@ ExecStart=/opt/media-gate/media-gate
 Restart=on-failure
 RestartSec=5
 
-NoNewPrivileges=true
+NoNewPrivileges=${NO_NEW_PRIVS}
+${PRIV_PORT_LINES}
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${RW_PATHS}
