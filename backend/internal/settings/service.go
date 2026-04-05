@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
+	"github.com/sumia01/media-gate/internal/safenet"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -151,6 +152,11 @@ func (s *Service) Update(items []KeyValue) error {
 				return err
 			}
 		}
+		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL) && item.Value != "" {
+			if err := validateURL(item.Value); err != nil {
+				return fmt.Errorf("invalid URL for %s: %w", item.Key, err)
+			}
+		}
 		sensitive := isSensitiveKey(item.Key)
 		value := item.Value
 		if sensitive && s.cipher != nil {
@@ -255,6 +261,9 @@ func (s *Service) TestQBit(urlVal, username, password *string) (bool, string, er
 	if err != nil {
 		return false, "qBittorrent URL not configured", nil
 	}
+	if err := safenet.CheckHost(u); err != nil {
+		return false, fmt.Sprintf("URL rejected: %v", err), nil
+	}
 	user, err := s.resolveKey(username, KeyQBitUsername)
 	if err != nil {
 		return false, "qBittorrent username not configured", nil
@@ -276,13 +285,17 @@ func (s *Service) TestFlareSolverr(urlVal *string) (bool, string, error) {
 		return false, "FlareSolverr URL not configured", nil
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	if err := safenet.CheckHost(u); err != nil {
+		return false, fmt.Sprintf("URL rejected: %v", err), nil
+	}
+
+	payload, _ := json.Marshal(map[string]any{
 		"cmd":        "request.get",
 		"url":        "http://www.google.com",
 		"maxTimeout": 15000,
 	})
 
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Post(
+	resp, err := safenet.SafeClient(30 * time.Second).Post(
 		strings.TrimRight(u, "/")+"/v1",
 		"application/json",
 		bytes.NewReader(payload),
@@ -408,6 +421,21 @@ func (s *Service) validateDownloadPath(path string) error {
 		if filepath.Clean(lib.Path) == clean {
 			return ErrDownloadPathConflict
 		}
+	}
+	return nil
+}
+
+// validateURL checks that a URL is well-formed with an http or https scheme.
+func validateURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("URL must have a host")
 	}
 	return nil
 }

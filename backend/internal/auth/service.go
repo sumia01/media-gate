@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,7 +20,15 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrUserExists         = errors.New("user with this email already exists")
+	ErrPasswordTooShort   = errors.New("password must be at least 8 characters")
 )
+
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
 
 // AccessClaims are the JWT payload fields.
 type AccessClaims struct {
@@ -34,6 +43,7 @@ type Service struct {
 	accessTTL          time.Duration
 	refreshTTL         time.Duration
 	refreshTTLRemember time.Duration
+	tickets            *TicketStore
 }
 
 func NewService(s store.Store, secretKey string) *Service {
@@ -43,7 +53,18 @@ func NewService(s store.Store, secretKey string) *Service {
 		accessTTL:          15 * time.Minute,
 		refreshTTL:         24 * time.Hour,
 		refreshTTLRemember: 30 * 24 * time.Hour,
+		tickets:            NewTicketStore(30 * time.Second),
 	}
+}
+
+// IssueSSETicket creates a short-lived single-use ticket for SSE authentication.
+func (s *Service) IssueSSETicket(userID uint) (string, error) {
+	return s.tickets.Issue(userID)
+}
+
+// RedeemSSETicket validates and consumes an SSE ticket.
+func (s *Service) RedeemSSETicket(ticket string) (uint, error) {
+	return s.tickets.Redeem(ticket)
 }
 
 // --- Password hashing ---
@@ -97,6 +118,13 @@ func (s *Service) ValidateAccessToken(tokenString string) (*AccessClaims, error)
 
 // --- Refresh tokens ---
 
+// hashToken returns the hex-encoded SHA-256 hash of a token.
+// Refresh tokens are stored hashed for defense in depth.
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
 func (s *Service) GenerateRefreshToken(userID uint, rememberMe bool) (*store.RefreshToken, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -108,24 +136,28 @@ func (s *Service) GenerateRefreshToken(userID uint, rememberMe bool) (*store.Ref
 		ttl = s.refreshTTLRemember
 	}
 
+	raw := hex.EncodeToString(b)
 	rt := &store.RefreshToken{
 		UserID:    userID,
-		Token:     hex.EncodeToString(b),
+		Token:     hashToken(raw),
 		ExpiresAt: time.Now().Add(ttl),
 	}
 	if err := s.store.CreateRefreshToken(rt); err != nil {
 		return nil, err
 	}
+	// Return plaintext token for the cookie — DB stores only the hash.
+	rt.Token = raw
 	return rt, nil
 }
 
 func (s *Service) RotateRefreshToken(oldToken string) (*store.RefreshToken, *store.User, error) {
-	rt, err := s.store.GetRefreshTokenByToken(oldToken)
+	hashed := hashToken(oldToken)
+	rt, err := s.store.GetRefreshTokenByToken(hashed)
 	if err != nil {
 		return nil, nil, ErrInvalidCredentials
 	}
 	if time.Now().After(rt.ExpiresAt) {
-		_ = s.store.DeleteRefreshToken(oldToken)
+		_ = s.store.DeleteRefreshToken(hashed)
 		return nil, nil, ErrInvalidCredentials
 	}
 
@@ -134,7 +166,7 @@ func (s *Service) RotateRefreshToken(oldToken string) (*store.RefreshToken, *sto
 		return nil, nil, ErrInvalidCredentials
 	}
 
-	_ = s.store.DeleteRefreshToken(oldToken)
+	_ = s.store.DeleteRefreshToken(hashed)
 
 	// Determine TTL from remaining time on old token (preserve remember-me choice).
 	remaining := time.Until(rt.ExpiresAt)
@@ -148,7 +180,7 @@ func (s *Service) RotateRefreshToken(oldToken string) (*store.RefreshToken, *sto
 }
 
 func (s *Service) RevokeRefreshToken(token string) error {
-	return s.store.DeleteRefreshToken(token)
+	return s.store.DeleteRefreshToken(hashToken(token))
 }
 
 func (s *Service) RevokeAllUserTokens(userID uint) error {
@@ -173,8 +205,8 @@ func (s *Service) Register(email, password, firstName, lastName string, birthYea
 	if email == "" {
 		return nil, errors.New("email is required")
 	}
-	if password == "" {
-		return nil, errors.New("password is required")
+	if err := validatePassword(password); err != nil {
+		return nil, err
 	}
 
 	hash, err := hashPassword(password)
@@ -216,6 +248,9 @@ func (s *Service) ChangePassword(userID uint, oldPassword, newPassword string) e
 	}
 	if err := checkPassword(user.PasswordHash, oldPassword); err != nil {
 		return ErrInvalidCredentials
+	}
+	if err := validatePassword(newPassword); err != nil {
+		return err
 	}
 	hash, err := hashPassword(newPassword)
 	if err != nil {

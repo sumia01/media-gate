@@ -3,6 +3,7 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,10 +12,18 @@ import (
 
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/importer"
+	"github.com/sumia01/media-gate/internal/safenet"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
 func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestObject) (CreateDownloadResponseObject, error) {
+	if err := safenet.ValidateURLScheme(req.Body.DownloadUrl); err != nil {
+		return CreateDownload400JSONResponse{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("invalid download URL: %v", err),
+		}, nil
+	}
+
 	dl := &store.Download{
 		MediaItemID: uint(req.Body.MediaItemId),
 		IndexerID:   uint(req.Body.IndexerId),

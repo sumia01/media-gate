@@ -299,11 +299,10 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 
 	slog.Debug("indexer search request",
 		"indexer", e.def.ID,
-		"url", fullURL,
+		"url", redactURL(fullURL),
 		"query", query.Q,
 		"type", query.Type,
 		"categories", categories,
-		"rendered_inputs", rendered,
 	)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
@@ -566,7 +565,7 @@ func (e *Engine) doFlareSolverr(ctx context.Context, targetURL string) (*http.Re
 // that needs it and FlareSolverr is configured. POST requests (login) always go direct.
 func (e *Engine) doRequest(req *http.Request) (*http.Response, error) {
 	if req.Method == http.MethodGet && e.needsFlareSolverr() && e.config["flaresolverr_url"] != "" {
-		slog.Debug("routing through FlareSolverr", "indexer", e.def.ID, "url", req.URL.String())
+		slog.Debug("routing through FlareSolverr", "indexer", e.def.ID, "url", redactURL(req.URL.String()))
 		return e.doFlareSolverr(req.Context(), req.URL.String())
 	}
 	return e.httpClient.Do(req)
@@ -736,6 +735,18 @@ func (e *Engine) resolveURL(path string) string {
 		return path
 	}
 	return e.baseURL + "/" + strings.TrimLeft(path, "/")
+}
+
+// redactURL strips query parameters from a URL for safe logging.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "[invalid-url]"
+	}
+	if u.RawQuery != "" {
+		u.RawQuery = "[redacted]"
+	}
+	return u.String()
 }
 
 func (e *Engine) maybeResolveURL(val string) string {
