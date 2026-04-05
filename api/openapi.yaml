@@ -2398,6 +2398,11 @@ components:
         flaresolverrUrl:
           type: string
           description: URL of a FlareSolverr instance for solving Cloudflare challenges (e.g. http://flaresolverr:8191)
+        globalExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Tags excluded from ALL profile-based searches, merged with per-profile exclude tags.
 
     ConnectionTestRequest:
       type: object

@@ -38,6 +38,8 @@ const (
 	KeyWorkerDownloadInterval = "worker_download_interval"
 	KeyWorkerImporterInterval = "worker_importer_interval"
 
+	KeyGlobalExcludeTags = "global_exclude_tags"
+
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
 	KeyOnboardingCompleted = "onboarding_completed"

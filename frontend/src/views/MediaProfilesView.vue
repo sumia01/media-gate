@@ -16,6 +16,11 @@ const form = ref<MediaProfileCreate>({ name: '', resolutions: [], languages: [] 
 const excludeTagsInput = ref('')
 const testingProfile = ref<MediaProfile | null>(null)
 
+const globalExcludeTags = ref<string[]>([])
+const showGlobalTagsModal = ref(false)
+const globalTagsInput = ref('')
+const globalTagsSaving = ref(false)
+
 const resolutionOptions = ['2160p', '1080p', '720p', '480p']
 const sourceOptions = ['webdl', 'webrip', 'bluray', 'hdtv', 'dvd']
 const languageOptions = ['hun', 'eng', 'ger', 'fre', 'spa', 'ita', 'jpn', 'kor']
@@ -143,7 +148,39 @@ async function deleteProfile(profile: MediaProfile) {
   await fetchProfiles()
 }
 
-onMounted(fetchProfiles)
+async function fetchGlobalTags() {
+  const { data } = await client.GET('/settings')
+  globalExcludeTags.value = data?.settings?.globalExcludeTags ?? []
+}
+
+function openGlobalTags() {
+  globalTagsInput.value = globalExcludeTags.value.join(', ')
+  showGlobalTagsModal.value = true
+}
+
+async function saveGlobalTags() {
+  globalTagsSaving.value = true
+  error.value = ''
+  const tags = globalTagsInput.value
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+  const { data, error: err } = await client.PUT('/settings', {
+    body: { globalExcludeTags: tags },
+  })
+  globalTagsSaving.value = false
+  if (err) {
+    error.value = 'Failed to save global exclude tags'
+    return
+  }
+  globalExcludeTags.value = data?.settings?.globalExcludeTags ?? tags
+  showGlobalTagsModal.value = false
+}
+
+onMounted(() => {
+  fetchProfiles()
+  fetchGlobalTags()
+})
 </script>
 
 <template>
@@ -151,13 +188,21 @@ onMounted(fetchProfiles)
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl font-semibold text-gray-100 tracking-tight">Media Profiles</h1>
-      <button
-        class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
-        @click="openAdd"
-      >
-        <span class="text-lg leading-none">+</span>
-        Add Profile
-      </button>
+      <div class="flex items-center gap-3">
+        <button
+          class="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-600/30 hover:bg-red-600/10 text-red-300 text-sm font-medium transition-colors duration-200"
+          @click="openGlobalTags"
+        >
+          Global Exclude Tags
+        </button>
+        <button
+          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
+          @click="openAdd"
+        >
+          <span class="text-lg leading-none">+</span>
+          Add Profile
+        </button>
+      </div>
     </div>
 
     <ErrorBanner :message="error" />
@@ -217,6 +262,18 @@ onMounted(fetchProfiles)
             >
               {{ tag }}
             </span>
+            <!-- Global exclude tag pills (muted, shown for context) -->
+            <template v-if="globalExcludeTags.length">
+              <span class="text-[10px] text-gray-600 px-0.5">(</span>
+              <span
+                v-for="tag in globalExcludeTags"
+                :key="'gtag-' + tag"
+                class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-600/10 text-red-400/50"
+              >
+                {{ tag }}
+              </span>
+              <span class="text-[10px] text-gray-600 px-0.5">)</span>
+            </template>
           </div>
         </div>
 
@@ -362,5 +419,42 @@ onMounted(fetchProfiles)
       :profile-name="testingProfile.name"
       @close="testingProfile = null"
     />
+
+    <!-- Global exclude tags modal -->
+    <BaseModal
+      v-if="showGlobalTagsModal"
+      max-width="max-w-md"
+      @close="showGlobalTagsModal = false"
+    >
+      <h2 class="text-lg font-semibold text-gray-100 mb-2">Global Exclude Tags</h2>
+      <p class="text-xs text-gray-500 mb-4">
+        These tags are excluded from ALL profile-based searches (monitor and test-search).
+        They are merged with each profile's own exclude tags.
+      </p>
+      <form @submit.prevent="saveGlobalTags">
+        <input
+          v-model="globalTagsInput"
+          type="text"
+          placeholder="e.g. 3d, dolby vision, cam"
+          class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+        />
+        <div class="flex justify-end gap-3 pt-4">
+          <button
+            type="button"
+            class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 transition-colors duration-200"
+            @click="showGlobalTagsModal = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            :disabled="globalTagsSaving"
+            class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50"
+          >
+            {{ globalTagsSaving ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
+      </form>
+    </BaseModal>
   </div>
 </template>
