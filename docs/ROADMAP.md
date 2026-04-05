@@ -276,6 +276,15 @@
 - [x] "Add & Download" button on each torrent result row — inline library picker overlay, two-step flow: add to library + create download, navigates to media detail page
 - [x] `IndexerSearchModal` refactored: `mediaItemId` optional, new `source`/`externalId` props, `added` emit, library fetch + picker UI
 
+## Phase 6.4: Library default quality profile ✅
+→ See ADR-084
+- [x] `LibraryCreate` OpenAPI schema extended with optional `mediaProfileId` field
+- [x] `CreateLibrary` and `UpdateLibrary` handlers wire `mediaProfileId` to store model (nullable)
+- [x] Library add/edit modal: "Default Quality Profile" dropdown with helper text
+- [x] Library list view: profile name badge on library cards
+- [x] Library detail page: compact profile select in header action bar, immediate PUT on change
+- [x] `AddToLibraryModal`: pre-selects `selectedProfileId` from library's default when library is chosen, user can override
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

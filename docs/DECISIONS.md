@@ -1177,3 +1177,21 @@ Changes:
 2. **MediaPreviewView.vue** — "Check Indexers" button (visible when `imdbId` present), `IndexerSearchModal` with `source`/`externalId` props, `@added` handler navigates to media detail
 
 **Rationale**: Reuses existing `IndexerSearchModal` and add-to-library API — no new backend endpoints needed. The library picker overlay is inline within the existing modal (no nested modal stack), styled consistently with `AddToLibraryModal`. Browse-only mode (no `mediaItemId`) is backwards-compatible — existing callers from `MediaDetailView` pass `mediaItemId` and see the same Download buttons as before.
+
+---
+
+## ADR-084: Library default quality profile
+**Date**: 2026-04-06
+**Status**: Accepted
+
+**Context**: The `Library` store model already had a `MediaProfileID` field and the API response exposed `mediaProfileId`, but there was no way to set it — the `LibraryCreate` schema only accepted `name`, `path`, `mediaType`. Users had to manually select a quality profile every time they added monitored media to a library.
+
+**Decision**: Enabled setting a default quality profile per library. Changes:
+
+1. **OpenAPI spec** — added optional `mediaProfileId` to `LibraryCreate` schema, used by both POST and PUT endpoints
+2. **Backend handlers** — `CreateLibrary` and `UpdateLibrary` now map `req.Body.MediaProfileId` to `lib.MediaProfileID` (nullable — omitting clears it)
+3. **Library management UI** — "Default Quality Profile" dropdown in library add/edit modal, profile name badge shown on library cards in list view
+4. **Library detail page** — compact profile `<select>` in header action bar next to the Add button, changes persisted immediately via PUT
+5. **AddToLibraryModal** — watcher on `selectedLibraryId` pre-populates `selectedProfileId` from the library's `mediaProfileId`, user can still override
+
+**Rationale**: Zero new backend endpoints — the existing `LibraryCreate` schema and PUT handler were extended. The monitor worker's `resolveProfile` already falls back to `Library.MediaProfileID` when a media item has no explicit profile, so the default propagates to auto-grab without any backend logic changes. Pre-selecting in the modal reduces friction without removing user control.

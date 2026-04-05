@@ -76,6 +76,17 @@ onMounted(async () => {
   }
 })
 
+// Pre-select the library's default quality profile when library changes
+watch(selectedLibraryId, (libId) => {
+  if (!libId) return
+  const lib = compatibleLibraries.value.find((l) => l.id === libId)
+  if (lib?.mediaProfileId) {
+    selectedProfileId.value = lib.mediaProfileId
+  } else {
+    selectedProfileId.value = null
+  }
+})
+
 function goToSeasons() {
   step.value = 'seasons'
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import client from '@/api/client'
-import type { Library, LibraryCreate, ScanEntry } from '@/types/api'
+import type { Library, LibraryCreate, ScanEntry, MediaProfile } from '@/types/api'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import BaseModal from '@/components/BaseModal.vue'
@@ -10,6 +10,7 @@ import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 const { refreshLibraries: refreshSidebar } = useSidebarLibraries()
 
 const libraries = ref<Library[]>([])
+const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)
 const error = ref('')
 
@@ -20,28 +21,35 @@ const form = ref<LibraryCreate>({ name: '', path: '', mediaType: 'movie' })
 const scanning = ref<number | null>(null)
 const scanEntries = ref<ScanEntry[]>([])
 const scanError = ref('')
+const formProfileId = ref<number | null>(null)
 
 async function fetchLibraries() {
   loading.value = true
   error.value = ''
-  const { data, error: err } = await client.GET('/libraries')
+  const [libRes, profileRes] = await Promise.all([
+    client.GET('/libraries'),
+    client.GET('/media-profiles'),
+  ])
   loading.value = false
-  if (err) {
+  if (libRes.error) {
     error.value = 'Failed to load libraries'
     return
   }
-  libraries.value = data ?? []
+  libraries.value = libRes.data ?? []
+  profiles.value = profileRes.data?.profiles ?? []
 }
 
 function openAdd() {
   editing.value = null
   form.value = { name: '', path: '', mediaType: 'movie' }
+  formProfileId.value = null
   showForm.value = true
 }
 
 function openEdit(lib: Library) {
   editing.value = lib
   form.value = { name: lib.name, path: lib.path, mediaType: lib.mediaType }
+  formProfileId.value = lib.mediaProfileId ?? null
   showForm.value = true
 }
 
@@ -53,10 +61,14 @@ function cancelForm() {
 
 async function submitForm() {
   error.value = ''
+  const body: LibraryCreate & { mediaProfileId?: number } = { ...form.value }
+  if (formProfileId.value) {
+    body.mediaProfileId = formProfileId.value
+  }
   if (editing.value) {
     const { error: err } = await client.PUT('/libraries/{id}', {
       params: { path: { id: editing.value.id } },
-      body: form.value,
+      body,
     })
     if (err) {
       error.value = 'Failed to update library'
@@ -64,7 +76,7 @@ async function submitForm() {
     }
   } else {
     const { error: err } = await client.POST('/libraries', {
-      body: form.value,
+      body,
     })
     if (err) {
       error.value = 'Failed to create library'
@@ -161,7 +173,15 @@ onMounted(fetchLibraries)
           <!-- Info -->
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-gray-200 truncate">{{ lib.name }}</p>
-            <p class="text-xs text-gray-500 truncate font-mono">{{ lib.path }}</p>
+            <div class="flex items-center gap-2">
+              <p class="text-xs text-gray-500 truncate font-mono">{{ lib.path }}</p>
+              <span
+                v-if="lib.mediaProfileId && profiles.find(p => p.id === lib.mediaProfileId)"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-violet-600/15 text-violet-400 flex-shrink-0"
+              >
+                {{ profiles.find(p => p.id === lib.mediaProfileId)?.name }}
+              </span>
+            </div>
           </div>
 
           <!-- Actions -->
@@ -275,6 +295,20 @@ onMounted(fetchLibraries)
               <span>Series</span>
             </label>
           </div>
+        </div>
+
+        <!-- Default quality profile -->
+        <div v-if="profiles.length">
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Default Quality Profile</label>
+          <select
+            class="w-full px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            :value="formProfileId ?? ''"
+            @change="formProfileId = ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null"
+          >
+            <option value="">None</option>
+            <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <p class="text-[11px] text-gray-500 mt-1">Pre-selected when adding monitored media to this library</p>
         </div>
 
         <!-- Buttons -->
