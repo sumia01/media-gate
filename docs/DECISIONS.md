@@ -1050,3 +1050,15 @@ Intentionally kept items after deeper analysis:
 - External API response fields (16 TMDB/TVDB fields) — standard practice for modeling full API responses; low value removing them.
 
 **Rationale**: Only removed items with zero runtime callers/consumers. Kept YAML-template-consumed fields that the initial review incorrectly flagged — external YAML definitions form part of the runtime codepath even though no Go code references the fields directly.
+
+---
+
+## ADR-077: SSE connect race condition fix
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: A single browser tab opening a page (e.g. media detail) created 3 SSE connections instead of 1. Three components call `useEventStream()` during initial render (TopBarA via useJobQueue, MediaDetailView, DownloadList). The `connect()` function in `useEventStream.ts` guards against duplicate connections by checking `eventSource.value`, but `eventSource.value` is only assigned after an async ticket fetch resolves. All three components see `null` and each starts its own fetch → openSSE → EventSource.
+
+**Decision**: Added a synchronous `connecting` flag (module-scoped `let connecting = false`). Set to `true` at the top of `connect()` before the async ticket fetch, reset to `false` in `openSSE` (success), `onerror` (failure), and `disconnect()`. Both `connect()` and `useEventStream()` check the flag alongside `eventSource.value`.
+
+**Rationale**: Minimal fix — one boolean flag, no refactoring needed. The flag is synchronous so it's set before any component yields to the event loop, preventing concurrent `connect()` calls. Reset on all exit paths (success, error, explicit disconnect) ensures reconnect logic still works.

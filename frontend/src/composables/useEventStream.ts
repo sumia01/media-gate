@@ -7,10 +7,12 @@ const eventSource = ref<EventSource | null>(null)
 const connected = ref(false)
 let subscribers = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let connecting = false
 const listeners = new Map<string, Set<EventCallback>>()
 
 function connect() {
-  if (eventSource.value) return
+  if (eventSource.value || connecting) return
+  connecting = true
 
   const { getAccessToken } = useAuth()
   const token = getAccessToken()
@@ -25,6 +27,7 @@ function connect() {
 
     es.onerror = () => {
       connected.value = false
+      connecting = false
       es.close()
       eventSource.value = null
       // Reconnect after delay
@@ -42,6 +45,7 @@ function connect() {
     }
 
     eventSource.value = es
+    connecting = false
   }
 
   if (token) {
@@ -64,6 +68,7 @@ function connect() {
 }
 
 function disconnect() {
+  connecting = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -116,7 +121,7 @@ function off(eventType: string, callback: EventCallback) {
 
 export function useEventStream() {
   subscribers++
-  if (!eventSource.value) {
+  if (!eventSource.value && !connecting) {
     connect()
   }
 
