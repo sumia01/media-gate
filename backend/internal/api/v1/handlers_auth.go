@@ -147,16 +147,7 @@ func (h *Handlers) UpdateMyProfile(ctx context.Context, req UpdateMyProfileReque
 		return UpdateMyProfile200JSONResponse{}, errors.New("unauthorized")
 	}
 
-	firstName := ""
-	if req.Body.FirstName != nil {
-		firstName = *req.Body.FirstName
-	}
-	lastName := ""
-	if req.Body.LastName != nil {
-		lastName = *req.Body.LastName
-	}
-
-	user, err := h.authSvc.UpdateProfile(userID, firstName, lastName, req.Body.BirthYear)
+	user, err := h.authSvc.UpdateProfile(userID, derefString(req.Body.FirstName), derefString(req.Body.LastName), req.Body.BirthYear)
 	if err != nil {
 		return UpdateMyProfile200JSONResponse{}, err
 	}
@@ -196,16 +187,7 @@ func (h *Handlers) ListUsers(_ context.Context, _ ListUsersRequestObject) (ListU
 }
 
 func (h *Handlers) RegisterUser(_ context.Context, req RegisterUserRequestObject) (RegisterUserResponseObject, error) {
-	firstName := ""
-	if req.Body.FirstName != nil {
-		firstName = *req.Body.FirstName
-	}
-	lastName := ""
-	if req.Body.LastName != nil {
-		lastName = *req.Body.LastName
-	}
-
-	user, err := h.authSvc.Register(string(req.Body.Email), req.Body.Password, firstName, lastName, req.Body.BirthYear)
+	user, err := h.authSvc.Register(string(req.Body.Email), req.Body.Password, derefString(req.Body.FirstName), derefString(req.Body.LastName), req.Body.BirthYear)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
 			return RegisterUser409JSONResponse{Code: 409, Message: "user with this email already exists"}, nil

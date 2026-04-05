@@ -88,7 +88,7 @@ func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObje
 
 	// Enrich with real-time progress data when filtering by media item
 	if mediaItemID != nil {
-		if client, err := h.getQBitClient(); err == nil {
+		if client, err := h.qbit.Client(); err == nil {
 			for i := range apiDownloads {
 				hash := apiDownloads[i].ClientTorrentHash
 				if hash == nil || *hash == "" {
@@ -164,7 +164,7 @@ func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestOb
 	deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
 
 	if dl.ClientTorrentHash != "" {
-		if client, err := h.getQBitClient(); err == nil {
+		if client, err := h.qbit.Client(); err == nil {
 			if err := client.DeleteTorrent(dl.ClientTorrentHash, deleteFiles); err != nil {
 				slog.Warn("failed to remove torrent from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
 			}
@@ -252,7 +252,7 @@ func (h *Handlers) ListDownloadFiles(_ context.Context, req ListDownloadFilesReq
 		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
 	}
 
-	client, err := h.getQBitClient()
+	client, err := h.qbit.Client()
 	if err != nil {
 		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
 	}
