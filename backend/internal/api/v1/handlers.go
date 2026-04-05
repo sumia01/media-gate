@@ -10,12 +10,12 @@ import (
 	"sync"
 
 	"github.com/sumia01/media-gate/internal/auth"
-	"github.com/sumia01/media-gate/internal/eventbus"
+	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/indexer"
-	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/matching"
+	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
@@ -33,15 +33,15 @@ type Handlers struct {
 	syncSvc       *mediasync.Service
 	indexerSvc    *indexer.Service
 	authSvc       *auth.Service
-	bus           *eventbus.Bus
+	mediaSvc      *media.Service
+	downloadSvc   *download.Service
 	posterDir     string
 	secureCookies bool
-	qbit          *qbittorrent.Provider
 	setupMu       sync.Mutex
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus, authSvc *auth.Service, secureCookies bool, qbit *qbittorrent.Provider) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus, authSvc: authSvc, secureCookies: secureCookies, qbit: qbit}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/matching"
@@ -85,14 +82,9 @@ func (h *Handlers) UpdateLibrary(_ context.Context, req UpdateLibraryRequestObje
 func (h *Handlers) DeleteLibrary(_ context.Context, req DeleteLibraryRequestObject) (DeleteLibraryResponseObject, error) {
 	id := uint(req.Id)
 
-	// Clean up poster files before cascade-deleting the library
-	items, err := h.store.ListMediaItemsByLibrary(id)
-	if err != nil {
+	// Clean up poster files before cascade-deleting the library.
+	if err := h.mediaSvc.CleanupPostersForLibrary(id); err != nil {
 		return nil, err
-	}
-	for _, item := range items {
-		posterPath := filepath.Join(h.posterDir, fmt.Sprintf("%d.jpg", item.ID))
-		_ = os.Remove(posterPath)
 	}
 
 	if err := h.lib.Delete(id); err != nil {
@@ -280,51 +272,25 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
-	var resultItem *store.MediaItem
-	var resultMeta *store.MediaMetadata
-
-	err = h.store.WithTx(func(tx store.Store) error {
-		txMatchSvc := h.matchSvc.WithStore(tx)
-
-		item, err := txMatchSvc.AddMediaToLibrary(lib, string(req.Body.Source), req.Body.ExternalId)
-		if err != nil {
-			return err
+	addReq := matching.AddMediaRequest{
+		Source:     string(req.Body.Source),
+		ExternalID: req.Body.ExternalId,
+		Monitored:  req.Body.Monitored,
+	}
+	if req.Body.MediaProfileId != nil {
+		pid := uint(*req.Body.MediaProfileId)
+		addReq.MediaProfileID = &pid
+	}
+	if req.Body.SeasonMonitors != nil {
+		for _, sm := range *req.Body.SeasonMonitors {
+			addReq.SeasonMonitors = append(addReq.SeasonMonitors, matching.SeasonMonitorReq{
+				SeasonNumber: sm.SeasonNumber,
+				Monitored:    sm.Monitored,
+			})
 		}
+	}
 
-		// Apply optional monitored / mediaProfileId from request
-		needsUpdate := false
-		if req.Body.Monitored != nil {
-			item.Monitored = *req.Body.Monitored
-			needsUpdate = true
-		}
-		if req.Body.MediaProfileId != nil {
-			profileID := uint(*req.Body.MediaProfileId)
-			item.MediaProfileID = &profileID
-			needsUpdate = true
-		}
-		if needsUpdate {
-			if err := tx.UpdateMediaItem(item); err != nil {
-				return err
-			}
-		}
-
-		// Create season monitors from request
-		if req.Body.SeasonMonitors != nil {
-			for _, sm := range *req.Body.SeasonMonitors {
-				if err := tx.CreateSeasonMonitor(&store.SeasonMonitor{
-					MediaItemID:  item.ID,
-					SeasonNumber: sm.SeasonNumber,
-					Monitored:    sm.Monitored,
-				}); err != nil {
-					return fmt.Errorf("creating season monitor for S%02d: %w", sm.SeasonNumber, err)
-				}
-			}
-		}
-
-		resultItem = item
-		resultMeta, _ = tx.GetMediaMetadataByMediaItem(item.ID)
-		return nil
-	})
+	item, meta, err := h.matchSvc.AddMediaToLibraryFull(h.store, lib, addReq)
 	if err != nil {
 		if errors.Is(err, matching.ErrAlreadyExists) {
 			return AddMediaToLibrary409JSONResponse{
@@ -335,13 +301,7 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
-	// Download poster outside the transaction to avoid holding a DB write lock during network I/O
-	h.matchSvc.DownloadPoster(resultItem.ID)
-
-	// Re-read metadata to include poster path
-	resultMeta, _ = h.store.GetMediaMetadataByMediaItem(resultItem.ID)
-
-	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(resultItem, resultMeta)), nil
+	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
 }
 
 func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject) (GlobalSearchResponseObject, error) {

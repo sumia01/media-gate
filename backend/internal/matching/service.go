@@ -249,15 +249,15 @@ func (s *Service) GetExternalDetail(source, mediaType string, externalID int) (*
 	}, nil
 }
 
-func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) error {
+func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) (*store.MediaItem, *store.MediaMetadata, error) {
 	item, err := s.store.GetMediaItem(mediaItemID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	apiKey, err := s.resolveAPIKey(source)
 	if err != nil {
-		return fmt.Errorf("no API key configured for %s", source)
+		return nil, nil, fmt.Errorf("no API key configured for %s", source)
 	}
 
 	// Delete existing metadata if any
@@ -266,10 +266,17 @@ func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) e
 	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
 
 	if err := s.applyMatch(item, source, apiKey, item.MediaType, externalID, 1.0); err != nil {
-		return err
+		return nil, nil, err
 	}
 	s.DownloadPoster(item.ID)
-	return nil
+
+	// Re-fetch updated item and metadata to return current state.
+	item, err = s.store.GetMediaItem(mediaItemID)
+	if err != nil {
+		return nil, nil, err
+	}
+	meta, _ := s.store.GetMediaMetadataByMediaItem(mediaItemID)
+	return item, meta, nil
 }
 
 func (s *Service) Unmatch(mediaItemID uint) error {
@@ -384,6 +391,79 @@ func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalI
 	}
 
 	return item, nil
+}
+
+// AddMediaRequest holds parameters for adding media to a library with optional
+// monitoring configuration.
+type AddMediaRequest struct {
+	Source         string
+	ExternalID     int
+	Monitored      *bool
+	MediaProfileID *uint
+	SeasonMonitors []SeasonMonitorReq
+}
+
+// SeasonMonitorReq represents a season monitor setting.
+type SeasonMonitorReq struct {
+	SeasonNumber int
+	Monitored    bool
+}
+
+// AddMediaToLibraryFull creates a media item inside a transaction, applies
+// optional monitoring/profile settings and season monitors, then downloads
+// the poster outside the transaction.
+func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, error) {
+	var resultItem *store.MediaItem
+	var resultMeta *store.MediaMetadata
+
+	err := topStore.WithTx(func(tx store.Store) error {
+		txSvc := s.WithStore(tx)
+
+		item, err := txSvc.AddMediaToLibrary(lib, req.Source, req.ExternalID)
+		if err != nil {
+			return err
+		}
+
+		needsUpdate := false
+		if req.Monitored != nil {
+			item.Monitored = *req.Monitored
+			needsUpdate = true
+		}
+		if req.MediaProfileID != nil {
+			item.MediaProfileID = req.MediaProfileID
+			needsUpdate = true
+		}
+		if needsUpdate {
+			if err := tx.UpdateMediaItem(item); err != nil {
+				return err
+			}
+		}
+
+		for _, sm := range req.SeasonMonitors {
+			if err := tx.CreateSeasonMonitor(&store.SeasonMonitor{
+				MediaItemID:  item.ID,
+				SeasonNumber: sm.SeasonNumber,
+				Monitored:    sm.Monitored,
+			}); err != nil {
+				return fmt.Errorf("creating season monitor for S%02d: %w", sm.SeasonNumber, err)
+			}
+		}
+
+		resultItem = item
+		resultMeta, _ = tx.GetMediaMetadataByMediaItem(item.ID)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Download poster outside the transaction to avoid holding a DB write lock during network I/O.
+	s.DownloadPoster(resultItem.ID)
+
+	// Re-read metadata to include poster path.
+	resultMeta, _ = topStore.GetMediaMetadataByMediaItem(resultItem.ID)
+
+	return resultItem, resultMeta, nil
 }
 
 func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType string, externalID int, confidence float64) error {
@@ -778,6 +858,16 @@ func (s *Service) resolveAPIKey(source string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown source: %s", source)
 	}
+}
+
+// TMDBClient returns a cached TMDB client configured with the current API key,
+// or nil if no key is configured.
+func (s *Service) TMDBClient() *tmdb.Client {
+	apiKey, err := s.settings.Get(settings.KeyTMDBApiKey)
+	if err != nil || apiKey == "" {
+		return nil
+	}
+	return s.cachedTMDB(apiKey)
 }
 
 // cachedTMDB returns a cached TMDB client for the given key, re-creating if the key changed.

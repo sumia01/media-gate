@@ -2,12 +2,14 @@ package sync
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -44,10 +46,16 @@ type mediaGroup struct {
 
 type Service struct {
 	store store.Store
+	bus   *eventbus.Bus
 }
 
 func NewService(s store.Store) *Service {
 	return &Service{store: s}
+}
+
+// SetBus injects the event bus for publishing resync events.
+func (s *Service) SetBus(b *eventbus.Bus) {
+	s.bus = b
 }
 
 func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error) {
@@ -328,6 +336,20 @@ func (s *Service) ResyncMediaItem(itemID uint) (updated, added, removed int, err
 				removed++
 			}
 		}
+	}
+
+	// Recalculate media item status after file changes.
+	if err := s.RecalcMediaItemStatus(itemID); err != nil {
+		slog.Warn("resync: status recalc failed", "media_item_id", itemID, "error", err)
+	}
+
+	if s.bus != nil {
+		s.bus.Publish(eventbus.ResyncCompleted, eventbus.ResyncPayload{
+			MediaItemID: itemID,
+			Updated:     updated,
+			Added:       added,
+			Removed:     removed,
+		})
 	}
 
 	return updated, added, removed, nil
