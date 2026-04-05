@@ -197,7 +197,7 @@ func (f *Filter) UnmarshalYAML(value *yaml.Node) error {
 // ParseDefinition parses a Cardigann YAML definition from raw bytes.
 func ParseDefinition(data []byte) (*Definition, error) {
 	var def Definition
-	if err := yaml.Unmarshal(data, &def); err != nil {
+	if err := yaml.Unmarshal(SanitizeYAML(data), &def); err != nil {
 		return nil, fmt.Errorf("parsing definition: %w", err)
 	}
 	if def.ID == "" {

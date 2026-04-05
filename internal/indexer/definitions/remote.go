@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+var yamlIDRegex = regexp.MustCompile(`(?m)^id:\s*(\S+)`)
 
 const (
 	tarballURL    = "https://api.github.com/repos/Prowlarr/Indexers/tarball/master"
@@ -86,8 +89,14 @@ func FetchFromGitHub() (map[string][]byte, error) {
 			ID string `yaml:"id"`
 		}
 		if err := yaml.Unmarshal(data, &header); err != nil {
-			slog.Warn("failed to parse YAML header", "file", relPath, "error", err)
-			continue
+			// yaml.v3 rejects some escape sequences that upstream Prowlarr
+			// definitions use (e.g. \/ \d). Fall back to regex for the id.
+			if m := yamlIDRegex.FindSubmatch(data); m != nil {
+				header.ID = string(m[1])
+			} else {
+				slog.Warn("failed to parse YAML header", "file", relPath, "error", err)
+				continue
+			}
 		}
 		if header.ID == "" {
 			slog.Warn("skipping definition without id", "file", relPath)
@@ -127,8 +136,12 @@ func LoadCached(dir string) (map[string][]byte, error) {
 			ID string `yaml:"id"`
 		}
 		if err := yaml.Unmarshal(data, &header); err != nil {
-			slog.Warn("failed to parse cached definition header", "file", e.Name(), "error", err)
-			continue
+			if m := yamlIDRegex.FindSubmatch(data); m != nil {
+				header.ID = string(m[1])
+			} else {
+				slog.Warn("failed to parse cached definition header", "file", e.Name(), "error", err)
+				continue
+			}
 		}
 		if header.ID == "" {
 			continue

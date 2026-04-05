@@ -987,3 +987,19 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 2. **Proxmox LXC deploy script** (`deploy/proxmox-lxc.sh`): Interactive bash script run on a Proxmox host. Creates an unprivileged Debian 12 LXC container via `pct create`, downloads the binary from GitHub Release API using a fine-grained PAT, sets up a `mediagate` system user, systemd service with security hardening (`ProtectSystem=strict`, `NoNewPrivileges`), and installs an update script (`/usr/local/bin/media-gate-update`). Optional features: CIFS NAS mount (credentials in `/etc/cifs-credentials`, fstab entry), DB migration from existing install (`pct push` + matching secret key). The deploy script is distributed via public Gist to solve the bootstrap problem (private repo, no PAT yet).
 
 **Rationale**: The Actions workflow replicates `Dockerfile.build` logic natively (no Docker-in-Docker), runs in GitHub's free tier (2000 min/month for private repos). Semver tags give explicit control over what becomes a release. The Gist sync solves the chicken-and-egg problem of accessing a private repo's deploy script without a PAT. The LXC script supports DB migration (existing secret key + `pct push`) for moving between Proxmox hosts or rebuilding containers. CIFS mount inside the LXC (rather than host bind mount) keeps containers self-contained and portable across multiple Proxmox hosts.
+
+---
+
+## ADR-074: YAML escape sanitization for Prowlarr indexer definitions
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: When syncing indexer definitions from the Prowlarr/Indexers GitHub repo, several YAML files fail to parse with Go's `yaml.v3` because they use escape sequences (`\/`, `\d`) that were valid in YAML 1.1 or tolerated by C# YamlDotNet but are rejected by `yaml.v3` (YAML 1.2 strict). This caused affected definitions (e.g. arabtorrents, btarg, swarmazon-api) to be silently dropped — they never loaded at all.
+
+**Decision**: Two-pronged fix:
+
+1. **Regex fallback for ID extraction** (`internal/indexer/definitions/remote.go`): When `yaml.Unmarshal` fails during header-only parsing (to extract the `id` field), a regex `^id:\s*(\S+)` extracts the ID instead. This ensures the raw YAML bytes still enter the definition map even if the file has invalid escapes.
+
+2. **YAML escape sanitizer** (`internal/indexer/cardigann/sanitize.go`): `SanitizeYAML()` scans through YAML content byte-by-byte, tracks double-quoted string boundaries, and doubles backslashes for any escape sequence that `yaml.v3` would reject. Called in `ParseDefinition()` before `yaml.Unmarshal`. Valid escape set verified from `yaml.v3` source (`scannerc.go`): `0 a b t \t n v f r e ' " \ N _ L P x u U (space)`.
+
+**Rationale**: The regex fallback is a minimal, safe change — `id:` always appears at the top level of Cardigann definitions, so a simple regex is reliable. The sanitizer handles the full parse by converting unknown escapes (e.g. `\d` → `\\d`, `\/` → `\\/`) to their literal equivalents, matching what YamlDotNet does implicitly. This is forward-compatible: any future upstream definitions with non-standard escapes will work automatically.
