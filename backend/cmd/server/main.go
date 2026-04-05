@@ -25,6 +25,7 @@ import (
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/logging"
 	"github.com/sumia01/media-gate/internal/matching"
+	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store"
@@ -85,6 +86,7 @@ func main() {
 	// Event bus + SSE broker.
 	bus := eventbus.New(1024)
 	matchSvc.SetBus(bus)
+	syncSvc.SetBus(bus)
 	sseBroker := sse.NewBroker()
 	bus.SubscribeAll(func(e eventbus.Event) {
 		data, err := json.Marshal(e)
@@ -116,7 +118,14 @@ func main() {
 
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
 	qbitProvider := qbittorrent.NewProvider(settingsSvc, settings.KeyQBitURL, settings.KeyQBitUsername, settings.KeyQBitPassword)
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc, cfg.Cookie.Secure, qbitProvider)
+	mediaSvc := media.NewService(db, syncSvc, bus, qbitProvider, posterDir)
+
+	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus, qbitProvider)
+	downloadSvc.Reconcile()
+	downloadSvc.Start()
+	defer downloadSvc.Stop()
+
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc)
 
 	// Invalidate cached qBit client when connection settings change.
 	go func() {
@@ -127,13 +136,6 @@ func main() {
 			}
 		}
 	}()
-
-	// Startup check: reconcile download hashes with torrent client.
-	reconcileDownloadsWithTorrentClient(db, qbitProvider)
-
-	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus, qbitProvider)
-	downloadSvc.Start()
-	defer downloadSvc.Stop()
 
 	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus, qbitProvider)
 	importerSvc.Start()
@@ -194,53 +196,6 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
-	}
-}
-
-// reconcileDownloadsWithTorrentClient checks that active download hashes
-// still exist in the torrent client. Downloads whose torrents have been
-// removed externally are marked as failed. Best-effort — skipped if qBit
-// is not configured or unreachable.
-func reconcileDownloadsWithTorrentClient(db *store.SQLiteStore, qbit *qbittorrent.Provider) {
-	client, err := qbit.Client()
-	if err != nil {
-		return // qBit not configured
-	}
-	if err := client.TestConnection(); err != nil {
-		slog.Warn("startup: qBittorrent not reachable, skipping torrent reconciliation", "error", err)
-		return
-	}
-
-	// Get all torrents from qBit in one call for efficiency.
-	torrents, err := client.GetTorrents()
-	if err != nil {
-		slog.Warn("startup: failed to list torrents from qBittorrent", "error", err)
-		return
-	}
-	hashSet := make(map[string]struct{}, len(torrents))
-	for _, t := range torrents {
-		hashSet[strings.ToLower(t.Hash)] = struct{}{}
-	}
-
-	// Check downloads that should have an active torrent.
-	for _, status := range []string{"downloading", "seeding"} {
-		downloads, err := db.ListDownloads(nil, &status)
-		if err != nil {
-			continue
-		}
-		for i := range downloads {
-			dl := &downloads[i]
-			if dl.ClientTorrentHash == "" {
-				continue
-			}
-			if _, ok := hashSet[strings.ToLower(dl.ClientTorrentHash)]; !ok {
-				slog.Warn("startup: torrent missing from client, marking download as failed",
-					"download_id", dl.ID, "title", dl.Title, "hash", dl.ClientTorrentHash)
-				dl.Status = "failed"
-				dl.ClientTorrentHash = ""
-				_ = db.UpdateDownload(dl)
-			}
-		}
 	}
 }
 

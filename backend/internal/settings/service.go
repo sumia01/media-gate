@@ -1,8 +1,6 @@
 package settings
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,10 +12,10 @@ import (
 	"time"
 
 	"github.com/sumia01/media-gate/internal/crypto"
+	"github.com/sumia01/media-gate/internal/integration/flaresolverr"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
-	"github.com/sumia01/media-gate/internal/safenet"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -261,9 +259,6 @@ func (s *Service) TestQBit(urlVal, username, password *string) (bool, string, er
 	if err != nil {
 		return false, "qBittorrent URL not configured", nil
 	}
-	if err := safenet.CheckHost(u); err != nil {
-		return false, fmt.Sprintf("URL rejected: %v", err), nil
-	}
 	user, err := s.resolveKey(username, KeyQBitUsername)
 	if err != nil {
 		return false, "qBittorrent username not configured", nil
@@ -285,37 +280,7 @@ func (s *Service) TestFlareSolverr(urlVal *string) (bool, string, error) {
 		return false, "FlareSolverr URL not configured", nil
 	}
 
-	if err := safenet.CheckHost(u); err != nil {
-		return false, fmt.Sprintf("URL rejected: %v", err), nil
-	}
-
-	payload, _ := json.Marshal(map[string]any{
-		"cmd":        "request.get",
-		"url":        "http://www.google.com",
-		"maxTimeout": 15000,
-	})
-
-	resp, err := safenet.SafeClient(30 * time.Second).Post(
-		strings.TrimRight(u, "/")+"/v1",
-		"application/json",
-		bytes.NewReader(payload),
-	)
-	if err != nil {
-		return false, fmt.Sprintf("Connection failed: %v", err), nil
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Status  string `json:"status"`
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, fmt.Sprintf("Invalid response: %v", err), nil
-	}
-	if result.Status != "ok" {
-		return false, fmt.Sprintf("FlareSolverr error: %s", result.Message), nil
-	}
-	return true, "Connection successful", nil
+	return flaresolverr.TestConnection(u)
 }
 
 // resolveKey returns the provided key if non-empty, otherwise falls back to the saved value.

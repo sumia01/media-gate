@@ -2,7 +2,10 @@ package download
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
@@ -259,4 +262,155 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: newStatus,
 		})
 	}
+}
+
+// DownloadWithProgress enriches a download record with real-time torrent data.
+type DownloadWithProgress struct {
+	store.Download
+	Progress      *float32
+	DownloadSpeed *int64
+	UploadSpeed   *int64
+}
+
+// Create validates and persists a new download, then publishes a DownloadCreated event.
+func (s *Service) Create(dl *store.Download) error {
+	if err := validateURLScheme(dl.DownloadURL); err != nil {
+		return err
+	}
+	if err := s.store.CreateDownload(dl); err != nil {
+		return err
+	}
+	s.bus.Publish(eventbus.DownloadCreated, eventbus.DownloadPayload{
+		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: dl.Status,
+	})
+	return nil
+}
+
+// UpdateStatus sets a download's status and resets retry state when going back to "pending".
+func (s *Service) UpdateStatus(dlID uint, status string) (*store.Download, error) {
+	dl, err := s.store.GetDownload(dlID)
+	if err != nil {
+		return nil, err
+	}
+	dl.Status = status
+	if status == "pending" {
+		dl.RetryCount = 0
+		dl.NextRetryAt = nil
+		dl.LastError = ""
+	}
+	if err := s.store.UpdateDownload(dl); err != nil {
+		return nil, err
+	}
+	return dl, nil
+}
+
+// ListWithProgress lists downloads and optionally enriches them with real-time
+// qBittorrent progress data when filtering by media item.
+func (s *Service) ListWithProgress(mediaItemID *uint, status *string) ([]DownloadWithProgress, error) {
+	downloads, err := s.store.ListDownloads(mediaItemID, status)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DownloadWithProgress, len(downloads))
+	for i := range downloads {
+		result[i].Download = downloads[i]
+	}
+
+	if mediaItemID != nil {
+		if client, err := s.qbit.Client(); err == nil {
+			for i := range result {
+				hash := result[i].ClientTorrentHash
+				if hash == "" {
+					continue
+				}
+				info, err := client.GetTorrent(hash)
+				if err != nil {
+					continue
+				}
+				p := float32(info.Progress)
+				result[i].Progress = &p
+				result[i].DownloadSpeed = &info.DownloadSpeed
+				result[i].UploadSpeed = &info.UploadSpeed
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// ListTorrentFiles returns the file list for a torrent in qBittorrent.
+func (s *Service) ListTorrentFiles(hash string) ([]qbittorrent.TorrentFile, error) {
+	if hash == "" {
+		return nil, nil
+	}
+	client, err := s.qbit.Client()
+	if err != nil {
+		return nil, nil
+	}
+	files, err := client.GetTorrentFiles(hash)
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// Reconcile checks that downloads in "downloading" or "seeding" status still
+// have active torrents in qBittorrent. Downloads whose torrents have been
+// removed externally are marked as failed. Best-effort — skipped if qBit
+// is not configured or unreachable.
+func (s *Service) Reconcile() {
+	client, err := s.qbit.Client()
+	if err != nil {
+		return // qBit not configured
+	}
+	if err := client.TestConnection(); err != nil {
+		slog.Warn("startup: qBittorrent not reachable, skipping torrent reconciliation", "error", err)
+		return
+	}
+
+	torrents, err := client.GetTorrents()
+	if err != nil {
+		slog.Warn("startup: failed to list torrents from qBittorrent", "error", err)
+		return
+	}
+	hashSet := make(map[string]struct{}, len(torrents))
+	for _, t := range torrents {
+		hashSet[strings.ToLower(t.Hash)] = struct{}{}
+	}
+
+	for _, status := range []string{"downloading", "seeding"} {
+		downloads, err := s.store.ListDownloads(nil, &status)
+		if err != nil {
+			continue
+		}
+		for i := range downloads {
+			dl := &downloads[i]
+			if dl.ClientTorrentHash == "" {
+				continue
+			}
+			if _, ok := hashSet[strings.ToLower(dl.ClientTorrentHash)]; !ok {
+				slog.Warn("startup: torrent missing from client, marking download as failed",
+					"download_id", dl.ID, "title", dl.Title, "hash", dl.ClientTorrentHash)
+				dl.Status = "failed"
+				dl.ClientTorrentHash = ""
+				_ = s.store.UpdateDownload(dl)
+			}
+		}
+	}
+}
+
+// validateURLScheme checks that rawURL parses successfully and has an http or https scheme.
+func validateURLScheme(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("URL must have a host")
+	}
+	return nil
 }

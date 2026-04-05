@@ -3,27 +3,13 @@ package apiv1
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/sumia01/media-gate/internal/eventbus"
-	"github.com/sumia01/media-gate/internal/importer"
-	"github.com/sumia01/media-gate/internal/safenet"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
 func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestObject) (CreateDownloadResponseObject, error) {
-	if err := safenet.ValidateURLScheme(req.Body.DownloadUrl); err != nil {
-		return CreateDownload400JSONResponse{
-			Code:    http.StatusBadRequest,
-			Message: fmt.Sprintf("invalid download URL: %v", err),
-		}, nil
-	}
-
 	dl := &store.Download{
 		MediaItemID: uint(req.Body.MediaItemId),
 		IndexerID:   uint(req.Body.IndexerId),
@@ -49,16 +35,12 @@ func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestOb
 		dl.ImdbID = *req.Body.ImdbId
 	}
 
-	if err := h.store.CreateDownload(dl); err != nil {
+	if err := h.downloadSvc.Create(dl); err != nil {
 		return CreateDownload400JSONResponse{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
 		}, nil
 	}
-
-	h.bus.Publish(eventbus.DownloadCreated, eventbus.DownloadPayload{
-		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "pending",
-	})
 
 	return CreateDownload201JSONResponse(downloadToAPI(dl)), nil
 }
@@ -76,33 +58,22 @@ func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObje
 		status = &s
 	}
 
-	downloads, err := h.store.ListDownloads(mediaItemID, status)
+	downloads, err := h.downloadSvc.ListWithProgress(mediaItemID, status)
 	if err != nil {
 		return nil, err
 	}
 
 	apiDownloads := make([]Download, len(downloads))
 	for i := range downloads {
-		apiDownloads[i] = downloadToAPI(&downloads[i])
-	}
-
-	// Enrich with real-time progress data when filtering by media item
-	if mediaItemID != nil {
-		if client, err := h.qbit.Client(); err == nil {
-			for i := range apiDownloads {
-				hash := apiDownloads[i].ClientTorrentHash
-				if hash == nil || *hash == "" {
-					continue
-				}
-				info, err := client.GetTorrent(*hash)
-				if err != nil {
-					continue
-				}
-				p := float32(info.Progress)
-				apiDownloads[i].Progress = &p
-				apiDownloads[i].DownloadSpeed = &info.DownloadSpeed
-				apiDownloads[i].UploadSpeed = &info.UploadSpeed
-			}
+		apiDownloads[i] = downloadToAPI(&downloads[i].Download)
+		if downloads[i].Progress != nil {
+			apiDownloads[i].Progress = downloads[i].Progress
+		}
+		if downloads[i].DownloadSpeed != nil {
+			apiDownloads[i].DownloadSpeed = downloads[i].DownloadSpeed
+		}
+		if downloads[i].UploadSpeed != nil {
+			apiDownloads[i].UploadSpeed = downloads[i].UploadSpeed
 		}
 	}
 
@@ -124,7 +95,7 @@ func (h *Handlers) GetDownload(_ context.Context, req GetDownloadRequestObject) 
 }
 
 func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadStatusRequestObject) (UpdateDownloadStatusResponseObject, error) {
-	dl, err := h.store.GetDownload(uint(req.Id))
+	dl, err := h.downloadSvc.UpdateStatus(uint(req.Id), string(req.Body.Status))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateDownloadStatus404JSONResponse{
@@ -134,24 +105,12 @@ func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadSta
 		}
 		return nil, err
 	}
-
-	dl.Status = string(req.Body.Status)
-	// Reset retry state when manually setting back to pending
-	if dl.Status == "pending" {
-		dl.RetryCount = 0
-		dl.NextRetryAt = nil
-		dl.LastError = ""
-	}
-	if err := h.store.UpdateDownload(dl); err != nil {
-		return nil, err
-	}
-
 	return UpdateDownloadStatus200JSONResponse(downloadToAPI(dl)), nil
 }
 
 func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestObject) (DeleteDownloadResponseObject, error) {
-	dl, err := h.store.GetDownload(uint(req.Id))
-	if err != nil {
+	deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
+	if err := h.mediaSvc.DeleteDownload(uint(req.Id), deleteFiles); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteDownload404JSONResponse{
 				Code:    http.StatusNotFound,
@@ -160,80 +119,7 @@ func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestOb
 		}
 		return nil, err
 	}
-
-	deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
-
-	if dl.ClientTorrentHash != "" {
-		if client, err := h.qbit.Client(); err == nil {
-			if err := client.DeleteTorrent(dl.ClientTorrentHash, deleteFiles); err != nil {
-				slog.Warn("failed to remove torrent from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
-			}
-		}
-	}
-
-	// Remove imported library files if the download was linked and deleteFiles requested.
-	if deleteFiles && dl.LinkedToLibrary {
-		h.cleanupImportedFiles(dl)
-		// Recalculate media item status after file removal.
-		if err := h.syncSvc.RecalcMediaItemStatus(dl.MediaItemID); err != nil {
-			slog.Warn("delete download: status recalc failed", "media_item_id", dl.MediaItemID, "error", err)
-		}
-	}
-
-	if err := h.store.DeleteDownload(dl.ID); err != nil {
-		return nil, err
-	}
-
 	return DeleteDownload204Response{}, nil
-}
-
-// cleanupImportedFiles removes library files that were imported from a specific download.
-// It reconstructs the release folder path and removes matching MediaFile records + disk files.
-func (h *Handlers) cleanupImportedFiles(dl *store.Download) {
-	item, err := h.store.GetMediaItem(dl.MediaItemID)
-	if err != nil {
-		slog.Warn("cleanup: media item not found, skipping library file cleanup", "download_id", dl.ID, "error", err)
-		return
-	}
-	lib, err := h.store.GetLibrary(item.LibraryID)
-	if err != nil {
-		slog.Warn("cleanup: library not found, skipping library file cleanup", "download_id", dl.ID, "error", err)
-		return
-	}
-
-	meta, _ := h.store.GetMediaMetadataByMediaItem(dl.MediaItemID)
-	targetDir := importer.BuildTargetDir(lib, item, meta, dl.SeasonNumber)
-	releaseDir := filepath.Join(targetDir, importer.BuildReleaseFolderName(dl.Title))
-
-	// Find MediaFiles belonging to this release folder.
-	allFiles, _ := h.store.ListMediaFilesByMediaItem(item.ID)
-	var matchedPaths []string
-	prefix := releaseDir + string(filepath.Separator)
-	for _, mf := range allFiles {
-		if strings.HasPrefix(mf.Path, prefix) {
-			if err := os.Remove(mf.Path); err != nil && !os.IsNotExist(err) {
-				slog.Warn("cleanup: failed to remove library file", "path", mf.Path, "error", err)
-			}
-			matchedPaths = append(matchedPaths, mf.Path)
-		}
-	}
-
-	// Remove MediaFile DB records.
-	if len(matchedPaths) > 0 {
-		if err := h.store.DeleteMediaFilesByPaths(matchedPaths); err != nil {
-			slog.Warn("cleanup: failed to delete media file records", "download_id", dl.ID, "error", err)
-		}
-	}
-
-	// Remove the release folder if only companion files remain.
-	if onlyCompanionsLeft(releaseDir) {
-		if err := os.RemoveAll(releaseDir); err != nil {
-			slog.Warn("cleanup: failed to remove release dir", "path", releaseDir, "error", err)
-		}
-	}
-
-	// Clean up empty parent directories up to library root.
-	removeEmptyParents(filepath.Dir(releaseDir), lib.Path)
 }
 
 func (h *Handlers) ListDownloadFiles(_ context.Context, req ListDownloadFilesRequestObject) (ListDownloadFilesResponseObject, error) {
@@ -248,18 +134,12 @@ func (h *Handlers) ListDownloadFiles(_ context.Context, req ListDownloadFilesReq
 		return nil, err
 	}
 
-	if dl.ClientTorrentHash == "" {
-		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
-	}
-
-	client, err := h.qbit.Client()
-	if err != nil {
-		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
-	}
-
-	qFiles, err := client.GetTorrentFiles(dl.ClientTorrentHash)
+	qFiles, err := h.downloadSvc.ListTorrentFiles(dl.ClientTorrentHash)
 	if err != nil {
 		slog.Warn("failed to get torrent files from qBittorrent", "hash", dl.ClientTorrentHash, "error", err)
+		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
+	}
+	if qFiles == nil {
 		return ListDownloadFiles200JSONResponse{Files: []TorrentFile{}}, nil
 	}
 

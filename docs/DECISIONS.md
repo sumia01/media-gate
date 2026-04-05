@@ -1085,3 +1085,26 @@ Intentionally kept items after deeper analysis:
 Intentionally skipped: fetch-by-ID + 404 pattern (Go generics can't express typed response variants cleanly), external detail vs metadata conversion (different purposes, not true duplication).
 
 **Rationale**: Each abstraction was introduced only where 3+ identical copies existed or where the duplication masked a bug (qBit client was never invalidated on settings change despite a comment claiming it was). New packages are minimal — no frameworks, just functions and small structs. The `SettingsGetter` and `SettingsSubscriber` interfaces avoid circular imports without adding complexity.
+
+---
+
+## ADR-079: Domain boundary enforcement — thin handlers, fat services
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: Backend deep review identified 25 domain boundary violations where HTTP handlers contained business logic (multi-step orchestration, event publishing, status recalculation, torrent/disk cleanup, qBit client calls). This made handlers hard to test in isolation and blurred the line between HTTP concerns and domain logic.
+
+**Decision**: Moved all business logic out of API handlers into service methods across 6 phases:
+
+1. **`media.Service`** (`backend/internal/media/service.go`) — new service for delete orchestration: `DeleteMediaItem` (torrent removal + disk cleanup + poster delete + DB delete + event publish), `DeleteDownload` (torrent removal + imported file cleanup + status recalc + DB delete), `CleanupImportedFiles` (reconstruct release path + remove files + clean empty dirs), `CleanupPostersForLibrary` (list items + remove poster JPGs before FK cascade).
+2. **`download.Service`** expanded — `Create` (URL scheme validation + persist + publish DownloadCreated), `UpdateStatus` (set status + reset retry on "pending"), `ListWithProgress` (store query + qBit progress enrichment), `ListTorrentFiles` (qBit client file listing), `Reconcile` (moved from standalone function in main.go).
+3. **`sync.Service`** expanded — `AssembleEpisodes` (130-line episode assembly with file presence, season monitors, and download status priority resolution), `UpsertSeasonMonitors` (create-or-update season monitors), `ResyncMediaItem` now internally calls `RecalcMediaItemStatus` and publishes `ResyncCompleted` event via injected bus (`SetBus` setter).
+4. **`matching.Service`** expanded — `ManualMatch` returns `(*store.MediaItem, *store.MediaMetadata, error)` with recalc included, `AddMediaToLibraryFull` wraps the full WithTx flow (add + monitored/profile + season monitors + poster download), `TMDBClient()` exposes cached TMDB client for discover handlers.
+5. **`importer` package** gained exported `RemoveEmptyParents` and `OnlyCompanionsLeft` filesystem helpers (used by media.Service delete logic).
+6. **`flaresolverr` client** extracted from settings service into `backend/internal/integration/flaresolverr/client.go`.
+7. **`safenet` package removed** — SSRF protection (private-IP rejection) was counterproductive for a self-hosted app where qBittorrent, FlareSolverr, and other services are typically on local network IPs. URL scheme validation (http/https only) retained inline in download.Service.
+8. **`Handlers` struct cleaned** — removed `bus *eventbus.Bus` and `qbit *qbittorrent.Provider` fields (services now own these dependencies).
+
+Result: handlers are 5-15 line HTTP adapters (validate → call service → map to API type). Net: -308 lines, 371 added → simpler handlers, testable services.
+
+**Rationale**: Self-hosted media manager where all integration targets (qBit, FlareSolverr, TMDB, TVDB) are admin-configured — no untrusted input reaches URL fetch paths, making SSRF protection more harmful than helpful (blocks legitimate local services). The service layer pattern aligns with the existing architecture (library.Service, auth.Service) and makes business logic independently testable. Setter injection (`SetBus`, `SetStatusRecalculator`) breaks circular imports without adding complexity.

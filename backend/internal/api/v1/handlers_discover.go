@@ -7,7 +7,6 @@ import (
 
 	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
-	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -102,14 +101,13 @@ func (h *Handlers) GetPopularSeries(_ context.Context, _ GetPopularSeriesRequest
 
 const tmdbPosterW342 = "https://image.tmdb.org/t/p/w342"
 
-// fetchDiscover handles the common discover pattern: get TMDB API key, create client,
-// call the fetch function, return empty slice on missing key or API error.
+// fetchDiscover handles the common discover pattern: get a TMDB client from the
+// matching service, call the fetch function, return empty slice on missing key or API error.
 func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, error)) ([]DiscoverItem, error) {
-	apiKey, err := h.settings.Get(settings.KeyTMDBApiKey)
-	if err != nil || apiKey == "" {
+	client := h.matchSvc.TMDBClient()
+	if client == nil {
 		return []DiscoverItem{}, nil
 	}
-	client := tmdb.NewClient(apiKey)
 	items, err := fetch(client)
 	if err != nil {
 		slog.Warn("discover fetch failed", "error", err)
