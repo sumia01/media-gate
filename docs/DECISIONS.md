@@ -1003,3 +1003,28 @@ For services that need to participate in a caller's transaction, a `WithStore(st
 2. **YAML escape sanitizer** (`internal/indexer/cardigann/sanitize.go`): `SanitizeYAML()` scans through YAML content byte-by-byte, tracks double-quoted string boundaries, and doubles backslashes for any escape sequence that `yaml.v3` would reject. Called in `ParseDefinition()` before `yaml.Unmarshal`. Valid escape set verified from `yaml.v3` source (`scannerc.go`): `0 a b t \t n v f r e ' " \ N _ L P x u U (space)`.
 
 **Rationale**: The regex fallback is a minimal, safe change — `id:` always appears at the top level of Cardigann definitions, so a simple regex is reliable. The sanitizer handles the full parse by converting unknown escapes (e.g. `\d` → `\\d`, `\/` → `\\/`) to their literal equivalents, matching what YamlDotNet does implicitly. This is forward-compatible: any future upstream definitions with non-standard escapes will work automatically.
+
+---
+
+## ADR-075: Backend directory restructuring
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: The project root mixed Go backend files (`cmd/`, `internal/`, `go.mod`, `go.sum`, `.air.toml`, `.env.example`) with the Vue frontend (`frontend/`), shared API spec (`api/`), CI/CD configs, and docs. As the project grew, the flat structure made it harder to navigate and reason about boundaries between the Go backend and the rest of the repo.
+
+**Decision**: Moved all Go backend files into a `backend/` subdirectory:
+
+- `cmd/server/` → `backend/cmd/server/`
+- `internal/` → `backend/internal/`
+- `go.mod`, `go.sum` → `backend/go.mod`, `backend/go.sum`
+- `.air.toml` → `backend/.air.toml`
+- `.env.example` → `backend/.env.example`
+- `frontend/embed.go` → `backend/frontend/embed.go` (must be inside Go module root for the embed directive to work)
+
+The `api/` directory stays at the repo root since both the Go backend (`go:generate` with relative paths) and the Vue frontend (`openapi-typescript ../api/openapi.yaml`) use it. The `frontend/` SPA source also stays at the root. Build artifacts flow: `frontend/dist/` → copied to `backend/frontend/dist/` → embedded into Go binary.
+
+The Go module name (`github.com/sumia01/media-gate`) is unchanged. Since `go.mod` moved into `backend/`, that directory is now the Go module root. All internal package import paths (e.g. `github.com/sumia01/media-gate/internal/store`) continue to work without modification — Go resolves them relative to the `go.mod` location.
+
+Updated files: `Makefile` (all Go commands prefixed with `cd backend &&`), `Dockerfile.build` (builder stage `WORKDIR /app/backend`), `.github/workflows/release.yml` (`go-version-file: backend/go.mod`, working-directory for Go steps), `.air.toml` (removed irrelevant exclude dirs), `.gitignore` (updated paths), `backend/internal/api/v1/generate.go` (one extra `../` level for `api/` spec path).
+
+**Rationale**: Clean separation of concerns at the filesystem level. The Go module root trick (keeping the module name unchanged) avoids touching ~25 Go files with import path updates. The `api/` stays shared to avoid duplication or complex symlink setups. The build pipeline (`make build`, `make dev`, Docker, CI) all verified working after the move.

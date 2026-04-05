@@ -16,31 +16,37 @@ Self-hosted, single-binary media management app replacing the Sonarr + Radarr + 
 
 ```
 media-gate/
-├── cmd/server/          # Go entrypoint (main.go)
-├── internal/
-│   ├── api/v1/          # Generated server + handlers split by domain (library, media, download, indexer, auth, settings, convert)
-│   ├── auth/            # Auth service (JWT, bcrypt, refresh tokens, middleware, user CRUD, bootstrap)
-│   ├── config/          # koanf configuration loading
-│   ├── library/         # Library service (CRUD, path validation, folder browsing, download path conflict check)
-│   ├── sync/            # Sync service (reads library dirs → creates MediaItems)
-│   ├── jobqueue/        # Job queue (single worker, history persisted to SQLite)
-│   ├── matching/        # Media matching service (TMDB/TVDB auto-match + manual)
-│   ├── crypto/          # AES-256-GCM at-rest encryption for sensitive settings
-│   ├── settings/        # Settings service (CRUD, masking, encryption, connection tests, indexer secret helpers)
-│   ├── store/           # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Episode, Setting, JobRecord, Indexer, Download, User, RefreshToken)
-│   ├── indexer/         # Indexer service (CRUD, multi-indexer search, engine lifecycle)
-│   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
-│   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
-│   ├── eventbus/        # Internal event bus (Go channels, typed events, publish/subscribe)
-│   ├── sse/             # Server-Sent Events broker (real-time frontend push via GET /api/v1/events)
-│   ├── download/        # Download queue worker (sends pending → qBit, polls status, publishes events)
-│   ├── importer/        # Import worker (hardlink/copy to library, seed cleanup, publishes events)
-│   ├── monitor/         # Monitor worker (auto-grab: searches indexers for monitored items, creates downloads)
-│   ├── integration/
-│   │   ├── tmdb/        # TMDB API v3 client (search, get, test)
-│   │   ├── tvdb/        # TVDB API v4 client (JWT auth, search, get, test)
-│   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth, add/upload/poll/delete torrents, file listing)
-│   └── logging/         # slog setup
+├── backend/
+│   ├── cmd/server/      # Go entrypoint (main.go)
+│   ├── internal/
+│   │   ├── api/v1/      # Generated server + handlers split by domain (library, media, download, indexer, auth, settings, convert)
+│   │   ├── auth/        # Auth service (JWT, bcrypt, refresh tokens, middleware, user CRUD, bootstrap)
+│   │   ├── config/      # koanf configuration loading
+│   │   ├── library/     # Library service (CRUD, path validation, folder browsing, download path conflict check)
+│   │   ├── sync/        # Sync service (reads library dirs → creates MediaItems)
+│   │   ├── jobqueue/    # Job queue (single worker, history persisted to SQLite)
+│   │   ├── matching/    # Media matching service (TMDB/TVDB auto-match + manual)
+│   │   ├── crypto/      # AES-256-GCM at-rest encryption for sensitive settings
+│   │   ├── settings/    # Settings service (CRUD, masking, encryption, connection tests, indexer secret helpers)
+│   │   ├── store/       # Store interface + GORM implementations (Library, MediaItem, MediaFile, QualityProfile, SeasonMonitor, Episode, Setting, JobRecord, Indexer, Download, User, RefreshToken)
+│   │   ├── indexer/     # Indexer service (CRUD, multi-indexer search, engine lifecycle)
+│   │   │   ├── cardigann/   # Cardigann YAML engine (definition parser, login, search, HTML scraping, filters)
+│   │   │   └── definitions/ # Embedded indexer definitions (go:embed *.yml)
+│   │   ├── eventbus/    # Internal event bus (Go channels, typed events, publish/subscribe)
+│   │   ├── sse/         # Server-Sent Events broker (real-time frontend push via GET /api/v1/events)
+│   │   ├── download/    # Download queue worker (sends pending → qBit, polls status, publishes events)
+│   │   ├── importer/    # Import worker (hardlink/copy to library, seed cleanup, publishes events)
+│   │   ├── monitor/     # Monitor worker (auto-grab: searches indexers for monitored items, creates downloads)
+│   │   ├── integration/
+│   │   │   ├── tmdb/    # TMDB API v3 client (search, get, test)
+│   │   │   ├── tvdb/    # TVDB API v4 client (JWT auth, search, get, test)
+│   │   │   └── qbittorrent/ # qBittorrent Web API v2 client (cookie auth, add/upload/poll/delete torrents, file listing)
+│   │   └── logging/     # slog setup
+│   ├── frontend/        # embed.go — embeds compiled SPA into Go binary
+│   ├── go.mod
+│   ├── go.sum
+│   ├── .air.toml        # Air hot-reload config for Go dev
+│   └── .env.example     # Documented configuration keys
 ├── frontend/            # Vue 3 + TypeScript SPA
 │   └── src/
 │       ├── api/         # Generated TypeScript API client
@@ -53,15 +59,12 @@ media-gate/
 │       ├── views/       # Route-level page components
 │       │   └── setup/   # Setup wizard step components
 │       └── router/      # Vue Router config
-├── api/                 # OpenAPI spec + oapi-codegen config
+├── api/                 # OpenAPI spec + oapi-codegen config (shared by backend + frontend)
 ├── docs/                # Architecture, decisions, roadmap
 ├── deploy/              # Proxmox LXC deploy script
 ├── .github/workflows/   # GitHub Actions (release build pipeline)
-├── .air.toml            # Air hot-reload config for Go dev
-├── .env.example         # Documented configuration keys
 ├── Dockerfile.build     # Multi-stage cross-platform builder
-├── Makefile             # Build pipeline
-└── go.mod
+└── Makefile             # Build pipeline
 ```
 
 ## Build & Run
@@ -97,7 +100,7 @@ make clean
 
 ## Configuration
 
-Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment variables. Config is organized into nested groups (api, db, log, library). Underscore in key names maps to nesting level.
+Configuration loads from `backend/.env` file and/or `MEDIAGATE_`-prefixed environment variables. Config is organized into nested groups (api, db, log, library). Underscore in key names maps to nesting level.
 
 | .env key | Env var | Config field | Default | Description |
 |----------|---------|-------------|---------|-------------|
@@ -116,12 +119,12 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 
 - **Store interface pattern**: All data access goes through a Go `Store` interface with GORM implementations. Business logic never touches the database directly. `WithTx(fn func(Store) error)` wraps multi-step writes in a DB transaction — the callback receives a transactional Store instance.
 - **FK CASCADE at DB level**: All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for nullable FKs). SQLite FK enforcement via `?_foreign_keys=ON` DSN parameter. Startup migration rebuilds tables missing FK constraints (AutoMigrate can't add FKs to existing SQLite tables). Orphan cleanup runs on every startup. No manual cascade delete code in handlers.
-- **OpenAPI-first**: Change the spec in `api/openapi.yaml`, then run `make generate`. Never hand-edit generated code (`internal/api/v1/gen.go`, `frontend/src/api/schema.d.ts`).
-- **Versioned API**: Routes under `/api/v1`, Go code in `internal/api/v1/` (package `apiv1`). Future versions get their own package.
-- **Single binary**: The Vue SPA builds into `frontend/dist/`, gets embedded into the Go binary via `frontend/embed.go`. No separate web server needed.
-- **go:generate**: `go generate ./...` runs oapi-codegen to regenerate Go server code.
+- **OpenAPI-first**: Change the spec in `api/openapi.yaml`, then run `make generate`. Never hand-edit generated code (`backend/internal/api/v1/gen.go`, `frontend/src/api/schema.d.ts`).
+- **Versioned API**: Routes under `/api/v1`, Go code in `backend/internal/api/v1/` (package `apiv1`). Future versions get their own package.
+- **Single binary**: The Vue SPA builds into `frontend/dist/`, gets copied to `backend/frontend/dist/`, and embedded into the Go binary via `backend/frontend/embed.go`. No separate web server needed.
+- **go:generate**: `cd backend && go generate ./...` runs oapi-codegen to regenerate Go server code.
 - **Modular frontend**: Components organized by concern — `layout/` for shell pieces, `media/` for domain components, `views/` for route-level pages.
-- **Event bus + SSE**: Internal event bus (`internal/eventbus/`) using Go channels dispatches typed events (download lifecycle, library sync/match, media item changes, monitor grabs). Workers and handlers publish events on state transitions. SSE broker (`internal/sse/`) subscribes to all events and streams them to connected frontends via `GET /api/v1/events`. Frontend `useEventStream` composable provides reactive SSE subscription — replaces polling for job status, download progress, and media item updates. The matching service publishes `media.item_matched` after each successful match (including status recalculation), and the resync handler publishes `media.resync_completed` after re-scanning files — both injected via setter methods to avoid circular imports.
+- **Event bus + SSE**: Internal event bus (`backend/internal/eventbus/`) using Go channels dispatches typed events (download lifecycle, library sync/match, media item changes, monitor grabs). Workers and handlers publish events on state transitions. SSE broker (`backend/internal/sse/`) subscribes to all events and streams them to connected frontends via `GET /api/v1/events`. Frontend `useEventStream` composable provides reactive SSE subscription — replaces polling for job status, download progress, and media item updates. The matching service publishes `media.item_matched` after each successful match (including status recalculation), and the resync handler publishes `media.resync_completed` after re-scanning files — both injected via setter methods to avoid circular imports.
 - **Path traversal protection**: All filesystem paths are validated with `filepath.Clean` + `strings.HasPrefix` against `LIBRARY_BASEPATH`. Three enforcement points: library service (Create/Update/Browse), settings service (download path), and importer (torrent file names from qBittorrent API). See ADR-045.
 - **At-rest encryption**: Sensitive settings (API keys, passwords, indexer credentials) are encrypted with AES-256-GCM before storing in the DB. Master key derived from `MEDIAGATE_SECRET_KEY` env var via SHA-256. Encrypted values use `enc:` prefix for migration detection. Without a key, values are stored in plaintext (dev mode). Encryption/decryption happens in `settings.Service`; the store layer always sees ciphertext. See ADR-056.
 - **Unified secrets management**: All credentials (TMDB/TVDB keys, qBit password, indexer passwords/2FA) are stored in the `Settings` table with `Sensitive=true`. Indexer password-type fields are stored with key pattern `indexer:{id}:{fieldName}` and excluded from the settings API. Non-sensitive indexer fields remain in the `Indexer.Settings` JSON column. See ADR-057.
@@ -129,11 +132,11 @@ Configuration loads from `.env` file and/or `MEDIAGATE_`-prefixed environment va
 - **Setup wizard / onboarding**: 6-step browser-based wizard on first launch (`/setup`). `POST /api/v1/auth/setup` creates first user (guarded by 0-user check), `GET /api/v1/setup/status` returns onboarding state. Progress tracked via `onboarding_step`/`onboarding_completed` settings. Frontend router guard redirects all routes to wizard when incomplete. Existing installations auto-detected as completed. `LIBRARY_BASEPATH` is a DB-backed setting with env fallback; library service uses `BasePathProvider` interface for dynamic resolution. See ADR-059.
 - **Pure-Go SQLite**: Uses `glebarez/sqlite` (wraps `modernc.org/sqlite`) instead of `mattn/go-sqlite3`. No CGO required — enables trivial cross-compilation with `GOOS`/`GOARCH` without C toolchains. See ADR-069.
 - **Cross-platform prod builds**: `Dockerfile.build` multi-stage builder (Node frontend → Go binary) with `--output` extraction. Three Makefile targets (`build-linux-amd64`, `build-darwin-arm64`, `build-windows-amd64`) produce standalone binaries in `dist/`. CGO_ENABLED=0, no C compiler needed. See ADR-069.
-- **Shared profile filter**: `indexer.FilterByProfile` (`internal/indexer/filter.go`) is the single source of truth for profile-based torrent result filtering (resolution, source, exclude tags). Used by both the monitor auto-grab worker and the `GET /media-profiles/{id}/test-search` endpoint. Never duplicate this logic. See ADR-072.
+- **Shared profile filter**: `indexer.FilterByProfile` (`backend/internal/indexer/filter.go`) is the single source of truth for profile-based torrent result filtering (resolution, source, exclude tags). Used by both the monitor auto-grab worker and the `GET /media-profiles/{id}/test-search` endpoint. Never duplicate this logic. See ADR-072.
 - **CI/CD release pipeline**: GitHub Actions workflow (`.github/workflows/release.yml`) triggers on `v*` tag push, builds frontend + runs Go code generation + cross-compiles 3 platform binaries, creates GitHub Release with assets, and syncs the deploy script to a public Gist. See ADR-073.
 - **Proxmox LXC deployment**: `deploy/proxmox-lxc.sh` is an interactive script that creates a Debian 12 LXC container on Proxmox, downloads the binary from GitHub Release (via PAT), sets up systemd service, optionally configures CIFS NAS mount, supports DB migration from existing installs, and installs an in-place update script. See ADR-073.
-- **YAML escape sanitization**: Prowlarr upstream YAML definitions use escape sequences (`\/`, `\d`) that Go's `yaml.v3` (YAML 1.2) rejects. `SanitizeYAML` (`internal/indexer/cardigann/sanitize.go`) preprocesses double-quoted strings before parsing, and `remote.go` uses regex fallback for ID extraction when header parse fails. See ADR-074.
+- **YAML escape sanitization**: Prowlarr upstream YAML definitions use escape sequences (`\/`, `\d`) that Go's `yaml.v3` (YAML 1.2) rejects. `SanitizeYAML` (`backend/internal/indexer/cardigann/sanitize.go`) preprocesses double-quoted strings before parsing, and `remote.go` uses regex fallback for ID extraction when header parse fails. See ADR-074.
 
 ## Development Status
 
-Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, remote indexer definitions from Prowlarr/Indexers GitHub tarball with disk cache and background refresh, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management), **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, search result season/episode title parsing with match highlighting, episode download status, qBittorrent client adapter with authenticated torrent fetch and file upload, download path + category settings, download queue worker with seeding rules and duplicate handling, downloads section on media detail page with progress/retry/delete/replace and torrent file listing, import worker with hardlink/copy to library and seed cleanup, release folder isolation with companion file import, full delete with torrent/file/empty-dir cleanup, post-import resync and frontend auto-refresh, FK constraint rebuild migration and startup orphan/torrent reconciliation, event bus + SSE refactor replacing polling with real-time push, media item status recalculation based on file presence, path traversal protection with comprehensive test suite, monitor worker with auto-grab for movies and series based on quality profiles and season pack preference setting, atomic Add-to-Library with external episode prefetch and DB transaction via Store.WithTx, season monitor modal when enabling monitoring on detail page with atomic seasonMonitors upsert on PATCH, configurable worker poll intervals with live settings notification and dynamic ticker reset, typed settings API replacing generic key-value array with explicit fields per setting), **Phase 4** (multi-copy handling, Library Copies UI for per-release file management via completed download records, user management with JWT + refresh token auth, login/profile/users/registration views, auth middleware on all routes), and **Phase 4.5** (security hardening — AES-256-GCM at-rest encryption for sensitive settings, unified secrets management moving indexer credentials to Settings table, master key via `MEDIAGATE_SECRET_KEY`, idempotent startup migrations), **Phase 4.6** (initial setup wizard — 6-step onboarding flow, unauthenticated first-user creation, dynamic library base path with `BasePathProvider` interface, DB-backed `LIBRARY_BASEPATH` with env fallback, lenient server bootstrap without users), **Phase 4.7** (discover page — dynamic home page with recently added from libraries, TMDB trending/popular movies/series, 4 independent API endpoints with graceful degradation, `DiscoverItem` schema, skeleton loading states), and **Phase 4.8** (Cardigann engine hardening — cookie login, charset encoding, URL fixes, search headers, JSON response parsing with 4 pattern support, FlareSolverr proxy integration, fuzzy definition picker, info settings display, indexer test scoping, try-it-out query + overflow fixes, media detail search query fallback), and **Phase 4.9** (download retry with exponential backoff — 5-attempt retry with 30s→1h backoff for transient qBit/indexer failures, qBit health check before send pass, retry state on Download model, UI error display and countdown), and **Phase 5.0** (cross-platform prod builds — pure-Go SQLite driver replacing CGO-dependent mattn/go-sqlite3, multi-stage Dockerfile.build with Node frontend + Go cross-compile, Makefile targets for linux/amd64 + darwin/arm64 + windows/amd64, CGO_ENABLED=0), and **Phase 5.1** (profile test search — `GET /media-profiles/{id}/test-search` endpoint with shared `indexer.FilterByProfile` function as single source of truth for profile-based filtering, 3-step wizard modal with TMDB/TVDB media search and filtered indexer results showing auto-grab pick), and **Phase 5.2** (CI/CD + Proxmox LXC deployment — GitHub Actions release pipeline triggered by semver tags building 3 platform binaries as GitHub Releases, public Gist sync for deploy script, interactive Proxmox LXC creation with systemd service and optional CIFS NAS mount and DB migration, in-place update script), and **Phase 5.3** (branding — custom logo replacing text "MG" placeholder on login, setup, and sidebar, page title set to "MediaGate", levendula text color with white glow matching logo inner lines), and **Phase 5.4** (YAML escape sanitization — `SanitizeYAML` preprocessor for Prowlarr upstream definitions with invalid YAML 1.2 escapes, regex fallback for ID extraction in remote/cached definition loading). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.
+Project has completed **Phase 0** (scaffolding), **Phase 0.5** (frontend layout), **Phase 0.75** (libraries & catalog sync), **Phase 1a** (TMDB/TVDB integration, settings, media matching & job history persistence), **Phase 2** (indexer integration — Cardigann engine, remote indexer definitions from Prowlarr/Indexers GitHub tarball with disk cache and background refresh, indexer management UI, search results UI, per-indexer seeding rules), and is progressing through **Phase 1b** (core media management), **Phase 3** (download management — Download model + CRUD API, IndexerSearchModal with item/season/episode search, search result season/episode title parsing with match highlighting, episode download status, qBittorrent client adapter with authenticated torrent fetch and file upload, download path + category settings, download queue worker with seeding rules and duplicate handling, downloads section on media detail page with progress/retry/delete/replace and torrent file listing, import worker with hardlink/copy to library and seed cleanup, release folder isolation with companion file import, full delete with torrent/file/empty-dir cleanup, post-import resync and frontend auto-refresh, FK constraint rebuild migration and startup orphan/torrent reconciliation, event bus + SSE refactor replacing polling with real-time push, media item status recalculation based on file presence, path traversal protection with comprehensive test suite, monitor worker with auto-grab for movies and series based on quality profiles and season pack preference setting, atomic Add-to-Library with external episode prefetch and DB transaction via Store.WithTx, season monitor modal when enabling monitoring on detail page with atomic seasonMonitors upsert on PATCH, configurable worker poll intervals with live settings notification and dynamic ticker reset, typed settings API replacing generic key-value array with explicit fields per setting), **Phase 4** (multi-copy handling, Library Copies UI for per-release file management via completed download records, user management with JWT + refresh token auth, login/profile/users/registration views, auth middleware on all routes), and **Phase 4.5** (security hardening — AES-256-GCM at-rest encryption for sensitive settings, unified secrets management moving indexer credentials to Settings table, master key via `MEDIAGATE_SECRET_KEY`, idempotent startup migrations), **Phase 4.6** (initial setup wizard — 6-step onboarding flow, unauthenticated first-user creation, dynamic library base path with `BasePathProvider` interface, DB-backed `LIBRARY_BASEPATH` with env fallback, lenient server bootstrap without users), **Phase 4.7** (discover page — dynamic home page with recently added from libraries, TMDB trending/popular movies/series, 4 independent API endpoints with graceful degradation, `DiscoverItem` schema, skeleton loading states), and **Phase 4.8** (Cardigann engine hardening — cookie login, charset encoding, URL fixes, search headers, JSON response parsing with 4 pattern support, FlareSolverr proxy integration, fuzzy definition picker, info settings display, indexer test scoping, try-it-out query + overflow fixes, media detail search query fallback), and **Phase 4.9** (download retry with exponential backoff — 5-attempt retry with 30s→1h backoff for transient qBit/indexer failures, qBit health check before send pass, retry state on Download model, UI error display and countdown), and **Phase 5.0** (cross-platform prod builds — pure-Go SQLite driver replacing CGO-dependent mattn/go-sqlite3, multi-stage Dockerfile.build with Node frontend + Go cross-compile, Makefile targets for linux/amd64 + darwin/arm64 + windows/amd64, CGO_ENABLED=0), and **Phase 5.1** (profile test search — `GET /media-profiles/{id}/test-search` endpoint with shared `indexer.FilterByProfile` function as single source of truth for profile-based filtering, 3-step wizard modal with TMDB/TVDB media search and filtered indexer results showing auto-grab pick), and **Phase 5.2** (CI/CD + Proxmox LXC deployment — GitHub Actions release pipeline triggered by semver tags building 3 platform binaries as GitHub Releases, public Gist sync for deploy script, interactive Proxmox LXC creation with systemd service and optional CIFS NAS mount and DB migration, in-place update script), and **Phase 5.3** (branding — custom logo replacing text "MG" placeholder on login, setup, and sidebar, page title set to "MediaGate", levendula text color with white glow matching logo inner lines), and **Phase 5.4** (YAML escape sanitization — `SanitizeYAML` preprocessor for Prowlarr upstream definitions with invalid YAML 1.2 escapes, regex fallback for ID extraction in remote/cached definition loading), and **Phase 5.5** (backend directory restructuring — moved all Go files into `backend/` subdirectory, `api/` stays at repo root shared by both sides, Go module root = `backend/` so zero import path changes needed, updated Makefile/Dockerfile/CI/air config). See `docs/ROADMAP.md` for the full plan and `docs/DECISIONS.md` for ADRs.

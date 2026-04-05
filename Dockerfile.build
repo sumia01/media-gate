@@ -22,12 +22,15 @@ ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
 # Go module download (cached layer)
-WORKDIR /app
-COPY go.mod go.sum ./
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-# Copy source
-COPY . .
+# Copy backend source
+COPY backend/ .
+
+# Copy api/ spec (needed by go:generate — relative path from backend/internal/api/v1)
+COPY api/ /app/api/
 
 # Copy built frontend from stage 1
 COPY --from=frontend /app/frontend/dist/ ./frontend/dist/
