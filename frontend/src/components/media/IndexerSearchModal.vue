@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import client from '@/api/client'
-import type { Indexer, TorrentResult } from '@/types/api'
+import type { Indexer, Library, TorrentResult } from '@/types/api'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import { formatSize } from '@/utils/media'
@@ -16,7 +16,7 @@ import {
 } from '@/utils/torrent'
 
 const props = defineProps<{
-  mediaItemId: number
+  mediaItemId?: number
   imdbId: string
   mediaType: 'movie' | 'series'
   title: string
@@ -24,10 +24,14 @@ const props = defineProps<{
   episodeNumber?: number
   episodeId?: number
   mediaProfile?: ProfileMatchInput
+  // For "Add & Download" flow (preview page — no mediaItemId yet)
+  source?: 'tmdb' | 'tvdb'
+  externalId?: number
 }>()
 
 const emit = defineEmits<{
   close: []
+  added: [mediaItemId: number]
 }>()
 
 // --- State ---
@@ -40,6 +44,14 @@ const loading = ref(false)
 const error = ref('')
 const downloadingIdx = ref<Set<number>>(new Set())
 const downloadedIdx = ref<Set<number>>(new Set())
+
+// --- Add & Download flow (preview context) ---
+const canAddAndDownload = computed(() => props.mediaItemId == null && props.source && props.externalId != null)
+const libraries = ref<Library[]>([])
+const compatibleLibraries = computed(() => libraries.value.filter(l => l.mediaType === props.mediaType))
+const addDownloadIdx = ref<number | null>(null) // which result row triggered the picker
+const selectedLibraryId = ref<number | null>(null)
+const addingDownload = ref(false)
 
 // --- Season/episode matching ---
 const sortedResults = computed(() => {
@@ -87,7 +99,11 @@ const hasProfileMatches = computed(() =>
 // --- Lifecycle ---
 onMounted(async () => {
   document.addEventListener('keydown', onKeydown)
-  await fetchIndexers()
+  const fetches: Promise<void>[] = [fetchIndexers()]
+  if (canAddAndDownload.value) {
+    fetches.push(fetchLibraries())
+  }
+  await Promise.all(fetches)
   search()
 })
 
@@ -103,6 +119,15 @@ function onKeydown(e: KeyboardEvent) {
 async function fetchIndexers() {
   const { data } = await client.GET('/indexers')
   indexers.value = (data?.indexers ?? []).filter((i) => i.enabled)
+}
+
+// --- Fetch libraries (for Add & Download) ---
+async function fetchLibraries() {
+  const { data } = await client.GET('/libraries')
+  libraries.value = data ?? []
+  if (compatibleLibraries.value.length === 1) {
+    selectedLibraryId.value = compatibleLibraries.value[0]!.id
+  }
 }
 
 // --- Search ---
@@ -165,6 +190,64 @@ async function download(result: TorrentResult, idx: number) {
   }
 
   downloadedIdx.value = new Set([...downloadedIdx.value, idx])
+}
+
+// --- Add to Library & Download ---
+function openAddAndDownload(idx: number) {
+  addDownloadIdx.value = idx
+}
+
+async function confirmAddAndDownload() {
+  if (addDownloadIdx.value == null || !selectedLibraryId.value || !props.source || props.externalId == null) return
+
+  const result = results.value[addDownloadIdx.value]
+  if (!result) return
+
+  addingDownload.value = true
+  error.value = ''
+
+  // Step 1: Add to library (creates media item + fetches metadata)
+  const { data: mediaItem, error: addErr } = await client.POST('/libraries/{id}/media', {
+    params: { path: { id: selectedLibraryId.value } },
+    body: {
+      source: props.source,
+      externalId: props.externalId,
+    },
+  })
+
+  if (addErr) {
+    addingDownload.value = false
+    const errBody = addErr as { code?: number }
+    error.value = errBody.code === 409
+      ? 'This media already exists in the selected library'
+      : 'Failed to add media to library'
+    addDownloadIdx.value = null
+    return
+  }
+
+  // Step 2: Create download
+  const { error: dlErr } = await client.POST('/downloads', {
+    body: {
+      mediaItemId: mediaItem!.id,
+      indexerId: result.indexerId,
+      indexerName: result.indexerName,
+      title: result.title,
+      downloadUrl: result.downloadUrl!,
+      detailsUrl: result.detailsUrl,
+      size: result.size,
+      imdbId: result.imdbId || props.imdbId,
+    },
+  })
+
+  addingDownload.value = false
+
+  if (dlErr) {
+    error.value = 'Media added but failed to start download'
+    addDownloadIdx.value = null
+    return
+  }
+
+  emit('added', mediaItem!.id)
 }
 
 // --- Helpers ---
@@ -370,20 +453,29 @@ function formatDate(unix: number): string {
                 >
                   Open
                 </a>
+                <template v-if="props.mediaItemId != null">
+                  <button
+                    v-if="downloadedIdx.has(item.originalIndex)"
+                    class="px-2.5 py-1.5 rounded-md text-xs text-emerald-400"
+                    disabled
+                  >
+                    Added
+                  </button>
+                  <button
+                    v-else
+                    class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
+                    :disabled="downloadingIdx.has(item.originalIndex)"
+                    @click="download(item.result, item.originalIndex)"
+                  >
+                    {{ downloadingIdx.has(item.originalIndex) ? 'Adding...' : 'Download' }}
+                  </button>
+                </template>
                 <button
-                  v-if="downloadedIdx.has(item.originalIndex)"
-                  class="px-2.5 py-1.5 rounded-md text-xs text-emerald-400"
-                  disabled
-                >
-                  Added
-                </button>
-                <button
-                  v-else
+                  v-if="canAddAndDownload"
                   class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
-                  :disabled="downloadingIdx.has(item.originalIndex)"
-                  @click="download(item.result, item.originalIndex)"
+                  @click="openAddAndDownload(item.originalIndex)"
                 >
-                  {{ downloadingIdx.has(item.originalIndex) ? 'Adding...' : 'Download' }}
+                  Add &amp; Download
                 </button>
               </div>
             </td>
@@ -430,20 +522,30 @@ function formatDate(unix: number): string {
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </a>
+              <template v-if="props.mediaItemId != null">
+                <button
+                  v-if="downloadedIdx.has(item.originalIndex)"
+                  class="text-emerald-400"
+                  disabled
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                </button>
+                <button
+                  v-else
+                  class="text-gray-400 hover:text-emerald-300 transition-colors"
+                  :disabled="downloadingIdx.has(item.originalIndex)"
+                  @click="download(item.result, item.originalIndex)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                </button>
+              </template>
               <button
-                v-if="downloadedIdx.has(item.originalIndex)"
-                class="text-emerald-400"
-                disabled
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-              </button>
-              <button
-                v-else
+                v-if="canAddAndDownload"
                 class="text-gray-400 hover:text-emerald-300 transition-colors"
-                :disabled="downloadingIdx.has(item.originalIndex)"
-                @click="download(item.result, item.originalIndex)"
+                title="Add to Library &amp; Download"
+                @click="openAddAndDownload(item.originalIndex)"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
               </button>
             </span>
           </div>
@@ -451,6 +553,61 @@ function formatDate(unix: number): string {
       </div>
 
       <p class="mt-3 text-xs text-gray-600">{{ results.length }} results</p>
+    </div>
+
+    <!-- Library picker overlay (Add & Download flow) -->
+    <div v-if="addDownloadIdx != null" class="absolute inset-0 z-10 flex items-center justify-center bg-black/60 rounded-xl">
+      <div class="bg-[#0f1225] border border-violet-900/30 rounded-xl p-6 shadow-2xl w-full max-w-sm">
+        <h3 class="text-base font-semibold text-gray-100 mb-4">Add to Library &amp; Download</h3>
+
+        <div v-if="!compatibleLibraries.length" class="py-4 text-center text-gray-500 text-sm">
+          No {{ mediaType }} libraries found. Create one first.
+        </div>
+
+        <template v-else>
+          <div class="space-y-2 mb-4">
+            <button
+              v-for="lib in compatibleLibraries"
+              :key="lib.id"
+              class="w-full text-left px-4 py-3 rounded-lg border transition-colors duration-200"
+              :class="selectedLibraryId === lib.id
+                ? 'bg-violet-600/10 border-violet-500/40'
+                : 'bg-[#161b2e] border-violet-900/20 hover:border-violet-500/30'"
+              @click="selectedLibraryId = lib.id"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-200">{{ lib.name }}</p>
+                  <p class="text-xs text-gray-500 mt-0.5 font-mono">{{ lib.path }}</p>
+                </div>
+                <div
+                  v-if="selectedLibraryId === lib.id"
+                  class="w-4 h-4 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0"
+                >
+                  <span class="text-white text-xs">&#10003;</span>
+                </div>
+              </div>
+            </button>
+          </div>
+        </template>
+
+        <div class="flex gap-3">
+          <button
+            class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!selectedLibraryId || addingDownload"
+            @click="confirmAddAndDownload"
+          >
+            {{ addingDownload ? 'Adding...' : 'Add & Download' }}
+          </button>
+          <button
+            class="px-4 py-2 rounded-lg border border-gray-700/50 text-gray-400 hover:text-gray-300 text-sm transition-colors duration-200"
+            :disabled="addingDownload"
+            @click="addDownloadIdx = null"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   </BaseModal>
 </template>

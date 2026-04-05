@@ -1157,3 +1157,23 @@ Changes:
 5. **Frontend** — optional text input in Settings view and setup wizard below the Download Path folder browser
 
 **Rationale**: Minimal, backwards-compatible change — when `qbit_save_path` is empty (default), behavior is identical to before. No filesystem validation on the remote path since MediaGate cannot verify paths on the qBittorrent host. The local `qbit_download_path` continues to be validated against `LIBRARY_BASEPATH` as before.
+
+---
+
+## ADR-083: Check Indexers & Add-and-Download from media preview page
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: When browsing TMDB/TVDB search results on the media preview page (`/search/:source/:externalId`), users had no way to check indexer availability before committing to "Add to Library". The only option was to add the item first, then search indexers from the media detail page. This added unnecessary steps when the user just wanted to see if a release was available.
+
+**Decision**: Added two features to the media preview page:
+
+1. **Check Indexers button** — "Check Indexers" button on the preview page top bar (next to "Add to Library") opens `IndexerSearchModal` in browse-only mode. `mediaItemId` prop is now optional; when absent, Download buttons are hidden (both desktop table and mobile cards). The modal shows search results for browsing without requiring a local media item.
+
+2. **Add & Download button** — Each torrent result row in the browse-only modal shows an "Add & Download" button (desktop: text button, mobile: `+` icon). Clicking it opens an inline library picker overlay within the modal. On confirm: `POST /libraries/{id}/media` (creates media item + fetches metadata) → `POST /downloads` (starts torrent download) → navigates to the new media detail page. 409 duplicate detection preserved.
+
+Changes:
+1. **IndexerSearchModal.vue** — `mediaItemId` optional, new `source`/`externalId` optional props, new `added` emit, `canAddAndDownload` computed, library fetch on mount, inline library picker overlay, two-step `confirmAddAndDownload` (add-to-library → create download → emit)
+2. **MediaPreviewView.vue** — "Check Indexers" button (visible when `imdbId` present), `IndexerSearchModal` with `source`/`externalId` props, `@added` handler navigates to media detail
+
+**Rationale**: Reuses existing `IndexerSearchModal` and add-to-library API — no new backend endpoints needed. The library picker overlay is inline within the existing modal (no nested modal stack), styled consistently with `AddToLibraryModal`. Browse-only mode (no `mediaItemId`) is backwards-compatible — existing callers from `MediaDetailView` pass `mediaItemId` and see the same Download buttons as before.

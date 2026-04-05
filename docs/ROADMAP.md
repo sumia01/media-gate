@@ -270,6 +270,12 @@
 - [x] Frontend: optional text input in Settings view and setup wizard below Download Path folder browser
 - [x] Backwards-compatible: empty `qbit_save_path` = same behavior as before
 
+## Phase 6.3: Check Indexers & Add-and-Download from preview ✅
+→ See ADR-083
+- [x] "Check Indexers" button on media preview page — opens `IndexerSearchModal` in browse-only mode (no `mediaItemId`, Download buttons hidden)
+- [x] "Add & Download" button on each torrent result row — inline library picker overlay, two-step flow: add to library + create download, navigates to media detail page
+- [x] `IndexerSearchModal` refactored: `mediaItemId` optional, new `source`/`externalId` props, `added` emit, library fetch + picker UI
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
