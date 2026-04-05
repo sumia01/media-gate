@@ -6,6 +6,7 @@ import type { ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
 import { parseGenres, profileImageUrl } from '@/utils/media'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
+import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +16,7 @@ const externalSeasons = ref<ExternalSeasonSummary[]>([])
 const loading = ref(false)
 const error = ref('')
 const showAddModal = ref(false)
+const showIndexerSearch = ref(false)
 
 const genres = computed(() => parseGenres(detail.value?.genres))
 
@@ -95,14 +97,23 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
         Back
       </button>
 
-      <button
-        v-if="detail"
-        class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
-        @click="showAddModal = true"
-      >
-        <span class="text-base leading-none">+</span>
-        Add to Library
-      </button>
+      <div v-if="detail" class="flex items-center gap-2">
+        <button
+          v-if="detail.imdbId"
+          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
+          @click="showIndexerSearch = true"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          Check Indexers
+        </button>
+        <button
+          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
+          @click="showAddModal = true"
+        >
+          <span class="text-base leading-none">+</span>
+          Add to Library
+        </button>
+      </div>
     </div>
 
     <ErrorBanner :message="error" />
@@ -283,6 +294,20 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
         :external-seasons="externalSeasons"
         @added="handleAdded"
         @close="showAddModal = false"
+      />
+    </Teleport>
+
+    <!-- Indexer Search Modal -->
+    <Teleport to="body">
+      <IndexerSearchModal
+        v-if="showIndexerSearch && detail && detail.imdbId"
+        :imdb-id="detail.imdbId"
+        :media-type="detail.mediaType as 'movie' | 'series'"
+        :title="detail.title"
+        :source="detail.source as 'tmdb' | 'tvdb'"
+        :external-id="detail.externalId"
+        @close="showIndexerSearch = false"
+        @added="handleAdded"
       />
     </Teleport>
   </div>
