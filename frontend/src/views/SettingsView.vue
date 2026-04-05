@@ -42,6 +42,8 @@ const qbTesting = ref(false)
 
 const qbDownloadPath = ref('')
 const qbDownloadPathDirty = ref(false)
+const qbSavePath = ref('')
+const qbSavePathDirty = ref(false)
 const qbCategory = ref('')
 const qbCategoryDirty = ref(false)
 
@@ -66,7 +68,7 @@ const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
-  qbDownloadPathDirty.value || qbCategoryDirty.value ||
+  qbDownloadPathDirty.value || qbSavePathDirty.value || qbCategoryDirty.value ||
   fsUrlDirty.value ||
   seasonPackPrefDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
@@ -95,6 +97,7 @@ async function fetchSettings() {
     qbUsername.value = s.qbitUsername ?? ''
     qbPassword.value = s.qbitPassword ?? ''
     qbDownloadPath.value = s.qbitDownloadPath ?? ''
+    qbSavePath.value = s.qbitSavePath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
@@ -112,6 +115,7 @@ async function fetchSettings() {
   qbUsernameDirty.value = false
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
+  qbSavePathDirty.value = false
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
@@ -140,6 +144,7 @@ async function saveSettings() {
   if (qbUsernameDirty.value) body.qbitUsername = qbUsername.value
   if (qbPasswordDirty.value && !isMasked(qbPassword.value)) body.qbitPassword = qbPassword.value
   if (qbDownloadPathDirty.value) body.qbitDownloadPath = qbDownloadPath.value
+  if (qbSavePathDirty.value) body.qbitSavePath = qbSavePath.value
   if (qbCategoryDirty.value) body.qbitCategory = qbCategory.value
   if (fsUrlDirty.value) body.flaresolverrUrl = fsUrl.value
   if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
@@ -176,6 +181,7 @@ async function saveSettings() {
     qbUsername.value = s.qbitUsername ?? ''
     qbPassword.value = s.qbitPassword ?? ''
     qbDownloadPath.value = s.qbitDownloadPath ?? ''
+    qbSavePath.value = s.qbitSavePath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
@@ -193,6 +199,7 @@ async function saveSettings() {
   qbUsernameDirty.value = false
   qbPasswordDirty.value = false
   qbDownloadPathDirty.value = false
+  qbSavePathDirty.value = false
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
@@ -467,6 +474,19 @@ onMounted(fetchSettings)
               <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Path</label>
               <p class="text-[10px] text-gray-500 mb-2">Folder where qBittorrent saves downloaded files. Must be within the base path and cannot be a library folder.</p>
               <FolderBrowser v-model="qbDownloadPath" @update:model-value="qbDownloadPathDirty = true" />
+            </div>
+
+            <!-- qBittorrent Save Path (optional) -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">qBittorrent Save Path <span class="text-gray-600 font-normal">(Optional)</span></label>
+              <p class="text-[10px] text-gray-500 mb-2">If your qBittorrent client's NAS mount is at a different path than MediaGate's, enter the absolute path on the qBittorrent host that corresponds to the download path above.</p>
+              <input
+                v-model="qbSavePath"
+                type="text"
+                placeholder="/mnt/nas/downloads"
+                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                @input="qbSavePathDirty = true"
+              />
             </div>
 
             <!-- Category -->

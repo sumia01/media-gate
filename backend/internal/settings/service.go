@@ -29,6 +29,7 @@ const (
 	KeyQBitUsername           = "qbit_username"
 	KeyQBitPassword           = "qbit_password"
 	KeyQBitDownloadPath       = "qbit_download_path"
+	KeyQBitSavePath           = "qbit_save_path"
 	KeyQBitCategory           = "qbit_category"
 	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
 

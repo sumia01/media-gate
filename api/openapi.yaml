@@ -2372,6 +2372,12 @@ components:
           type: string
         qbitDownloadPath:
           type: string
+        qbitSavePath:
+          type: string
+          description: >-
+            Optional override path that qBittorrent uses as save location.
+            Use when qBittorrent's NAS mount differs from MediaGate's.
+            When empty, qbitDownloadPath is sent to qBittorrent.
         qbitCategory:
           type: string
         monitorSeasonPackPreference:

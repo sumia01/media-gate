@@ -10,6 +10,7 @@ const qbUrl = ref('')
 const qbUsername = ref('')
 const qbPassword = ref('')
 const qbDownloadPath = ref('')
+const qbSavePath = ref('')
 const qbCategory = ref('')
 
 const error = ref('')
@@ -25,6 +26,7 @@ onMounted(async () => {
       qbUrl.value = s.qbitUrl ?? ''
       qbUsername.value = s.qbitUsername ?? ''
       qbDownloadPath.value = s.qbitDownloadPath ?? ''
+      qbSavePath.value = s.qbitSavePath ?? ''
       qbCategory.value = s.qbitCategory ?? ''
     }
   } catch {
@@ -66,6 +68,7 @@ async function handleSubmit() {
     if (qbUsername.value) body.qbitUsername = qbUsername.value
     if (qbPassword.value) body.qbitPassword = qbPassword.value
     if (qbDownloadPath.value) body.qbitDownloadPath = qbDownloadPath.value
+    if (qbSavePath.value) body.qbitSavePath = qbSavePath.value
     if (qbCategory.value) body.qbitCategory = qbCategory.value
 
     const { error: err } = await client.PUT('/settings', { body })
@@ -148,6 +151,17 @@ async function handleSubmit() {
           <label class="block text-sm font-medium text-gray-400 mb-1.5">Download Path</label>
           <FolderBrowser v-model="qbDownloadPath" />
           <p class="text-xs text-gray-500 mt-1">Where torrent files are downloaded before import. Must be within the library base path.</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-400 mb-1.5">qBittorrent Save Path <span class="text-gray-600 font-normal">(Optional)</span></label>
+          <input
+            v-model="qbSavePath"
+            type="text"
+            class="w-full px-3 py-2.5 rounded-lg bg-[#161b2e] border border-violet-800/30 text-gray-200 text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/50 transition-colors"
+            placeholder="/mnt/nas/downloads"
+          />
+          <p class="text-xs text-gray-500 mt-1">If your qBittorrent's NAS mount path differs from MediaGate's, enter the absolute path on the qBittorrent host.</p>
         </div>
 
         <div>

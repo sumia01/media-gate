@@ -218,6 +218,8 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			s.QbitPassword = &v
 		case settings.KeyQBitDownloadPath:
 			s.QbitDownloadPath = &v
+		case settings.KeyQBitSavePath:
+			s.QbitSavePath = &v
 		case settings.KeyQBitCategory:
 			s.QbitCategory = &v
 		case settings.KeyMonitorSeasonPackPref:
@@ -303,6 +305,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.QbitDownloadPath != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitDownloadPath, Value: *s.QbitDownloadPath})
+	}
+	if s.QbitSavePath != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitSavePath, Value: *s.QbitSavePath})
 	}
 	if s.QbitCategory != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyQBitCategory, Value: *s.QbitCategory})

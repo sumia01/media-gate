@@ -262,6 +262,14 @@
 - [x] `KeyWorkerMetadataRefreshInterval` setting (default 6 hours, min 1 hour, configurable in UI)
 - [x] Settings UI: metadata refresh interval input in Workers section
 
+## Phase 6.2: Remote download path mapping ✅
+→ See ADR-082
+- [x] `qbit_save_path` optional setting — override path sent to qBittorrent as `savepath` when NAS mount differs from MediaGate's
+- [x] Download service reads `qbit_save_path`; if non-empty uses it for qBit, keeps local `qbit_download_path` on download record for import/sync
+- [x] No validation on remote path (it's on the qBit host, not MediaGate's filesystem)
+- [x] Frontend: optional text input in Settings view and setup wizard below Download Path folder browser
+- [x] Backwards-compatible: empty `qbit_save_path` = same behavior as before
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
