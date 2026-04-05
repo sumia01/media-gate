@@ -1140,3 +1140,20 @@ Result: handlers are 5-15 line HTTP adapters (validate → call service → map 
 4. **Settings UI** — `workerMetadataRefreshInterval` field in OpenAPI Settings schema, convert.go bidirectional mapping, SettingsView.vue input (min 3600s / 1 hour, default 21600s / 6 hours).
 
 **Rationale**: Centralizing TMDB/TVDB client access in matching.Service (via the existing private `cachedTMDB`/`cachedTVDB` and `fetchEpisodesFromSource`) avoids duplicating API client logic. Only fetching new seasons (not delete-all+recreate) prevents briefly removing episodes from the DB, which could confuse the concurrently running monitor worker. Skipping ended/canceled series avoids wasting API calls on shows that won't get new seasons. The 6-hour default is appropriate since metadata changes infrequently (new seasons appear weeks/months apart). The implicit monitoring behavior (missing SeasonMonitor row = monitored) means newly discovered seasons are automatically eligible for auto-grab without any user intervention.
+
+## ADR-082: Remote download path mapping for different NAS mounts
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: When MediaGate and qBittorrent run in separate LXC containers, they may mount the same NAS storage at different paths (e.g. MediaGate sees `/mnt/media/downloads`, qBittorrent sees `/mnt/truenas/downloads`). Previously, `qbit_download_path` was used both as the path sent to qBittorrent's `savepath` and as the local path for import/sync/hardlink operations. This only worked when both hosts used identical mount paths.
+
+**Decision**: Added an optional `qbit_save_path` setting (`KeyQBitSavePath`) that, when non-empty, is sent to qBittorrent as the `savepath` instead of `qbit_download_path`. The download record's `SavePath` field continues to store the local `qbit_download_path` so that importer, sync, and hardlink operations work against the correct local filesystem path.
+
+Changes:
+1. **OpenAPI spec** — `qbitSavePath` string field on `Settings` schema
+2. **Settings constant** — `KeyQBitSavePath = "qbit_save_path"` (no validation — it's a remote path on the qBit host)
+3. **API converter** — bidirectional mapping in `settingsToAPI`/`settingsFromAPI`
+4. **Download service** — `sendPending()` reads `qbit_save_path`; if non-empty, uses it as `opts.SavePath` for `AddTorrentFile`; `dl.SavePath` remains the local `qbit_download_path`
+5. **Frontend** — optional text input in Settings view and setup wizard below the Download Path folder browser
+
+**Rationale**: Minimal, backwards-compatible change — when `qbit_save_path` is empty (default), behavior is identical to before. No filesystem validation on the remote path since MediaGate cannot verify paths on the qBittorrent host. The local `qbit_download_path` continues to be validated against `LIBRARY_BASEPATH` as before.

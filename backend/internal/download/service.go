@@ -95,6 +95,10 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 	now := time.Now()
 
 	downloadPath := s.settings.GetWithDefault(settings.KeyQBitDownloadPath, "")
+	savePath := s.settings.GetWithDefault(settings.KeyQBitSavePath, "")
+	if savePath == "" {
+		savePath = downloadPath
+	}
 	category := s.settings.GetWithDefault(settings.KeyQBitCategory, "media-gate-dl")
 
 	if category != "" {
@@ -112,7 +116,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		}
 
 		opts := qbittorrent.AddTorrentOptions{
-			SavePath: downloadPath,
+			SavePath: savePath,
 			Category: category,
 		}
 
