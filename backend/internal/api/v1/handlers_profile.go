@@ -2,10 +2,12 @@ package apiv1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -118,7 +120,11 @@ func (h *Handlers) TestMediaProfileSearch(ctx context.Context, req TestMediaProf
 		return nil, err
 	}
 
-	filtered := indexer.FilterByMediaProfile(results, profile)
+	var globalTags []string
+	if raw, err := h.settings.Get(settings.KeyGlobalExcludeTags); err == nil && raw != "" {
+		_ = json.Unmarshal([]byte(raw), &globalTags)
+	}
+	filtered := indexer.FilterByMediaProfile(results, profile, globalTags...)
 
 	apiResults := make([]TorrentResult, len(filtered))
 	for i := range filtered {

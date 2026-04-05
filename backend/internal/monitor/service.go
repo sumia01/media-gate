@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strconv"
 	"time"
@@ -356,7 +357,20 @@ func (s *Service) filterByProfile(results []indexer.TorrentResult, item *store.M
 	if profile == nil {
 		return results
 	}
-	return indexer.FilterByMediaProfile(results, profile)
+	globalTags := s.loadGlobalExcludeTags()
+	return indexer.FilterByMediaProfile(results, profile, globalTags...)
+}
+
+func (s *Service) loadGlobalExcludeTags() []string {
+	raw, err := s.settings.Get(settings.KeyGlobalExcludeTags)
+	if err != nil || raw == "" {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return nil
+	}
+	return tags
 }
 
 func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {

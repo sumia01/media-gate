@@ -26,7 +26,8 @@ func FilterByProfile(results []TorrentResult, resolutions, sources, excludeTags 
 }
 
 // FilterByMediaProfile unmarshals profile criteria from a MediaProfile and applies FilterByProfile.
-func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile) []TorrentResult {
+// Optional globalExcludeTags are merged with the profile's own exclude tags.
+func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile, globalExcludeTags ...string) []TorrentResult {
 	var resolutions, sources, excludeTags []string
 	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
 	if profile.Sources != "" {
@@ -35,5 +36,6 @@ func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile) 
 	if profile.ExcludeTags != "" {
 		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
 	}
+	excludeTags = append(excludeTags, globalExcludeTags...)
 	return FilterByProfile(results, resolutions, sources, excludeTags)
 }

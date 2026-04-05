@@ -246,6 +246,11 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			s.OnboardingCompleted = &b
 		case settings.KeyFlareSolverrURL:
 			s.FlaresolverrUrl = &v
+		case settings.KeyGlobalExcludeTags:
+			var tags []string
+			if err := json.Unmarshal([]byte(v), &tags); err == nil {
+				s.GlobalExcludeTags = &tags
+			}
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -325,6 +330,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.FlaresolverrUrl != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyFlareSolverrURL, Value: *s.FlaresolverrUrl})
+	}
+	if s.GlobalExcludeTags != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyGlobalExcludeTags, Value: marshalJSON(*s.GlobalExcludeTags)})
 	}
 	return kvs
 }
