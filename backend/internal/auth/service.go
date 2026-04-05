@@ -183,10 +183,6 @@ func (s *Service) RevokeRefreshToken(token string) error {
 	return s.store.DeleteRefreshToken(hashToken(token))
 }
 
-func (s *Service) RevokeAllUserTokens(userID uint) error {
-	return s.store.DeleteRefreshTokensByUser(userID)
-}
-
 func (s *Service) CleanupExpiredTokens() error {
 	return s.store.DeleteExpiredRefreshTokens()
 }

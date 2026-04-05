@@ -10,7 +10,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +17,6 @@ import (
 
 var (
 	ErrTorrentNotFound = errors.New("torrent not found")
-	btihRegexp         = regexp.MustCompile(`(?i)btih:([0-9a-f]{40})`)
 )
 
 type Client struct {
@@ -101,40 +99,6 @@ func (c *Client) ensureAuthenticated() error {
 		return c.authenticate()
 	}
 	return nil
-}
-
-// AddTorrent adds a torrent by magnet link or URL. Returns the info hash if extractable from the magnet URI.
-func (c *Client) AddTorrent(downloadURL string, opts AddTorrentOptions) (string, error) {
-	if err := c.ensureAuthenticated(); err != nil {
-		return "", fmt.Errorf("authentication failed: %w", err)
-	}
-
-	fields := map[string]string{
-		"urls": downloadURL,
-	}
-	if opts.SavePath != "" {
-		fields["savepath"] = opts.SavePath
-	}
-	if opts.Category != "" {
-		fields["category"] = opts.Category
-	}
-	if opts.Tags != "" {
-		fields["tags"] = opts.Tags
-	}
-	if opts.Paused {
-		fields["paused"] = "true"
-	}
-
-	body, err := c.postMultipart("/api/v2/torrents/add", fields)
-	if err != nil {
-		return "", fmt.Errorf("adding torrent: %w", err)
-	}
-
-	if strings.TrimSpace(string(body)) == "Fails." {
-		return "", fmt.Errorf("qBittorrent rejected the torrent")
-	}
-
-	return extractHash(downloadURL), nil
 }
 
 // EnsureCategory creates a category in qBittorrent if it doesn't already exist.
@@ -329,48 +293,6 @@ func (c *Client) postForm(path string, values url.Values) ([]byte, error) {
 	return data, nil
 }
 
-// postMultipart performs an authenticated multipart POST. Retries once on 403.
-func (c *Client) postMultipart(path string, fields map[string]string) ([]byte, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	send := func() ([]byte, int, error) {
-		var buf bytes.Buffer
-		w := multipart.NewWriter(&buf)
-		for k, v := range fields {
-			if err := w.WriteField(k, v); err != nil {
-				return nil, 0, fmt.Errorf("writing multipart field %q: %w", k, err)
-			}
-		}
-		if err := w.Close(); err != nil {
-			return nil, 0, fmt.Errorf("closing multipart writer: %w", err)
-		}
-		return c.doRequest(http.MethodPost, path, &buf, w.FormDataContentType())
-	}
-
-	data, statusCode, err := send()
-	if err != nil {
-		return nil, err
-	}
-
-	if statusCode == http.StatusForbidden {
-		c.sid = ""
-		if err := c.authenticate(); err != nil {
-			return nil, fmt.Errorf("re-authentication failed: %w", err)
-		}
-		data, statusCode, err = send()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if statusCode != http.StatusOK {
-		return nil, fmt.Errorf("qBittorrent API returned %d: %s", statusCode, string(data))
-	}
-
-	return data, nil
-}
-
 // doRequest executes an HTTP request with the SID cookie set.
 func (c *Client) doRequest(method, path string, body io.Reader, contentType string) ([]byte, int, error) {
 	req, err := http.NewRequest(method, c.baseURL+path, body)
@@ -397,15 +319,6 @@ func (c *Client) doRequest(method, path string, body io.Reader, contentType stri
 	}
 
 	return data, resp.StatusCode, nil
-}
-
-// extractHash attempts to extract the info hash from a magnet URI.
-func extractHash(magnetURL string) string {
-	matches := btihRegexp.FindStringSubmatch(magnetURL)
-	if len(matches) >= 2 {
-		return strings.ToLower(matches[1])
-	}
-	return ""
 }
 
 // AddTorrentOptions configures optional parameters for adding a torrent.

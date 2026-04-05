@@ -1,7 +1,6 @@
 package sse
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -71,17 +70,6 @@ func (b *Broker) Broadcast(eventType string, data []byte) {
 				"event", eventType)
 		}
 	}
-}
-
-// BroadcastJSON marshals payload to JSON and broadcasts it.
-func (b *Broker) BroadcastJSON(eventType string, payload any) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		slog.Error("sse: failed to marshal event payload",
-			"event", eventType, "error", err)
-		return
-	}
-	b.Broadcast(eventType, data)
 }
 
 // ServeHTTP implements http.Handler for the SSE endpoint.

@@ -11,7 +11,6 @@ const (
 	DownloadSentToClient EventType = "download.sent_to_client"
 	DownloadFailed       EventType = "download.failed"
 	DownloadCompleted    EventType = "download.completed"
-	ImportStarted        EventType = "download.import_started"
 	ImportCompleted      EventType = "download.import_completed"
 	ImportFailed         EventType = "download.import_failed"
 	SeedingCompleted     EventType = "download.seeding_completed"
@@ -30,12 +29,9 @@ const (
 
 // Media item events.
 const (
-	MediaItemSynced    EventType = "media.item_synced"
-	MediaItemRemoved   EventType = "media.item_removed"
-	MediaItemMatched   EventType = "media.item_matched"
-	MediaItemDeleteReq EventType = "media.item_delete_requested"
-	MediaItemDeleted   EventType = "media.item_deleted"
-	ResyncCompleted    EventType = "media.resync_completed"
+	MediaItemMatched EventType = "media.item_matched"
+	MediaItemDeleted EventType = "media.item_deleted"
+	ResyncCompleted  EventType = "media.resync_completed"
 )
 
 // Monitor worker events.
@@ -90,16 +86,6 @@ type MediaItemPayload struct {
 	LibraryID   uint   `json:"libraryId"`
 	Title       string `json:"title,omitempty"`
 	PosterPath  string `json:"posterPath,omitempty"`
-}
-
-// MediaItemDeletePayload carries data needed for async delete cleanup.
-type MediaItemDeletePayload struct {
-	MediaItemID   uint     `json:"mediaItemId"`
-	LibraryID     uint     `json:"libraryId"`
-	TorrentHashes []string `json:"torrentHashes,omitempty"`
-	FilePaths     []string `json:"filePaths,omitempty"`
-	PosterPath    string   `json:"posterPath,omitempty"`
-	LibraryPath   string   `json:"libraryPath,omitempty"`
 }
 
 // ResyncPayload carries resync event data.
