@@ -2,7 +2,6 @@ package apiv1
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -25,7 +24,8 @@ func (h *Handlers) ListMediaProfiles(_ context.Context, _ ListMediaProfilesReque
 }
 
 func (h *Handlers) CreateMediaProfile(_ context.Context, req CreateMediaProfileRequestObject) (CreateMediaProfileResponseObject, error) {
-	profile := mediaProfileFromAPI(req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
+	profile := &store.MediaProfile{}
+	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.CreateMediaProfile(profile); err != nil {
 		return CreateMediaProfile400JSONResponse{
@@ -64,7 +64,7 @@ func (h *Handlers) UpdateMediaProfile(_ context.Context, req UpdateMediaProfileR
 		return nil, err
 	}
 
-	updateMediaProfileFromAPI(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
+	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.UpdateMediaProfile(profile); err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func (h *Handlers) TestMediaProfileSearch(ctx context.Context, req TestMediaProf
 		return nil, err
 	}
 
-	filtered := applyProfileFilter(results, profile)
+	filtered := indexer.FilterByMediaProfile(results, profile)
 
 	apiResults := make([]TorrentResult, len(filtered))
 	for i := range filtered {
@@ -131,17 +131,4 @@ func (h *Handlers) TestMediaProfileSearch(ctx context.Context, req TestMediaProf
 		FilteredCount: len(filtered),
 		Results:       apiResults,
 	}, nil
-}
-
-func applyProfileFilter(results []indexer.TorrentResult, profile *store.MediaProfile) []indexer.TorrentResult {
-	var resolutions, sources, excludeTags []string
-	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
-	if profile.Sources != "" {
-		_ = json.Unmarshal([]byte(profile.Sources), &sources)
-	}
-	if profile.ExcludeTags != "" {
-		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
-	}
-
-	return indexer.FilterByProfile(results, resolutions, sources, excludeTags)
 }

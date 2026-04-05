@@ -385,6 +385,13 @@ func derefInt(p *int) int {
 	return *p
 }
 
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func scanEntriesToAPI(entries []library.ScanEntry) []ScanEntry {
 	result := make([]ScanEntry, len(entries))
 	for i, e := range entries {
@@ -412,22 +419,7 @@ func marshalJSON(v any) string {
 	return string(b)
 }
 
-func mediaProfileFromAPI(name string, resolutions, languages []string, sources, excludeTags *[]string) *store.MediaProfile {
-	p := &store.MediaProfile{
-		Name:        name,
-		Resolutions: marshalJSON(resolutions),
-		Languages:   marshalJSON(languages),
-	}
-	if sources != nil {
-		p.Sources = marshalJSON(*sources)
-	}
-	if excludeTags != nil {
-		p.ExcludeTags = marshalJSON(*excludeTags)
-	}
-	return p
-}
-
-func updateMediaProfileFromAPI(p *store.MediaProfile, name string, resolutions, languages []string, sources, excludeTags *[]string) {
+func applyProfileFields(p *store.MediaProfile, name string, resolutions, languages []string, sources, excludeTags *[]string) {
 	p.Name = name
 	p.Resolutions = marshalJSON(resolutions)
 	p.Languages = marshalJSON(languages)

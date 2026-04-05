@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strconv"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
+	"github.com/sumia01/media-gate/internal/worker"
 )
 
 const defaultPollInterval = 15 * time.Minute
@@ -32,57 +32,30 @@ type Service struct {
 	indexerSvc *indexer.Service
 	settings   *settings.Service
 	bus        *eventbus.Bus
-	stopCh     chan struct{}
+	loop       *worker.Loop
 }
 
 func NewService(s store.Store, indexerSvc *indexer.Service, settingsSvc *settings.Service, bus *eventbus.Bus) *Service {
-	return &Service{
+	svc := &Service{
 		store:      s,
 		indexerSvc: indexerSvc,
 		settings:   settingsSvc,
 		bus:        bus,
-		stopCh:     make(chan struct{}),
 	}
+	svc.loop = worker.New(worker.Config{
+		Name:            "monitor",
+		DefaultInterval: defaultPollInterval,
+		IntervalKey:     settings.KeyWorkerMonitorInterval,
+		Settings:        settingsSvc,
+		Process:         svc.processOnce,
+		StartupDelay:    30 * time.Second,
+	})
+	return svc
 }
 
-func (s *Service) Start() {
-	go s.run()
-}
+func (s *Service) Start() { s.loop.Start() }
 
-func (s *Service) Stop() {
-	close(s.stopCh)
-}
-
-func (s *Service) run() {
-	settingsCh := s.settings.Subscribe()
-	interval := s.settings.GetDurationWithDefault(settings.KeyWorkerMonitorInterval, defaultPollInterval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	slog.Info("monitor worker started", "interval", interval)
-
-	// Run once after a short startup delay to let other services initialize.
-	time.Sleep(30 * time.Second)
-	s.processOnce()
-
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.processOnce()
-		case key := <-settingsCh:
-			if key == settings.KeyWorkerMonitorInterval {
-				newInterval := s.settings.GetDurationWithDefault(settings.KeyWorkerMonitorInterval, defaultPollInterval)
-				if newInterval != interval {
-					interval = newInterval
-					ticker.Reset(interval)
-					slog.Info("monitor interval updated", "interval", interval)
-				}
-			}
-		}
-	}
-}
+func (s *Service) Stop() { s.loop.Stop() }
 
 func (s *Service) processOnce() {
 	items, err := s.store.ListMonitoredMediaItems()
@@ -383,17 +356,7 @@ func (s *Service) filterByProfile(results []indexer.TorrentResult, item *store.M
 	if profile == nil {
 		return results
 	}
-
-	var resolutions, sources, excludeTags []string
-	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
-	if profile.Sources != "" {
-		_ = json.Unmarshal([]byte(profile.Sources), &sources)
-	}
-	if profile.ExcludeTags != "" {
-		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
-	}
-
-	return indexer.FilterByProfile(results, resolutions, sources, excludeTags)
+	return indexer.FilterByMediaProfile(results, profile)
 }
 
 func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {

@@ -1062,3 +1062,26 @@ Intentionally kept items after deeper analysis:
 **Decision**: Added a synchronous `connecting` flag (module-scoped `let connecting = false`). Set to `true` at the top of `connect()` before the async ticket fetch, reset to `false` in `openSSE` (success), `onerror` (failure), and `disconnect()`. Both `connect()` and `useEventStream()` check the flag alongside `eventSource.value`.
 
 **Rationale**: Minimal fix — one boolean flag, no refactoring needed. The flag is synchronous so it's set before any component yields to the event loop, preventing concurrent `connect()` calls. Reset on all exit paths (success, error, explicit disconnect) ensures reconnect logic still works.
+
+---
+
+## ADR-078: Code duplication cleanup — shared providers, worker loop, helpers
+**Date**: 2026-04-05
+**Status**: Accepted
+
+**Context**: Backend deep review identified 11 code duplication patterns. qBittorrent client construction was copy-pasted across 4 locations with no settings invalidation. The Start/Stop/run worker loop was identical in 3 services. Profile filter unpacking, discover handlers, TMDB/TVDB client creation, year parsing, and several conversion helpers were all duplicated.
+
+**Decision**: Introduced three new packages and several helper functions:
+
+1. **`qbittorrent.Provider`** (`backend/internal/integration/qbittorrent/provider.go`) — lazy-cached qBit client with `Client()` and `Invalidate()`. Uses `SettingsGetter` interface to avoid circular import with settings package. Created once in `main.go`, shared by download/importer/handlers. A goroutine subscribes to settings changes and invalidates the cache when qBit URL/username/password change.
+2. **`worker.Loop`** (`backend/internal/worker/loop.go`) — generic ticker-based worker with settings-driven interval, configurable startup delay, and settings-change subscription. Download, importer, and monitor services now embed `*worker.Loop` and only define their `processOnce()`.
+3. **`indexer.FilterByMediaProfile`** — accepts `*store.MediaProfile` directly, unmarshals JSON fields internally. Replaces identical unmarshal+filter code in handlers and monitor.
+4. **`dateutil.ParseYear`** (`backend/internal/dateutil/dateutil.go`) — shared year parser with 1900–2099 validation, replacing two divergent implementations.
+5. **`cachedTMDB`/`cachedTVDB`** on `matching.Service` — mutex-protected client cache keyed by API key, replaces 6 inline `NewClient` calls. Settings tests and discover handlers intentionally left uncached (test clients need fresh keys, discover is infrequent).
+6. **`fetchDiscover` + `toDiscoverItem`** — helper on Handlers struct and unified converter, replacing 3+3 near-identical discover functions.
+7. **`applyProfileFields`** — replaces `mediaProfileFromAPI` + `updateMediaProfileFromAPI` (85% identical).
+8. **`derefString`** — replaces 4-line optional `*string` deref block duplicated in auth handlers.
+
+Intentionally skipped: fetch-by-ID + 404 pattern (Go generics can't express typed response variants cleanly), external detail vs metadata conversion (different purposes, not true duplication).
+
+**Rationale**: Each abstraction was introduced only where 3+ identical copies existed or where the duplication masked a bug (qBit client was never invalidated on settings change despite a comment claiming it was). New packages are minimal — no frameworks, just functions and small structs. The `SettingsGetter` and `SettingsSubscriber` interfaces avoid circular imports without adding complexity.

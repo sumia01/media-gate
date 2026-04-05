@@ -4,9 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"math"
-	"strconv"
-	"strings"
 
+	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
@@ -44,155 +43,102 @@ func (h *Handlers) GetRecentlyAdded(_ context.Context, _ GetRecentlyAddedRequest
 }
 
 func (h *Handlers) GetTrending(_ context.Context, _ GetTrendingRequestObject) (GetTrendingResponseObject, error) {
-	apiKey, err := h.settings.Get(settings.KeyTMDBApiKey)
-	if err != nil || apiKey == "" {
-		return GetTrending200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	client := tmdb.NewClient(apiKey)
-	results, err := client.TrendingAll("week")
+	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
+		results, err := c.TrendingAll("week")
+		if err != nil {
+			return nil, err
+		}
+		out := make([]DiscoverItem, len(results))
+		for i, r := range results {
+			if r.MediaType == "movie" {
+				out[i] = toDiscoverItem(r.ID, r.Title, r.ReleaseDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeMovie)
+			} else {
+				out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
+			}
+		}
+		return out, nil
+	})
 	if err != nil {
-		slog.Warn("discover: trending fetch failed", "error", err)
-		return GetTrending200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	items := make([]DiscoverItem, len(results))
-	for i, r := range results {
-		items[i] = trendingResultToDiscoverItem(r)
+		return nil, err
 	}
 	return GetTrending200JSONResponse{Items: items}, nil
 }
 
 func (h *Handlers) GetPopularMovies(_ context.Context, _ GetPopularMoviesRequestObject) (GetPopularMoviesResponseObject, error) {
-	apiKey, err := h.settings.Get(settings.KeyTMDBApiKey)
-	if err != nil || apiKey == "" {
-		return GetPopularMovies200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	client := tmdb.NewClient(apiKey)
-	results, err := client.PopularMovies()
+	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
+		results, err := c.PopularMovies()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]DiscoverItem, len(results))
+		for i, r := range results {
+			out[i] = toDiscoverItem(r.ID, r.Title, r.ReleaseDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeMovie)
+		}
+		return out, nil
+	})
 	if err != nil {
-		slog.Warn("discover: popular movies fetch failed", "error", err)
-		return GetPopularMovies200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	items := make([]DiscoverItem, len(results))
-	for i, r := range results {
-		items[i] = movieResultToDiscoverItem(r)
+		return nil, err
 	}
 	return GetPopularMovies200JSONResponse{Items: items}, nil
 }
 
 func (h *Handlers) GetPopularSeries(_ context.Context, _ GetPopularSeriesRequestObject) (GetPopularSeriesResponseObject, error) {
-	apiKey, err := h.settings.Get(settings.KeyTMDBApiKey)
-	if err != nil || apiKey == "" {
-		return GetPopularSeries200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	client := tmdb.NewClient(apiKey)
-	results, err := client.PopularTV()
+	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
+		results, err := c.PopularTV()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]DiscoverItem, len(results))
+		for i, r := range results {
+			out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
+		}
+		return out, nil
+	})
 	if err != nil {
-		slog.Warn("discover: popular series fetch failed", "error", err)
-		return GetPopularSeries200JSONResponse{Items: []DiscoverItem{}}, nil
-	}
-
-	items := make([]DiscoverItem, len(results))
-	for i, r := range results {
-		items[i] = tvResultToDiscoverItem(r)
+		return nil, err
 	}
 	return GetPopularSeries200JSONResponse{Items: items}, nil
 }
 
 const tmdbPosterW342 = "https://image.tmdb.org/t/p/w342"
 
-func trendingResultToDiscoverItem(r tmdb.TrendingResult) DiscoverItem {
-	d := DiscoverItem{
-		Source:     DiscoverItemSourceTmdb,
-		ExternalId: r.ID,
+// fetchDiscover handles the common discover pattern: get TMDB API key, create client,
+// call the fetch function, return empty slice on missing key or API error.
+func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, error)) ([]DiscoverItem, error) {
+	apiKey, err := h.settings.Get(settings.KeyTMDBApiKey)
+	if err != nil || apiKey == "" {
+		return []DiscoverItem{}, nil
 	}
-	// Trending /all returns mixed movie+tv with different field names
-	if r.MediaType == "movie" {
-		d.Title = r.Title
-		d.MediaType = DiscoverItemMediaTypeMovie
-		if y := parseYear(r.ReleaseDate); y != nil {
-			d.Year = y
-		}
-	} else {
-		d.Title = r.Name
-		d.MediaType = DiscoverItemMediaTypeSeries
-		if y := parseYear(r.FirstAirDate); y != nil {
-			d.Year = y
-		}
-	}
-	if r.Overview != "" {
-		d.Overview = &r.Overview
-	}
-	if r.PosterPath != "" {
-		u := tmdbPosterW342 + r.PosterPath
-		d.PosterUrl = &u
-	}
-	if r.VoteAverage > 0 {
-		rating := float32(math.Round(r.VoteAverage*10) / 10)
-		d.Rating = &rating
-	}
-	return d
-}
-
-func movieResultToDiscoverItem(r tmdb.MovieResult) DiscoverItem {
-	d := DiscoverItem{
-		Source:     DiscoverItemSourceTmdb,
-		ExternalId: r.ID,
-		Title:      r.Title,
-		MediaType:  DiscoverItemMediaTypeMovie,
-	}
-	if r.Overview != "" {
-		d.Overview = &r.Overview
-	}
-	if y := parseYear(r.ReleaseDate); y != nil {
-		d.Year = y
-	}
-	if r.PosterPath != "" {
-		u := tmdbPosterW342 + r.PosterPath
-		d.PosterUrl = &u
-	}
-	if r.VoteAverage > 0 {
-		rating := float32(math.Round(r.VoteAverage*10) / 10)
-		d.Rating = &rating
-	}
-	return d
-}
-
-func tvResultToDiscoverItem(r tmdb.TVResult) DiscoverItem {
-	d := DiscoverItem{
-		Source:     DiscoverItemSourceTmdb,
-		ExternalId: r.ID,
-		Title:      r.Name,
-		MediaType:  DiscoverItemMediaTypeSeries,
-	}
-	if r.Overview != "" {
-		d.Overview = &r.Overview
-	}
-	if y := parseYear(r.FirstAirDate); y != nil {
-		d.Year = y
-	}
-	if r.PosterPath != "" {
-		u := tmdbPosterW342 + r.PosterPath
-		d.PosterUrl = &u
-	}
-	if r.VoteAverage > 0 {
-		rating := float32(math.Round(r.VoteAverage*10) / 10)
-		d.Rating = &rating
-	}
-	return d
-}
-
-func parseYear(date string) *int {
-	if len(date) < 4 {
-		return nil
-	}
-	y, err := strconv.Atoi(strings.SplitN(date, "-", 2)[0])
+	client := tmdb.NewClient(apiKey)
+	items, err := fetch(client)
 	if err != nil {
-		return nil
+		slog.Warn("discover fetch failed", "error", err)
+		return []DiscoverItem{}, nil
 	}
-	return &y
+	return items, nil
+}
+
+// toDiscoverItem builds a DiscoverItem from common TMDB result fields.
+func toDiscoverItem(id int, title, date, overview, posterPath string, voteAvg float64, mediaType DiscoverItemMediaType) DiscoverItem {
+	d := DiscoverItem{
+		Source:     DiscoverItemSourceTmdb,
+		ExternalId: id,
+		Title:      title,
+		MediaType:  mediaType,
+	}
+	if overview != "" {
+		d.Overview = &overview
+	}
+	if len(date) >= 4 {
+		d.Year = dateutil.ParseYear(date)
+	}
+	if posterPath != "" {
+		u := tmdbPosterW342 + posterPath
+		d.PosterUrl = &u
+	}
+	if voteAvg > 0 {
+		rating := float32(math.Round(voteAvg*10) / 10)
+		d.Rating = &rating
+	}
+	return d
 }

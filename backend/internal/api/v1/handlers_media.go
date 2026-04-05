@@ -116,7 +116,7 @@ func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequest
 	// Remove torrents from qBittorrent (best-effort).
 	itemID := item.ID
 	downloads, _ := h.store.ListDownloads(&itemID, nil)
-	if client, err := h.getQBitClient(); err == nil {
+	if client, err := h.qbit.Client(); err == nil {
 		for _, dl := range downloads {
 			if dl.ClientTorrentHash == "" {
 				continue

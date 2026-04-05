@@ -115,16 +115,27 @@ func main() {
 	defer defRefresher.Stop()
 
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc, cfg.Cookie.Secure)
+	qbitProvider := qbittorrent.NewProvider(settingsSvc, settings.KeyQBitURL, settings.KeyQBitUsername, settings.KeyQBitPassword)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc, cfg.Cookie.Secure, qbitProvider)
+
+	// Invalidate cached qBit client when connection settings change.
+	go func() {
+		ch := settingsSvc.Subscribe()
+		for key := range ch {
+			if key == settings.KeyQBitURL || key == settings.KeyQBitUsername || key == settings.KeyQBitPassword {
+				qbitProvider.Invalidate()
+			}
+		}
+	}()
 
 	// Startup check: reconcile download hashes with torrent client.
-	reconcileDownloadsWithTorrentClient(db, settingsSvc)
+	reconcileDownloadsWithTorrentClient(db, qbitProvider)
 
-	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus)
+	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus, qbitProvider)
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus)
+	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus, qbitProvider)
 	importerSvc.Start()
 	defer importerSvc.Stop()
 
@@ -190,15 +201,11 @@ func main() {
 // still exist in the torrent client. Downloads whose torrents have been
 // removed externally are marked as failed. Best-effort — skipped if qBit
 // is not configured or unreachable.
-func reconcileDownloadsWithTorrentClient(db *store.SQLiteStore, settingsSvc *settings.Service) {
-	url, err := settingsSvc.Get(settings.KeyQBitURL)
-	if err != nil || url == "" {
+func reconcileDownloadsWithTorrentClient(db *store.SQLiteStore, qbit *qbittorrent.Provider) {
+	client, err := qbit.Client()
+	if err != nil {
 		return // qBit not configured
 	}
-	username, _ := settingsSvc.Get(settings.KeyQBitUsername)
-	password, _ := settingsSvc.Get(settings.KeyQBitPassword)
-
-	client := qbittorrent.NewClient(url, username, password)
 	if err := client.TestConnection(); err != nil {
 		slog.Warn("startup: qBittorrent not reachable, skipping torrent reconciliation", "error", err)
 		return

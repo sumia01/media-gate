@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
@@ -51,6 +53,14 @@ type Service struct {
 	httpClient   *http.Client
 	statusRecalc StatusRecalculator
 	bus          *eventbus.Bus
+
+	tmdbMu     sync.Mutex
+	tmdbKey    string
+	tmdbCached *tmdb.Client
+
+	tvdbMu     sync.Mutex
+	tvdbKey    string
+	tvdbCached *tvdb.Client
 }
 
 func NewService(s store.Store, set *settings.Service, posterDir string) *Service {
@@ -83,6 +93,10 @@ func (s *Service) WithStore(st store.Store) *Service {
 		httpClient:   s.httpClient,
 		statusRecalc: s.statusRecalc,
 		bus:          s.bus,
+		tmdbKey:      s.tmdbKey,
+		tmdbCached:   s.tmdbCached,
+		tvdbKey:      s.tvdbKey,
+		tvdbCached:   s.tvdbCached,
 	}
 }
 
@@ -540,7 +554,7 @@ func (s *Service) fetchAndStoreEpisodes(item *store.MediaItem, source, apiKey st
 func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, season int) ([]episodeData, error) {
 	switch source {
 	case "tmdb":
-		client := tmdb.NewClient(apiKey)
+		client := s.cachedTMDB(apiKey)
 		details, err := client.GetTVSeason(externalID, season)
 		if err != nil {
 			return nil, err
@@ -558,7 +572,7 @@ func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, sea
 		}
 		return episodes, nil
 	case "tvdb":
-		client := tvdb.NewClient(apiKey)
+		client := s.cachedTVDB(apiKey)
 		entries, err := client.GetSeriesEpisodes(externalID, season)
 		if err != nil {
 			return nil, err
@@ -592,7 +606,7 @@ func (s *Service) searchSource(query, mediaType string, year *int, source, apiKe
 }
 
 func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Candidate, error) {
-	client := tmdb.NewClient(apiKey)
+	client := s.cachedTMDB(apiKey)
 
 	var candidates []Candidate
 
@@ -611,7 +625,7 @@ func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Cand
 			if r.PosterPath != "" {
 				c.PosterURL = tmdbPosterBase + r.PosterPath
 			}
-			if y := parseYear(r.ReleaseDate); y != nil {
+			if y := dateutil.ParseYear(r.ReleaseDate); y != nil {
 				c.Year = y
 			}
 			c.Confidence = Score(query, year, c.Title, c.Year)
@@ -632,7 +646,7 @@ func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Cand
 			if r.PosterPath != "" {
 				c.PosterURL = tmdbPosterBase + r.PosterPath
 			}
-			if y := parseYear(r.FirstAirDate); y != nil {
+			if y := dateutil.ParseYear(r.FirstAirDate); y != nil {
 				c.Year = y
 			}
 			c.Confidence = Score(query, year, c.Title, c.Year)
@@ -644,7 +658,7 @@ func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Cand
 }
 
 func (s *Service) searchTVDB(apiKey, query string, year *int) ([]Candidate, error) {
-	client := tvdb.NewClient(apiKey)
+	client := s.cachedTVDB(apiKey)
 	results, err := client.SearchSeries(query, year)
 	if err != nil {
 		return nil, err
@@ -659,7 +673,7 @@ func (s *Service) searchTVDB(apiKey, query string, year *int) ([]Candidate, erro
 			Overview:   r.Overview,
 			PosterURL:  r.ImageURL,
 		}
-		if y := parseYear(r.FirstAirDate); y != nil {
+		if y := dateutil.ParseYear(r.FirstAirDate); y != nil {
 			c.Year = y
 		}
 		c.Confidence = Score(query, year, c.Title, c.Year)
@@ -670,7 +684,7 @@ func (s *Service) searchTVDB(apiKey, query string, year *int) ([]Candidate, erro
 }
 
 func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, meta *store.MediaMetadata) error {
-	client := tmdb.NewClient(apiKey)
+	client := s.cachedTMDB(apiKey)
 
 	if mediaType == "movie" {
 		details, err := client.GetMovie(externalID)
@@ -686,7 +700,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 			rt := details.Runtime
 			meta.Runtime = &rt
 		}
-		if y := parseYear(details.ReleaseDate); y != nil {
+		if y := dateutil.ParseYear(details.ReleaseDate); y != nil {
 			meta.Year = y
 		}
 		meta.ReleaseDate = details.ReleaseDate
@@ -708,7 +722,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 			ns := details.NumberOfSeasons
 			meta.Seasons = &ns
 		}
-		if y := parseYear(details.FirstAirDate); y != nil {
+		if y := dateutil.ParseYear(details.FirstAirDate); y != nil {
 			meta.Year = y
 		}
 		meta.ReleaseDate = details.FirstAirDate
@@ -719,7 +733,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 }
 
 func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.MediaMetadata) error {
-	client := tvdb.NewClient(apiKey)
+	client := s.cachedTVDB(apiKey)
 	details, err := client.GetSeries(externalID)
 	if err != nil {
 		return fmt.Errorf("fetching TVDB series: %w", err)
@@ -733,7 +747,7 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 		ns := len(details.Seasons)
 		meta.Seasons = &ns
 	}
-	if y := parseYear(details.FirstAired); y != nil {
+	if y := dateutil.ParseYear(details.FirstAired); y != nil {
 		meta.Year = y
 	}
 	meta.ReleaseDate = details.FirstAired
@@ -766,22 +780,33 @@ func (s *Service) resolveAPIKey(source string) (string, error) {
 	}
 }
 
+// cachedTMDB returns a cached TMDB client for the given key, re-creating if the key changed.
+func (s *Service) cachedTMDB(apiKey string) *tmdb.Client {
+	s.tmdbMu.Lock()
+	defer s.tmdbMu.Unlock()
+	if s.tmdbCached == nil || s.tmdbKey != apiKey {
+		s.tmdbKey = apiKey
+		s.tmdbCached = tmdb.NewClient(apiKey)
+	}
+	return s.tmdbCached
+}
+
+// cachedTVDB returns a cached TVDB client for the given key, re-creating if the key changed.
+func (s *Service) cachedTVDB(apiKey string) *tvdb.Client {
+	s.tvdbMu.Lock()
+	defer s.tvdbMu.Unlock()
+	if s.tvdbCached == nil || s.tvdbKey != apiKey {
+		s.tvdbKey = apiKey
+		s.tvdbCached = tvdb.NewClient(apiKey)
+	}
+	return s.tvdbCached
+}
+
 func (s *Service) rateLimitKey(source string) string {
 	if source == "tvdb" {
 		return settings.KeyTVDBRateLimit
 	}
 	return settings.KeyTMDBRateLimit
-}
-
-func parseYear(dateStr string) *int {
-	if len(dateStr) < 4 {
-		return nil
-	}
-	y, err := strconv.Atoi(dateStr[:4])
-	if err != nil || y < 1900 || y > 2099 {
-		return nil
-	}
-	return &y
 }
 
 func genresToJSON(genres []tmdb.Genre) string {

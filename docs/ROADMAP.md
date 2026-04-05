@@ -232,6 +232,17 @@
 - [x] Remove dead struct field: `SearchResult.Description`
 - [x] Verified: Cardigann YAML schema fields and template-consumed fields are NOT dead (used at runtime by external definitions)
 
+## Phase 5.8: Code duplication cleanup ✅
+→ See ADR-078
+- [x] Shared `qbittorrent.Provider` replacing 4 duplicate `getClient()` implementations, with settings invalidation
+- [x] Generic `worker.Loop` replacing 3 identical Start/Stop/run patterns in download/importer/monitor
+- [x] `indexer.FilterByMediaProfile` replacing 2 duplicate unmarshal+filter callsites
+- [x] Unified discover handlers (`fetchDiscover` helper + `toDiscoverItem` converter) replacing 3+3 duplicates
+- [x] Shared `dateutil.ParseYear` replacing 2 divergent implementations
+- [x] Cached TMDB/TVDB clients in matching.Service replacing 6 inline `NewClient` calls
+- [x] `applyProfileFields` merging 85%-identical create/update profile functions
+- [x] `derefString` helper replacing duplicated optional `*string` deref blocks
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

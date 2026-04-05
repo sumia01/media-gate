@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
@@ -14,6 +13,7 @@ import (
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
+	"github.com/sumia01/media-gate/internal/worker"
 )
 
 const defaultPollInterval = 10 * time.Second
@@ -25,61 +25,37 @@ type Service struct {
 	settings *settings.Service
 	syncSvc  *mediasync.Service
 	bus      *eventbus.Bus
-	client   *qbittorrent.Client
-	mu       sync.Mutex
-	stopCh   chan struct{}
+	qbit     *qbittorrent.Provider
+	loop     *worker.Loop
 }
 
 // NewService creates a new importer service.
-func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync.Service, bus *eventbus.Bus) *Service {
-	return &Service{
+func NewService(s store.Store, settingsSvc *settings.Service, syncSvc *mediasync.Service, bus *eventbus.Bus, qbit *qbittorrent.Provider) *Service {
+	svc := &Service{
 		store:    s,
 		settings: settingsSvc,
 		syncSvc:  syncSvc,
 		bus:      bus,
-		stopCh:   make(chan struct{}),
+		qbit:     qbit,
 	}
+	svc.loop = worker.New(worker.Config{
+		Name:            "importer",
+		DefaultInterval: defaultPollInterval,
+		IntervalKey:     settings.KeyWorkerImporterInterval,
+		Settings:        settingsSvc,
+		Process:         svc.processOnce,
+	})
+	return svc
 }
 
 // Start launches the background worker goroutine.
-func (s *Service) Start() {
-	go s.run()
-}
+func (s *Service) Start() { s.loop.Start() }
 
 // Stop signals the worker to shut down.
-func (s *Service) Stop() {
-	close(s.stopCh)
-}
-
-func (s *Service) run() {
-	settingsCh := s.settings.Subscribe()
-	interval := s.settings.GetDurationWithDefault(settings.KeyWorkerImporterInterval, defaultPollInterval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	slog.Info("importer worker started", "interval", interval)
-
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.processOnce()
-		case key := <-settingsCh:
-			if key == settings.KeyWorkerImporterInterval {
-				newInterval := s.settings.GetDurationWithDefault(settings.KeyWorkerImporterInterval, defaultPollInterval)
-				if newInterval != interval {
-					interval = newInterval
-					ticker.Reset(interval)
-					slog.Info("importer interval updated", "interval", interval)
-				}
-			}
-		}
-	}
-}
+func (s *Service) Stop() { s.loop.Stop() }
 
 func (s *Service) processOnce() {
-	client, err := s.getClient()
+	client, err := s.qbit.Client()
 	if err != nil {
 		slog.Debug("importer: qBittorrent not configured, skipping", "error", err)
 		return
@@ -87,32 +63,6 @@ func (s *Service) processOnce() {
 
 	s.importDownloaded(client)
 	s.cleanupSeeding(client)
-}
-
-// getClient returns a cached qBittorrent client, creating one from settings on first call.
-func (s *Service) getClient() (*qbittorrent.Client, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.client != nil {
-		return s.client, nil
-	}
-
-	url, err := s.settings.Get(settings.KeyQBitURL)
-	if err != nil {
-		return nil, err
-	}
-	username, err := s.settings.Get(settings.KeyQBitUsername)
-	if err != nil {
-		return nil, err
-	}
-	password, err := s.settings.Get(settings.KeyQBitPassword)
-	if err != nil {
-		return nil, err
-	}
-
-	s.client = qbittorrent.NewClient(url, username, password)
-	return s.client, nil
 }
 
 // importDownloaded picks up downloads in "downloaded" status, hardlinks/copies files
