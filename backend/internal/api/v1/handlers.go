@@ -25,22 +25,24 @@ import (
 var _ StrictServerInterface = (*Handlers)(nil)
 
 type Handlers struct {
-	lib        *library.Service
-	store      store.Store
-	queue      *jobqueue.Queue
-	settings   *settings.Service
-	matchSvc   *matching.Service
-	syncSvc    *mediasync.Service
-	indexerSvc *indexer.Service
-	authSvc    *auth.Service
-	bus        *eventbus.Bus
-	posterDir  string
-	qbitClient *qbittorrent.Client
-	qbitMu     sync.Mutex
+	lib           *library.Service
+	store         store.Store
+	queue         *jobqueue.Queue
+	settings      *settings.Service
+	matchSvc      *matching.Service
+	syncSvc       *mediasync.Service
+	indexerSvc    *indexer.Service
+	authSvc       *auth.Service
+	bus           *eventbus.Bus
+	posterDir     string
+	secureCookies bool
+	qbitClient    *qbittorrent.Client
+	qbitMu        sync.Mutex
+	setupMu       sync.Mutex
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus, authSvc *auth.Service) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus, authSvc: authSvc}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, bus *eventbus.Bus, authSvc *auth.Service, secureCookies bool) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, bus: bus, authSvc: authSvc, secureCookies: secureCookies}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

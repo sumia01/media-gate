@@ -8,12 +8,27 @@ import (
 
 // AuthMiddleware returns HTTP middleware that validates JWT access tokens.
 // Public paths (login, refresh, health) are excluded from authentication.
+// The SSE endpoint supports single-use ticket authentication via ?ticket= query param.
 func AuthMiddleware(svc *Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isPublicPath(r.Method, r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
+			}
+
+			// SSE ticket authentication: single-use ticket replaces JWT-in-URL.
+			if r.Method == http.MethodGet && r.URL.Path == "/api/v1/events" {
+				if ticket := r.URL.Query().Get("ticket"); ticket != "" {
+					userID, err := svc.RedeemSSETicket(ticket)
+					if err != nil {
+						writeUnauthorized(w)
+						return
+					}
+					ctx := ContextWithUserID(r.Context(), userID)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 			}
 
 			tokenStr := extractToken(r)
@@ -55,12 +70,12 @@ func isPublicPath(method, path string) bool {
 	}
 }
 
-// extractToken gets the JWT from the Authorization header or token query param (SSE fallback).
+// extractToken gets the JWT from the Authorization header.
 func extractToken(r *http.Request) string {
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")
 	}
-	return r.URL.Query().Get("token")
+	return ""
 }
 
 func writeUnauthorized(w http.ResponseWriter) {

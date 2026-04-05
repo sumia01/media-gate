@@ -14,36 +14,53 @@ function connect() {
 
   const { getAccessToken } = useAuth()
   const token = getAccessToken()
-  let url = '/api/v1/events'
-  if (token) {
-    url += `?token=${encodeURIComponent(token)}`
-  }
 
-  const es = new EventSource(url)
+  // Exchange JWT for a single-use SSE ticket to avoid exposing the token in the URL.
+  const openSSE = (ticketParam: string) => {
+    const es = new EventSource(`/api/v1/events${ticketParam}`)
 
-  es.onopen = () => {
-    connected.value = true
-  }
-
-  es.onerror = () => {
-    connected.value = false
-    es.close()
-    eventSource.value = null
-    // Reconnect after delay
-    if (subscribers > 0 && !reconnectTimer) {
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null
-        if (subscribers > 0) connect()
-      }, 3000)
+    es.onopen = () => {
+      connected.value = true
     }
+
+    es.onerror = () => {
+      connected.value = false
+      es.close()
+      eventSource.value = null
+      // Reconnect after delay
+      if (subscribers > 0 && !reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          if (subscribers > 0) connect()
+        }, 3000)
+      }
+    }
+
+    // Listen for all registered event types
+    for (const [type] of listeners) {
+      addESListener(es, type)
+    }
+
+    eventSource.value = es
   }
 
-  // Listen for all registered event types
-  for (const [type] of listeners) {
-    addESListener(es, type)
+  if (token) {
+    fetch('/api/v1/auth/sse-ticket', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.ticket) {
+          openSSE(`?ticket=${encodeURIComponent(data.ticket)}`)
+        } else {
+          openSSE('')
+        }
+      })
+      .catch(() => openSSE(''))
+  } else {
+    openSSE('')
   }
-
-  eventSource.value = es
 }
 
 function disconnect() {

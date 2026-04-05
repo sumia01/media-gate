@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"encoding/json"
 
@@ -114,7 +115,7 @@ func main() {
 	defer defRefresher.Stop()
 
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, bus, authSvc, cfg.Cookie.Secure)
 
 	// Startup check: reconcile download hashes with torrent client.
 	reconcileDownloadsWithTorrentClient(db, settingsSvc)
@@ -142,14 +143,18 @@ func main() {
 	// Poster endpoint — raw binary, not part of generated strict server.
 	apiMux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())
 
+	// Rate-limited auth handlers (10 requests per minute per IP).
+	authRL := auth.RateLimitMiddleware(10, time.Minute)
+
 	// Manual auth handlers (need cookie access, not in OpenAPI spec).
-	apiMux.HandleFunc("POST /api/v1/auth/login", handlers.LoginHandler())
-	apiMux.HandleFunc("POST /api/v1/auth/refresh", handlers.RefreshHandler())
+	apiMux.Handle("POST /api/v1/auth/login", authRL(http.HandlerFunc(handlers.LoginHandler())))
+	apiMux.Handle("POST /api/v1/auth/refresh", authRL(http.HandlerFunc(handlers.RefreshHandler())))
 	apiMux.HandleFunc("POST /api/v1/auth/logout", handlers.LogoutHandler())
+	apiMux.HandleFunc("POST /api/v1/auth/sse-ticket", handlers.SSETicketHandler())
 
 	// Setup handlers (unauthenticated, first-run only).
 	apiMux.HandleFunc("GET /api/v1/setup/status", handlers.SetupStatusHandler())
-	apiMux.HandleFunc("POST /api/v1/auth/setup", handlers.SetupHandler())
+	apiMux.Handle("POST /api/v1/auth/setup", authRL(http.HandlerFunc(handlers.SetupHandler())))
 
 	// Mount generated API routes under /api/v1.
 	apiHandler := apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{
@@ -157,8 +162,9 @@ func main() {
 	})
 	apiMux.Handle("/api/", apiHandler)
 
-	// Wrap all API routes with auth middleware.
-	authedAPI := auth.AuthMiddleware(authSvc)(apiMux)
+	// Wrap all API routes with body size limit and auth middleware.
+	sized := maxBytesMiddleware(1 << 20)(apiMux) // 1 MB
+	authedAPI := auth.AuthMiddleware(authSvc)(sized)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", authedAPI)
@@ -256,4 +262,14 @@ func spaHandler() (http.Handler, error) {
 		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
 	}), nil
+}
+
+// maxBytesMiddleware limits request body size to prevent memory exhaustion.
+func maxBytesMiddleware(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
 }

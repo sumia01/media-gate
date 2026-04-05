@@ -19,6 +19,7 @@ type Config struct {
 	TVDB        TVDBConfig        `koanf:"tvdb"`
 	Secret      SecretConfig      `koanf:"secret"`
 	DefaultUser DefaultUserConfig `koanf:"defaultuser"`
+	Cookie      CookieConfig      `koanf:"cookie"`
 }
 
 type TMDBConfig struct {
@@ -40,6 +41,10 @@ type DefaultUserConfig struct {
 
 type LibraryConfig struct {
 	BasePath string `koanf:"basepath"`
+}
+
+type CookieConfig struct {
+	Secure bool `koanf:"secure"`
 }
 
 type APIConfig struct {

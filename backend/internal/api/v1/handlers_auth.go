@@ -59,7 +59,7 @@ func (h *Handlers) LoginHandler() http.HandlerFunc {
 			return
 		}
 
-		setRefreshCookie(w, r, refreshToken.Token, h.authSvc.RefreshTTL(rememberMe))
+		h.setRefreshCookie(w, r, refreshToken.Token, h.authSvc.RefreshTTL(rememberMe))
 
 		resp := LoginResponse{
 			AccessToken: accessToken,
@@ -80,7 +80,7 @@ func (h *Handlers) RefreshHandler() http.HandlerFunc {
 
 		newRT, user, err := h.authSvc.RotateRefreshToken(cookie.Value)
 		if err != nil {
-			clearRefreshCookie(w, r)
+			h.clearRefreshCookie(w, r)
 			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Code: 401, Message: "invalid refresh token"})
 			return
 		}
@@ -92,7 +92,7 @@ func (h *Handlers) RefreshHandler() http.HandlerFunc {
 		}
 
 		ttl := time.Until(newRT.ExpiresAt)
-		setRefreshCookie(w, r, newRT.Token, ttl)
+		h.setRefreshCookie(w, r, newRT.Token, ttl)
 
 		writeJSON(w, http.StatusOK, RefreshResponse{AccessToken: accessToken})
 	}
@@ -104,8 +104,26 @@ func (h *Handlers) LogoutHandler() http.HandlerFunc {
 		if cookie, err := r.Cookie("refresh_token"); err == nil && cookie.Value != "" {
 			_ = h.authSvc.RevokeRefreshToken(cookie.Value)
 		}
-		clearRefreshCookie(w, r)
+		h.clearRefreshCookie(w, r)
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// SSETicketHandler handles POST /api/v1/auth/sse-ticket.
+// Exchanges a valid JWT for a short-lived, single-use ticket for SSE authentication.
+func (h *Handlers) SSETicketHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := auth.UserIDFromContext(r.Context())
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Code: 401, Message: "unauthorized"})
+			return
+		}
+		ticket, err := h.authSvc.IssueSSETicket(userID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to issue ticket"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"ticket": ticket})
 	}
 }
 
@@ -255,6 +273,9 @@ func (h *Handlers) SetupStatusHandler() http.HandlerFunc {
 // SetupHandler handles POST /api/v1/auth/setup (unauthenticated, first-user creation).
 func (h *Handlers) SetupHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		h.setupMu.Lock()
+		defer h.setupMu.Unlock()
+
 		count, err := h.authSvc.CountUsers()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to check users"})
@@ -289,7 +310,7 @@ func (h *Handlers) SetupHandler() http.HandlerFunc {
 			return
 		}
 
-		setRefreshCookie(w, r, refreshToken.Token, h.authSvc.RefreshTTL(true))
+		h.setRefreshCookie(w, r, refreshToken.Token, h.authSvc.RefreshTTL(true))
 
 		// Record that the first onboarding step is done.
 		_ = h.settings.Update([]settings.KeyValue{
@@ -306,25 +327,25 @@ func (h *Handlers) SetupHandler() http.HandlerFunc {
 
 // --- Helpers ---
 
-func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string, ttl time.Duration) {
+func (h *Handlers) setRefreshCookie(w http.ResponseWriter, r *http.Request, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    token,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   h.secureCookies || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(ttl.Seconds()),
 	})
 }
 
-func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   h.secureCookies || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
