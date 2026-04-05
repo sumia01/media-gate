@@ -95,6 +95,11 @@ prompt    GH_TOKEN "GitHub Personal Access Token (fine-grained, read-only Conten
 [[ -z "$GH_TOKEN" ]] && die "GitHub token is required."
 prompt    GH_TAG   "Release tag (latest or vX.Y.Z)" "latest"
 
+# --- Application settings ---
+echo
+echo -e "${BOLD}── Application Settings ──${NC}"
+prompt APP_PORT "Application port" "80"
+
 # --- Migration / Secret key ---
 echo
 echo -e "${BOLD}── Database & Security ──${NC}"
@@ -262,7 +267,7 @@ cat > /etc/default/media-gate <<'ENVEOF'
 # Media Gate configuration — managed by deploy script
 MEDIAGATE_SECRET_KEY=${SECRET_KEY}
 MEDIAGATE_DB_PATH=/var/lib/media-gate/media-gate.db
-MEDIAGATE_API_PORT=8080
+MEDIAGATE_API_PORT=${APP_PORT}
 MEDIAGATE_LIBRARY_BASEPATH=${LIBRARY_BASEPATH}
 MEDIAGATE_LOG_LEVEL=info
 MEDIAGATE_LOG_FORMAT=text
@@ -460,7 +465,7 @@ if [[ "$MIGRATE_DB" != true ]]; then
     echo -e "                    ${YELLOW}Without it, encrypted settings cannot be recovered.${NC}"
 fi
 echo
-echo -e "  ${BOLD}Open in browser:${NC}  http://${CONTAINER_IP}:8080"
+echo -e "  ${BOLD}Open in browser:${NC}  http://${CONTAINER_IP}:${APP_PORT}"
 echo -e "  ${BOLD}Update command:${NC}   pct exec ${CTID} -- media-gate-update"
 echo -e "  ${BOLD}Service logs:${NC}     pct exec ${CTID} -- journalctl -u media-gate -f"
 echo
