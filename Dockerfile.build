@@ -20,6 +20,7 @@ FROM golang:1.26-bookworm AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+ARG VERSION=dev
 
 # Go module download (cached layer)
 WORKDIR /app/backend
@@ -45,7 +46,7 @@ RUN EXT="" && \
     CGO_ENABLED=0 \
     GOOS="$TARGETOS" \
     GOARCH="$TARGETARCH" \
-    go build -trimpath -o "/out/media-gate${EXT}" ./cmd/server/
+    go build -trimpath -ldflags "-X main.version=$VERSION" -o "/out/media-gate${EXT}" ./cmd/server/
 
 # ---------------------------------------------------------------------------
 # Stage 3: Output — scratch stage for --output extraction

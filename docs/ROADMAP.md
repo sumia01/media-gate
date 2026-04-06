@@ -302,12 +302,12 @@
 - [x] Graceful RecalcMediaItemStatus — returns nil on `ErrNotFound` instead of failing when media item deleted during match
 - [x] Preserved original TMDB poster path in metadata — `savePoster` no longer overwrites `meta.PosterPath` with local filename
 
-## Phase 7.1: Sidebar System Info ⬜
-- [ ] App version — embed build version string at compile time (`-ldflags -X`), expose via `GET /api/v1/health` or dedicated endpoint
-- [ ] Disk usage API — `GET /api/v1/system/disk` returns total/used/free bytes for the configured `LIBRARY_BASEPATH` mount point
-- [ ] Sidebar: horizontal divider below user section, version label + disk usage bar/text (e.g. "v1.2.0 · 1.2 TB / 4 TB")
-- [ ] Collapsed sidebar: show only version number or small disk icon with tooltip
-- [ ] Graceful fallback when disk info unavailable (e.g. permission error)
+## Phase 7.1: Sidebar System Info ✅
+- [x] App version — embed build version string at compile time (`-ldflags -X`), expose via `GET /api/v1/health` or dedicated endpoint
+- [x] Disk usage API — `GET /api/v1/health` returns total/used/free bytes for the configured `LIBRARY_BASEPATH` mount point
+- [x] Sidebar: horizontal divider below user section, version label + disk usage bar/text (e.g. "v1.2.0 · 1.2 TB / 4 TB")
+- [x] Collapsed sidebar: show only version number with tooltip showing disk info
+- [x] Graceful fallback when disk info unavailable (e.g. permission error, Windows)
 
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
