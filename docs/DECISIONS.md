@@ -1213,3 +1213,18 @@ Changes:
 5. **Frontend** — eye icon toggle on both MediaDetailView and MediaPreviewView action bars, dedicated `/watched` page with poster grid and hover-to-unmark, sidebar nav item.
 
 **Rationale**: Keying by `Source + ExternalID` (not IMDb ID) ensures every TMDB/TVDB item can be tracked even when IMDb ID is unavailable (common for series, anime, non-English content). The `UserID` is always stored to enable seamless switching between global and per-user modes without data migration. The configurable mode satisfies both single-user setups (global is simpler) and multi-user households (per-user for privacy).
+
+---
+
+## ADR-086: Watched "seen" badges on discover & library pages, mediaItemId poster fix
+**Date**: 2026-04-06
+**Status**: Accepted
+
+**Context**: After implementing watched tracking (ADR-085), there was no visual indication on the discover page or library grid that an item had been watched. Additionally, library items stored a local cached filename (e.g. `"8.jpg"`) as `posterPath` when marked watched from MediaDetailView, which the WatchedView couldn't resolve to a displayable URL.
+
+**Decision**: Two changes:
+
+1. **"Seen" badges on card grids** — HomeView (discover) and LibraryDetailView fetch `GET /watched` on mount, build a `Set<"source:externalId">` for O(1) lookups. Green "seen" tag with eye icon SVG appears next to the movie/series type tag (discover) or next to the status pill (library). Discover cards use `item.source + externalId` directly; library cards use `item.metadata.source + externalId` (only for matched items).
+2. **Optional `mediaItemId` on WatchedItem** — nullable FK column added to the `WatchedItem` model. MediaDetailView sends `item.id` as `mediaItemId` when marking watched. WatchedView's `itemPosterUrl()` checks `mediaItemId` first — if present, returns `/api/v1/media/{id}/poster` (cached poster from library); otherwise falls back to TMDB URL from `posterPath`. This cleanly separates library items (cached poster via API) from non-library items (direct TMDB URL).
+
+**Rationale**: Using the full watched list rather than a new batch-check endpoint keeps the API surface minimal — the watched list is small for typical users and fetches in parallel with page data. The `mediaItemId` approach solves the poster problem at its root: the watched item now knows whether it has a corresponding library item, and the display logic picks the correct poster source. No need to preserve the original TMDB path in the metadata (which is overwritten by the poster cache system).

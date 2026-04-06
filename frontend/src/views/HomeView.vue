@@ -17,11 +17,36 @@ const trendingLoading = ref(true)
 const moviesLoading = ref(true)
 const seriesLoading = ref(true)
 
+const watchedSet = ref<Set<string>>(new Set())
+
+function watchedKey(source: string, externalId: number): string {
+  return `${source}:${externalId}`
+}
+
+function isWatched(source: string, externalId: number): boolean {
+  return watchedSet.value.has(watchedKey(source, externalId))
+}
+
+function isRecentWatched(item: MediaItem): boolean {
+  if (!item.metadata?.source || !item.metadata?.externalId) return false
+  return isWatched(item.metadata.source, item.metadata.externalId)
+}
+
+async function fetchWatched() {
+  const { data } = await client.GET('/watched')
+  const set = new Set<string>()
+  for (const item of data?.items ?? []) {
+    set.add(watchedKey(item.source, item.externalId))
+  }
+  watchedSet.value = set
+}
+
 onMounted(() => {
   fetchRecent()
   fetchTrending()
   fetchPopularMovies()
   fetchPopularSeries()
+  fetchWatched()
 })
 
 async function fetchRecent() {
@@ -95,11 +120,17 @@ function getRecentPoster(item: MediaItem): string | null {
               class="absolute inset-0 w-full h-full object-cover"
               loading="lazy"
             />
-            <span class="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
-              :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
-            >
-              {{ item.mediaType }}
-            </span>
+            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
+                :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
+              >
+                {{ item.mediaType }}
+              </span>
+              <span v-if="isRecentWatched(item)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                seen
+              </span>
+            </div>
             <div v-if="item.metadata?.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.metadata.rating.toFixed(1) }}
             </div>
@@ -138,11 +169,17 @@ function getRecentPoster(item: MediaItem): string | null {
               class="absolute inset-0 w-full h-full object-cover"
               loading="lazy"
             />
-            <span class="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
-              :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
-            >
-              {{ item.mediaType }}
-            </span>
+            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
+                :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
+              >
+                {{ item.mediaType }}
+              </span>
+              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                seen
+              </span>
+            </div>
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>
@@ -181,9 +218,15 @@ function getRecentPoster(item: MediaItem): string | null {
               class="absolute inset-0 w-full h-full object-cover"
               loading="lazy"
             />
-            <span class="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-violet-600/90 text-violet-100">
-              movie
-            </span>
+            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-violet-600/90 text-violet-100">
+                movie
+              </span>
+              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                seen
+              </span>
+            </div>
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>
@@ -222,9 +265,15 @@ function getRecentPoster(item: MediaItem): string | null {
               class="absolute inset-0 w-full h-full object-cover"
               loading="lazy"
             />
-            <span class="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-fuchsia-600/90 text-fuchsia-100">
-              series
-            </span>
+            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-fuchsia-600/90 text-fuchsia-100">
+                series
+              </span>
+              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                seen
+              </span>
+            </div>
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>

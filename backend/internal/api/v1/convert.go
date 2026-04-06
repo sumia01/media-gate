@@ -567,6 +567,10 @@ func watchedItemToAPI(item *store.WatchedItem) WatchedItem {
 	if item.PosterPath != "" {
 		api.PosterPath = &item.PosterPath
 	}
+	if item.MediaItemID != nil {
+		id := int64(*item.MediaItemID)
+		api.MediaItemId = &id
+	}
 	return api
 }
 

@@ -294,7 +294,10 @@
 - [x] "Watched" toggle on media preview page (global search results) — mark without adding to library
 - [x] Watched list page (`/watched`) — poster grid with unmark overlay, click navigates to media preview
 - [x] Sidebar nav item for Watched page
-- [ ] Optional: watched indicator on library media cards (subtle badge/icon overlay)
+- [x] "Seen" badge on discover page cards — green tag with eye icon on Recently Added, Trending, Popular Movies/Series
+- [x] "Seen" badge on library media grid — green tag next to status pill (available/new/missing/etc.)
+- [x] Optional `mediaItemId` on WatchedItem — links to library media item for cached poster resolution
+- [x] Watched poster fix — library items use `/api/v1/media/{id}/poster` endpoint, non-library items use TMDB URL
 
 ## Phase 7.1: Sidebar System Info ⬜
 - [ ] App version — embed build version string at compile time (`-ldflags -X`), expose via `GET /api/v1/health` or dedicated endpoint
