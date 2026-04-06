@@ -24,6 +24,26 @@ const loading = ref(false)
 const error = ref('')
 const showMatchModal = ref(false)
 
+const watchedSet = ref<Set<string>>(new Set())
+
+function watchedKey(source: string, externalId: number): string {
+  return `${source}:${externalId}`
+}
+
+function isItemWatched(item: MediaItem): boolean {
+  if (!item.metadata?.source || !item.metadata?.externalId) return false
+  return watchedSet.value.has(watchedKey(item.metadata.source, item.metadata.externalId))
+}
+
+async function fetchWatched() {
+  const { data } = await client.GET('/watched')
+  const set = new Set<string>()
+  for (const w of data?.items ?? []) {
+    set.add(watchedKey(w.source, w.externalId))
+  }
+  watchedSet.value = set
+}
+
 function openAddSearch() {
   if (library.value) {
     setActiveLibrary(library.value.id, library.value.mediaType as 'movie' | 'series')
@@ -124,7 +144,7 @@ async function loadAll() {
   const profileRes = await client.GET('/media-profiles')
   profiles.value = profileRes.data?.profiles ?? []
   await fetchLibrary(id)
-  await fetchMedia(id)
+  await Promise.all([fetchMedia(id), fetchWatched()])
 }
 
 function navigateToMedia(item: MediaItem) {
@@ -272,6 +292,10 @@ watch(() => route.params.id, loadAll)
                 }"
               >
                 {{ item.status }}
+              </span>
+              <span v-if="isItemWatched(item)" class="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                seen
               </span>
             </div>
           </div>

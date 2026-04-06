@@ -2893,6 +2893,9 @@ components:
           type: integer
         posterPath:
           type: string
+        mediaItemId:
+          type: integer
+          format: int64
         watchedAt:
           type: string
           format: date-time
@@ -2921,6 +2924,9 @@ components:
           type: integer
         posterPath:
           type: string
+        mediaItemId:
+          type: integer
+          format: int64
 
     WatchedCheckResponse:
       type: object

@@ -11,6 +11,11 @@ const loading = ref(false)
 const error = ref('')
 
 function itemPosterUrl(item: WatchedItem): string | null {
+  // Library item with cached poster — use the media poster endpoint
+  if (item.mediaItemId) {
+    return `/api/v1/media/${item.mediaItemId}/poster`
+  }
+  // TMDB/TVDB poster path
   if (!item.posterPath) return null
   if (item.posterPath.startsWith('http')) return item.posterPath
   if (item.posterPath.startsWith('/')) return `https://image.tmdb.org/t/p/w342${item.posterPath}`

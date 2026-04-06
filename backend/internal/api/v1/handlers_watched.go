@@ -68,6 +68,10 @@ func (h *Handlers) CreateWatched(ctx context.Context, req CreateWatchedRequestOb
 		PosterPath: derefString(req.Body.PosterPath),
 		WatchedAt:  time.Now(),
 	}
+	if req.Body.MediaItemId != nil {
+		id := uint(*req.Body.MediaItemId)
+		item.MediaItemID = &id
+	}
 	if err := h.store.CreateWatchedItem(item); err != nil {
 		return nil, err
 	}

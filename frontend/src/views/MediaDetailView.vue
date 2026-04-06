@@ -136,6 +136,7 @@ async function toggleWatched() {
         mediaType: (item.value?.mediaType ?? 'movie') as 'movie' | 'series',
         year: meta.year ?? undefined,
         posterPath: meta.posterPath ?? undefined,
+        mediaItemId: item.value?.id,
       },
     })
     if (data) {
