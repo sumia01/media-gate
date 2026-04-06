@@ -38,10 +38,11 @@ type Handlers struct {
 	posterDir     string
 	secureCookies bool
 	setupMu       sync.Mutex
+	version       string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, version string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, version: version}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {
@@ -74,5 +75,23 @@ func (h *Handlers) PosterHandler() http.HandlerFunc {
 }
 
 func (h *Handlers) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
-	return GetHealth200JSONResponse{Status: "ok"}, nil
+	resp := GetHealth200JSONResponse{Status: "ok", Version: h.version}
+
+	basePath := h.settings.BasePath()
+	if usage, err := diskUsage(basePath); err == nil {
+		total := int64(usage.Total)
+		used := int64(usage.Used)
+		free := int64(usage.Free)
+		resp.Disk = &struct {
+			FreeBytes  *int64 `json:"freeBytes,omitempty"`
+			TotalBytes *int64 `json:"totalBytes,omitempty"`
+			UsedBytes  *int64 `json:"usedBytes,omitempty"`
+		}{
+			TotalBytes: &total,
+			UsedBytes:  &used,
+			FreeBytes:  &free,
+		}
+	}
+
+	return resp, nil
 }

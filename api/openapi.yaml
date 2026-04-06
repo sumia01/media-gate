@@ -1769,10 +1769,26 @@ components:
       type: object
       required:
         - status
+        - version
       properties:
         status:
           type: string
           example: ok
+        version:
+          type: string
+          example: v1.2.0
+        disk:
+          type: object
+          properties:
+            totalBytes:
+              type: integer
+              format: int64
+            usedBytes:
+              type: integer
+              format: int64
+            freeBytes:
+              type: integer
+              format: int64
 
     ErrorResponse:
       type: object

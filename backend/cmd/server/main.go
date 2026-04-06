@@ -33,6 +33,9 @@ import (
 	"github.com/sumia01/media-gate/internal/sync"
 )
 
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -126,7 +129,7 @@ func main() {
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, version)
 
 	// Invalidate cached qBit client when connection settings change.
 	go func() {

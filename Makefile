@@ -22,7 +22,7 @@ frontend:
 
 ## build: Full build — generate code, build frontend, compile Go binary
 build: generate frontend
-	cd backend && go build -o ../$(BINARY) ./cmd/server/
+	cd backend && go build -ldflags "-X main.version=$$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o ../$(BINARY) ./cmd/server/
 
 ## dev: Start Air (Go backend with hot-reload) and Vite (frontend dev server) in parallel
 dev:

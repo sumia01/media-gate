@@ -3,12 +3,15 @@ import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import { useAuth } from '@/composables/useAuth'
+import { useSystemInfo } from '@/composables/useSystemInfo'
+import { formatBytes } from '@/utils/media'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const props = defineProps<{ isMobile: boolean }>()
 const route = useRoute()
 const { libraries, refreshLibraries } = useSidebarLibraries()
 const { currentUser } = useAuth()
+const { version, disk, refreshSystemInfo } = useSystemInfo()
 
 const userInitial = computed(() => {
   const u = currentUser.value
@@ -40,11 +43,29 @@ function mediaTypeIcon(type: string) {
   return type === 'movie' ? '◻' : '▤'
 }
 
+const diskPercent = computed(() => {
+  if (!disk.value || !disk.value.totalBytes) return 0
+  return Math.round((disk.value.usedBytes / disk.value.totalBytes) * 100)
+})
+
+const diskLabel = computed(() => {
+  if (!disk.value) return ''
+  return `${formatBytes(disk.value.usedBytes)} / ${formatBytes(disk.value.totalBytes)}`
+})
+
+const diskTooltip = computed(() => {
+  if (!disk.value) return version.value || ''
+  return `${version.value}\n${diskLabel.value} (${diskPercent.value}% used)`
+})
+
 function closeMobile() {
   if (props.isMobile) collapsed.value = true
 }
 
-onMounted(refreshLibraries)
+onMounted(() => {
+  refreshLibraries()
+  refreshSystemInfo()
+})
 </script>
 
 <template>
@@ -147,5 +168,24 @@ onMounted(refreshLibraries)
         </div>
       </div>
     </RouterLink>
+
+    <!-- System Info -->
+    <div class="px-3 py-2 border-t border-violet-900/20">
+      <template v-if="!collapsed">
+        <p class="text-[10px] text-gray-600 truncate">
+          {{ version }}<template v-if="disk"> · {{ diskLabel }}</template>
+        </p>
+        <div v-if="disk" class="mt-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            class="h-full rounded-full transition-all duration-300"
+            :class="diskPercent > 90 ? 'bg-red-500/70' : diskPercent > 75 ? 'bg-amber-500/50' : 'bg-violet-600/50'"
+            :style="{ width: diskPercent + '%' }"
+          />
+        </div>
+      </template>
+      <div v-else class="text-[9px] text-gray-600 text-center" :title="diskTooltip">
+        {{ version }}
+      </div>
+    </div>
   </aside>
 </template>
