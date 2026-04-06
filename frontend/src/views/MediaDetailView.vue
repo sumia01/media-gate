@@ -35,6 +35,9 @@ const replacingDownloadId = ref<number | null>(null)
 const showSeasonMonitorModal = ref(false)
 const seasonMonitorSeasons = ref<SeasonSummary[]>([])
 
+const isWatched = ref(false)
+const watchedId = ref<number | null>(null)
+const watchedLoading = ref(false)
 const metadata = computed(() => item.value?.metadata ?? null)
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
@@ -80,6 +83,7 @@ async function fetchItem(id: number) {
     item.value = data
     fetchLibrary(data.libraryId)
     fetchFiles(data.id)
+    checkWatched()
   }
 }
 
@@ -100,6 +104,46 @@ async function fetchFiles(id: number) {
 async function fetchProfiles() {
   const { data } = await client.GET('/media-profiles')
   profiles.value = data?.profiles ?? []
+}
+
+async function checkWatched() {
+  const meta = metadata.value
+  if (!meta) return
+  const { data } = await client.GET('/watched/check', {
+    params: { query: { source: meta.source as 'tmdb' | 'tvdb', externalId: meta.externalId } },
+  })
+  if (data) {
+    isWatched.value = data.watched
+    watchedId.value = data.id ?? null
+  }
+}
+
+async function toggleWatched() {
+  const meta = metadata.value
+  if (!meta) return
+  watchedLoading.value = true
+  if (isWatched.value && watchedId.value) {
+    await client.DELETE('/watched/{id}', { params: { path: { id: watchedId.value } } })
+    isWatched.value = false
+    watchedId.value = null
+  } else {
+    const { data } = await client.POST('/watched', {
+      body: {
+        source: meta.source as 'tmdb' | 'tvdb',
+        externalId: meta.externalId,
+        imdbId: meta.imdbId ?? undefined,
+        title: meta.title,
+        mediaType: (item.value?.mediaType ?? 'movie') as 'movie' | 'series',
+        year: meta.year ?? undefined,
+        posterPath: meta.posterPath ?? undefined,
+      },
+    })
+    if (data) {
+      isWatched.value = true
+      watchedId.value = data.id
+    }
+  }
+  watchedLoading.value = false
 }
 
 async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean; seasonMonitors?: { seasonNumber: number; monitored: boolean }[] }) {
@@ -321,6 +365,24 @@ watch(() => route.params.id, loadAll)
           />
           <span class="text-xs text-gray-500">Auto-grab</span>
         </label>
+
+        <!-- Watched toggle -->
+        <button
+          v-if="metadata"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200"
+          :class="isWatched
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          :disabled="watchedLoading"
+          @click="toggleWatched"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path v-if="isWatched" stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+            <path v-if="isWatched" stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path v-if="!isWatched" stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+          </svg>
+          <span>{{ isWatched ? 'Watched' : 'Unseen' }}</span>
+        </button>
 
         <!-- Divider -->
         <div class="w-px h-6 bg-violet-900/30 hidden md:block"></div>

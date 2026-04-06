@@ -143,6 +143,11 @@ func (s *settingsStubStore) GetRefreshTokenByToken(string) (*store.RefreshToken,
 func (s *settingsStubStore) DeleteRefreshToken(string) error                            { return nil }
 func (s *settingsStubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
 func (s *settingsStubStore) DeleteExpiredRefreshTokens() error                          { return nil }
+func (s *settingsStubStore) CreateWatchedItem(*store.WatchedItem) error                 { return nil }
+func (s *settingsStubStore) DeleteWatchedItem(uint) error                              { return nil }
+func (s *settingsStubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
+func (s *settingsStubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
+func (s *settingsStubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
 
 // --- Existing path validation tests ---
 

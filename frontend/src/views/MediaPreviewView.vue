@@ -18,6 +18,10 @@ const error = ref('')
 const showAddModal = ref(false)
 const showIndexerSearch = ref(false)
 
+const isWatched = ref(false)
+const watchedId = ref<number | null>(null)
+const watchedLoading = ref(false)
+
 const genres = computed(() => parseGenres(detail.value?.genres))
 
 const externalUrl = computed(() => {
@@ -41,6 +45,46 @@ const credits = computed(() => detail.value?.credits ?? [])
 const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
 const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
 
+async function checkWatched() {
+  const d = detail.value
+  if (!d) return
+  const { data } = await client.GET('/watched/check', {
+    params: { query: { source: d.source as 'tmdb' | 'tvdb', externalId: d.externalId } },
+  })
+  if (data) {
+    isWatched.value = data.watched
+    watchedId.value = data.id ?? null
+  }
+}
+
+async function toggleWatched() {
+  const d = detail.value
+  if (!d) return
+  watchedLoading.value = true
+  if (isWatched.value && watchedId.value) {
+    await client.DELETE('/watched/{id}', { params: { path: { id: watchedId.value } } })
+    isWatched.value = false
+    watchedId.value = null
+  } else {
+    const { data } = await client.POST('/watched', {
+      body: {
+        source: d.source as 'tmdb' | 'tvdb',
+        externalId: d.externalId,
+        imdbId: d.imdbId ?? undefined,
+        title: d.title,
+        mediaType: (d.mediaType ?? 'movie') as 'movie' | 'series',
+        year: d.year ?? undefined,
+        posterPath: d.posterUrl ?? undefined,
+      },
+    })
+    if (data) {
+      isWatched.value = true
+      watchedId.value = data.id
+    }
+  }
+  watchedLoading.value = false
+}
+
 async function fetchDetail() {
   const source = route.params.source as string
   const externalId = Number(route.params.externalId)
@@ -62,6 +106,7 @@ async function fetchDetail() {
   }
   if (data) {
     detail.value = data
+    checkWatched()
     // Prefetch episodes for series (used by AddToLibraryModal)
     if (data.mediaType === 'series' && data.seasons && data.seasons > 0) {
       client.GET('/search/{source}/{externalId}/episodes', {
@@ -98,6 +143,22 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
       </button>
 
       <div v-if="detail" class="flex items-center gap-2">
+        <!-- Watched toggle -->
+        <button
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+          :class="isWatched
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+            : 'text-gray-400 border border-violet-800/30 hover:text-violet-300 hover:bg-violet-600/10'"
+          :disabled="watchedLoading"
+          @click="toggleWatched"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path v-if="isWatched" stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+            <path v-if="isWatched" stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path v-if="!isWatched" stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+          </svg>
+          {{ isWatched ? 'Watched' : 'Unseen' }}
+        </button>
         <button
           v-if="detail.imdbId"
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"

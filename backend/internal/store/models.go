@@ -175,3 +175,18 @@ type RefreshToken struct {
 	ExpiresAt time.Time `gorm:"not null"`
 	CreatedAt time.Time
 }
+
+type WatchedItem struct {
+	ID         uint   `gorm:"primarykey"`
+	UserID     uint   `gorm:"not null;index;uniqueIndex:idx_watched_user_source_ext;constraint:OnDelete:CASCADE"`
+	Source     string `gorm:"not null;uniqueIndex:idx_watched_user_source_ext"` // "tmdb" or "tvdb"
+	ExternalID int    `gorm:"not null;uniqueIndex:idx_watched_user_source_ext"`
+	ImdbID     string
+	Title      string `gorm:"not null"`
+	MediaType  string `gorm:"not null"` // "movie" or "series"
+	Year       *int
+	PosterPath string
+	WatchedAt  time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}

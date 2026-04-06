@@ -107,6 +107,13 @@ type Store interface {
 	DeleteRefreshTokensByUser(userID uint) error
 	DeleteExpiredRefreshTokens() error
 
+	// WatchedItem CRUD
+	CreateWatchedItem(item *WatchedItem) error
+	DeleteWatchedItem(id uint) error
+	ListWatchedItems() ([]WatchedItem, error)
+	ListWatchedItemsByUser(userID uint) ([]WatchedItem, error)
+	GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*WatchedItem, error)
+
 	// WithTx executes fn inside a database transaction.
 	// The Store passed to fn uses the transaction; if fn returns an error the transaction is rolled back.
 	WithTx(fn func(Store) error) error
