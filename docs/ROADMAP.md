@@ -298,6 +298,9 @@
 - [x] "Seen" badge on library media grid — green tag next to status pill (available/new/missing/etc.)
 - [x] Optional `mediaItemId` on WatchedItem — links to library media item for cached poster resolution
 - [x] Watched poster fix — library items use `/api/v1/media/{id}/poster` endpoint, non-library items use TMDB URL
+- [x] Versioned schema migration system — replaces ad-hoc `rebuildTablesWithForeignKeys` with ordered `schema_version` migrations in `settings` table
+- [x] Graceful RecalcMediaItemStatus — returns nil on `ErrNotFound` instead of failing when media item deleted during match
+- [x] Preserved original TMDB poster path in metadata — `savePoster` no longer overwrites `meta.PosterPath` with local filename
 
 ## Phase 7.1: Sidebar System Info ⬜
 - [ ] App version — embed build version string at compile time (`-ldflags -X`), expose via `GET /api/v1/health` or dedicated endpoint
