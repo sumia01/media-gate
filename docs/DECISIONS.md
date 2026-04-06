@@ -1228,3 +1228,21 @@ Changes:
 2. **Optional `mediaItemId` on WatchedItem** — nullable FK column added to the `WatchedItem` model. MediaDetailView sends `item.id` as `mediaItemId` when marking watched. WatchedView's `itemPosterUrl()` checks `mediaItemId` first — if present, returns `/api/v1/media/{id}/poster` (cached poster from library); otherwise falls back to TMDB URL from `posterPath`. This cleanly separates library items (cached poster via API) from non-library items (direct TMDB URL).
 
 **Rationale**: Using the full watched list rather than a new batch-check endpoint keeps the API surface minimal — the watched list is small for typical users and fetches in parallel with page data. The `mediaItemId` approach solves the poster problem at its root: the watched item now knows whether it has a corresponding library item, and the display logic picks the correct poster source. No need to preserve the original TMDB path in the metadata (which is overwritten by the poster cache system).
+
+---
+
+## ADR-087: Versioned schema migration system
+**Date**: 2026-04-06
+**Status**: Accepted
+
+**Context**: SQLite's `GORM AutoMigrate` cannot add foreign key constraints to existing tables — that requires a 12-step ALTER TABLE rebuild (create new table, copy data, drop old, rename). The previous approach used `rebuildTablesWithForeignKeys` with a `tableHasForeignKeys` boolean guard: if the table has *any* FK, skip rebuild. This failed when a table already had one FK (e.g. `watched_items.user_id → users`) but needed a new one (`watched_items.media_item_id → media_items ON DELETE SET NULL`). The check returned true, the rebuild was skipped, and the new FK was never created. This made the app's schema unable to reliably evolve across updates.
+
+**Decision**: Replace the ad-hoc FK rebuild functions with a versioned migration system:
+
+1. **`schema_version`** integer stored in the existing `settings` table, read/written via raw SQL (no ORM dependency at startup).
+2. **Ordered migration functions** `[]func(*sql.DB) error` — on startup, after GORM AutoMigrate, run all migrations from `current_version+1` to `latest`. Update `schema_version` after each successful migration.
+3. **Version 1** (`migrateV1`): Moves the entire previous `rebuildTablesWithForeignKeys` logic (7 tables) plus `cleanupOrphans` into the first migration. Keeps the per-table `tableHasForeignKeys` guard internally so fresh installs (where AutoMigrate already creates FKs from GORM tags) skip the expensive rebuild.
+4. **Version 2** (`migrateV2`): Rebuilds `watched_items` specifically to add the `media_item_id` FK with `ON DELETE SET NULL`. Uses `tableHasFKOnColumn` (checks `PRAGMA foreign_key_list` for a specific column) instead of the boolean guard.
+5. **Shared `rebuildTable` helper**: Extracted the common 12-step rebuild pattern (disable FKs → begin tx → create `_new` → copy columns → drop old → rename → re-enable FKs → integrity check) into a reusable function.
+
+**Rationale**: The boolean `tableHasForeignKeys` guard is fundamentally incompatible with incremental FK additions. A version number provides a clear, ordered, idempotent migration path. Using the existing `settings` table avoids a new model/table. Raw SQL for version read/write avoids GORM lifecycle issues during early startup. Each migration is self-contained and can use targeted PRAGMA checks for the specific constraint it needs to add. The system is simple (no migration DSL, no rollback) because SQLite schema changes are rare and the app is single-binary.
