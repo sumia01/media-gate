@@ -186,7 +186,7 @@ type WatchedItem struct {
 	MediaType   string `gorm:"not null"` // "movie" or "series"
 	Year        *int
 	PosterPath  string
-	MediaItemID *uint
+	MediaItemID *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
 	WatchedAt   time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

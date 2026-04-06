@@ -540,9 +540,6 @@ func (s *Service) DownloadPoster(itemID uint) {
 		slog.Warn("poster download failed", "item_id", itemID, "error", err)
 		return
 	}
-
-	meta.PosterPath = fmt.Sprintf("%d.jpg", itemID)
-	_ = s.store.UpdateMediaMetadata(meta)
 }
 
 type episodeData struct {

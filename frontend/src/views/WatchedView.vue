@@ -15,10 +15,14 @@ function itemPosterUrl(item: WatchedItem): string | null {
   if (item.mediaItemId) {
     return `/api/v1/media/${item.mediaItemId}/poster`
   }
-  // TMDB/TVDB poster path
-  if (!item.posterPath) return null
-  if (item.posterPath.startsWith('http')) return item.posterPath
-  if (item.posterPath.startsWith('/')) return `https://image.tmdb.org/t/p/w342${item.posterPath}`
+  // Fallback to external poster URL
+  return externalPosterUrl(item.posterPath)
+}
+
+function externalPosterUrl(posterPath: string | undefined): string | null {
+  if (!posterPath) return null
+  if (posterPath.startsWith('http')) return posterPath
+  if (posterPath.startsWith('/')) return `https://image.tmdb.org/t/p/w342${posterPath}`
   return null
 }
 
@@ -76,7 +80,12 @@ onMounted(fetchWatched)
             :src="itemPosterUrl(item)!"
             :alt="item.title"
             class="w-full h-full object-cover"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
+            @error="(e) => {
+              const img = e.target as HTMLImageElement
+              const fallback = externalPosterUrl(item.posterPath)
+              if (fallback && img.src !== fallback) { img.src = fallback }
+              else { img.style.display = 'none' }
+            }"
           />
           <span v-else class="text-4xl text-gray-600">
             {{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}
