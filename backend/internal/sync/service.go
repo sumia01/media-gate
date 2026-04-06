@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -389,6 +390,9 @@ func intPtrEqual(a, b *int) bool {
 func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 	item, err := s.store.GetMediaItem(itemID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil // item was deleted, nothing to recalculate
+		}
 		return fmt.Errorf("recalc status: get item: %w", err)
 	}
 
