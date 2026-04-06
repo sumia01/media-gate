@@ -309,6 +309,9 @@
 - [x] Collapsed sidebar: show only version number with tooltip showing disk info
 - [x] Graceful fallback when disk info unavailable (e.g. permission error, Windows)
 
+## Phase 7.2: Custom Scrollbar Styling ✅
+- [x] Themed scrollbar — thin, violet-tinted scrollbar matching dark UI theme via CSS `scrollbar-width`/`scrollbar-color` + WebKit pseudo-elements
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
