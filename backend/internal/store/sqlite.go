@@ -64,6 +64,11 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		runMigrations(sqlDB)
 	}
 
+	// Re-enable foreign keys — AutoMigrate and rebuildTable both disable
+	// this pragma during table alterations, and the deferred restore may
+	// land on a different pooled connection than the one GORM uses.
+	db.Exec("PRAGMA foreign_keys = ON")
+
 	return &SQLiteStore{db: db}, nil
 }
 
