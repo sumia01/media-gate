@@ -207,6 +207,25 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 			)`,
 			columns: "id,user_id,token,expires_at,created_at",
 		},
+		{
+			table: "watched_items",
+			newDDL: `CREATE TABLE "watched_items" (
+				"id" integer PRIMARY KEY AUTOINCREMENT,
+				"user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+				"source" text NOT NULL,
+				"external_id" integer NOT NULL,
+				"imdb_id" text,
+				"title" text NOT NULL,
+				"media_type" text NOT NULL,
+				"year" integer,
+				"poster_path" text,
+				"media_item_id" integer REFERENCES "media_items"("id") ON DELETE SET NULL,
+				"watched_at" datetime,
+				"created_at" datetime,
+				"updated_at" datetime
+			)`,
+			columns: "id,user_id,source,external_id,imdb_id,title,media_type,year,poster_path,media_item_id,watched_at,created_at,updated_at",
+		},
 	}
 
 	for _, m := range migrations {
@@ -269,6 +288,9 @@ func rebuildTablesWithForeignKeys(db *sql.DB) {
 		`CREATE INDEX IF NOT EXISTS "idx_downloads_episode_id" ON "downloads"("episode_id")`,
 		`CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_user_id" ON "refresh_tokens"("user_id")`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_refresh_tokens_token" ON "refresh_tokens"("token")`,
+		`CREATE INDEX IF NOT EXISTS "idx_watched_items_user_id" ON "watched_items"("user_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_watched_user_source_ext" ON "watched_items"("user_id","source","external_id")`,
+		`CREATE INDEX IF NOT EXISTS "idx_watched_items_media_item_id" ON "watched_items"("media_item_id")`,
 	}
 	for _, ddl := range indexDDLs {
 		if _, err := db.Exec(ddl); err != nil {
