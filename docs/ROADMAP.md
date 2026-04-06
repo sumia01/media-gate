@@ -285,6 +285,24 @@
 - [x] Library detail page: compact profile select in header action bar, immediate PUT on change
 - [x] `AddToLibraryModal`: pre-selects `selectedProfileId` from library's default when library is chosen, user can override
 
+## Phase 7.0: Watched / Seen Tracking ✅
+- [x] `WatchedItem` store model — keyed by (UserID, Source, ExternalID) composite unique index, stores title/year/mediaType/posterPath for display
+- [x] Store layer — Create, Delete, ListAll, ListByUser, GetBySourceExternal (with optional user filter)
+- [x] API endpoints — `POST /watched` (mark as seen), `DELETE /watched/{id}` (unmark), `GET /watched` (list all), `GET /watched/check?source=...&externalId=...` (quick lookup)
+- [x] Configurable watched list mode — `watched_list_mode` setting (global/per_user) in Settings API and UI, controls whether watched state is shared or per-user
+- [x] "Watched" toggle on media detail page — eye icon button in action bar with watched/unseen state
+- [x] "Watched" toggle on media preview page (global search results) — mark without adding to library
+- [x] Watched list page (`/watched`) — poster grid with unmark overlay, click navigates to media preview
+- [x] Sidebar nav item for Watched page
+- [ ] Optional: watched indicator on library media cards (subtle badge/icon overlay)
+
+## Phase 7.1: Sidebar System Info ⬜
+- [ ] App version — embed build version string at compile time (`-ldflags -X`), expose via `GET /api/v1/health` or dedicated endpoint
+- [ ] Disk usage API — `GET /api/v1/system/disk` returns total/used/free bytes for the configured `LIBRARY_BASEPATH` mount point
+- [ ] Sidebar: horizontal divider below user section, version label + disk usage bar/text (e.g. "v1.2.0 · 1.2 TB / 4 TB")
+- [ ] Collapsed sidebar: show only version number or small disk icon with tooltip
+- [ ] Graceful fallback when disk info unavailable (e.g. permission error)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

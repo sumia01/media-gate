@@ -53,6 +53,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&Download{},
 		&User{},
 		&RefreshToken{},
+		&WatchedItem{},
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
@@ -823,6 +824,47 @@ func (s *SQLiteStore) DeleteRefreshTokensByUser(userID uint) error {
 
 func (s *SQLiteStore) DeleteExpiredRefreshTokens() error {
 	return s.db.Where("expires_at < ?", time.Now()).Delete(&RefreshToken{}).Error
+}
+
+// --- WatchedItem ---
+
+func (s *SQLiteStore) CreateWatchedItem(item *WatchedItem) error {
+	return s.db.Create(item).Error
+}
+
+func (s *SQLiteStore) DeleteWatchedItem(id uint) error {
+	return deleteByID(s.db, &WatchedItem{}, id)
+}
+
+func (s *SQLiteStore) ListWatchedItems() ([]WatchedItem, error) {
+	var items []WatchedItem
+	if err := s.db.Order("watched_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) ListWatchedItemsByUser(userID uint) ([]WatchedItem, error) {
+	var items []WatchedItem
+	if err := s.db.Where("user_id = ?", userID).Order("watched_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (s *SQLiteStore) GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*WatchedItem, error) {
+	var item WatchedItem
+	q := s.db.Where("source = ? AND external_id = ?", source, externalID)
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	if err := q.First(&item).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &item, nil
 }
 
 func (s *SQLiteStore) WithTx(fn func(Store) error) error {

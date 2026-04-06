@@ -257,6 +257,9 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			if err := json.Unmarshal([]byte(v), &tags); err == nil {
 				s.GlobalExcludeTags = &tags
 			}
+		case settings.KeyWatchedListMode:
+			m := SettingsWatchedListMode(v)
+			s.WatchedListMode = &m
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -345,6 +348,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.GlobalExcludeTags != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyGlobalExcludeTags, Value: marshalJSON(*s.GlobalExcludeTags)})
+	}
+	if s.WatchedListMode != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWatchedListMode, Value: string(*s.WatchedListMode)})
 	}
 	return kvs
 }
@@ -539,6 +545,27 @@ func torrentResultToAPI(r *indexer.TorrentResult) TorrentResult {
 	if r.UploadVolumeFactor != 1.0 {
 		uvf := float32(r.UploadVolumeFactor)
 		api.UploadVolumeFactor = &uvf
+	}
+	return api
+}
+
+func watchedItemToAPI(item *store.WatchedItem) WatchedItem {
+	api := WatchedItem{
+		Id:        int64(item.ID),
+		Source:    WatchedItemSource(item.Source),
+		ExternalId: item.ExternalID,
+		Title:     item.Title,
+		MediaType: WatchedItemMediaType(item.MediaType),
+		WatchedAt: item.WatchedAt,
+	}
+	if item.ImdbID != "" {
+		api.ImdbId = &item.ImdbID
+	}
+	if item.Year != nil {
+		api.Year = item.Year
+	}
+	if item.PosterPath != "" {
+		api.PosterPath = &item.PosterPath
 	}
 	return api
 }

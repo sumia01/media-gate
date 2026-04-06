@@ -55,6 +55,9 @@ const fsTesting = ref(false)
 const seasonPackPref = ref('prefer_packs')
 const seasonPackPrefDirty = ref(false)
 
+const watchedListMode = ref('global')
+const watchedListModeDirty = ref(false)
+
 const monitorInterval = ref('900')
 const downloadInterval = ref('5')
 const importerInterval = ref('10')
@@ -71,6 +74,7 @@ const anyDirty = computed(() =>
   qbDownloadPathDirty.value || qbSavePathDirty.value || qbCategoryDirty.value ||
   fsUrlDirty.value ||
   seasonPackPrefDirty.value ||
+  watchedListModeDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
   metadataRefreshIntervalDirty.value
 )
@@ -101,6 +105,7 @@ async function fetchSettings() {
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
+    watchedListMode.value = s.watchedListMode ?? 'global'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
@@ -119,6 +124,7 @@ async function fetchSettings() {
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
+  watchedListModeDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
@@ -148,6 +154,7 @@ async function saveSettings() {
   if (qbCategoryDirty.value) body.qbitCategory = qbCategory.value
   if (fsUrlDirty.value) body.flaresolverrUrl = fsUrl.value
   if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
+  if (watchedListModeDirty.value) body.watchedListMode = watchedListMode.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
@@ -185,6 +192,7 @@ async function saveSettings() {
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
+    watchedListMode.value = s.watchedListMode ?? 'global'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
@@ -203,6 +211,7 @@ async function saveSettings() {
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
   seasonPackPrefDirty.value = false
+  watchedListModeDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
@@ -622,6 +631,29 @@ onMounted(fetchSettings)
               <template v-if="seasonPackPref === 'prefer_packs'">Downloads full season packs when 70% or more episodes are missing. Falls back to individual episodes otherwise.</template>
               <template v-else-if="seasonPackPref === 'prefer_episodes'">Always downloads individual episodes. Falls back to season packs only when no episode match is found.</template>
               <template v-else>Only downloads full season packs. Never downloads individual episodes.</template>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Watched section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Watched</h2>
+
+      <div class="space-y-4">
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">Watched List Mode</label>
+            <select
+              v-model="watchedListMode"
+              class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+              @change="watchedListModeDirty = true"
+            >
+              <option value="global">Global</option>
+              <option value="per_user">Per User</option>
+            </select>
+            <p class="text-[10px] text-gray-500 mt-2">
+              <template v-if="watchedListMode === 'global'">All users share a single watched list. When anyone marks media as watched, it appears watched for everyone.</template>
+              <template v-else>Each user has their own watched list. Marking media as watched is private to the current user.</template>
             </p>
           </div>
         </div>

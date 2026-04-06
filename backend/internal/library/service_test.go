@@ -102,6 +102,11 @@ func (s *stubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) 
 func (s *stubStore) DeleteRefreshToken(string) error                            { return nil }
 func (s *stubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
 func (s *stubStore) DeleteExpiredRefreshTokens() error                          { return nil }
+func (s *stubStore) CreateWatchedItem(*store.WatchedItem) error                 { return nil }
+func (s *stubStore) DeleteWatchedItem(uint) error                              { return nil }
+func (s *stubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
+func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
+func (s *stubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
 
 // staticBasePath implements BasePathProvider for testing.
 type staticBasePath string

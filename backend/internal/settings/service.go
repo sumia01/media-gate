@@ -42,6 +42,8 @@ const (
 
 	KeyGlobalExcludeTags = "global_exclude_tags"
 
+	KeyWatchedListMode = "watched_list_mode"
+
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
 	KeyOnboardingCompleted = "onboarding_completed"

@@ -1195,3 +1195,21 @@ Changes:
 5. **AddToLibraryModal** — watcher on `selectedLibraryId` pre-populates `selectedProfileId` from the library's `mediaProfileId`, user can still override
 
 **Rationale**: Zero new backend endpoints — the existing `LibraryCreate` schema and PUT handler were extended. The monitor worker's `resolveProfile` already falls back to `Library.MediaProfileID` when a media item has no explicit profile, so the default propagates to auto-grab without any backend logic changes. Pre-selecting in the modal reduces friction without removing user control.
+
+---
+
+## ADR-085: Watched / Seen Tracking
+**Date**: 2026-04-06
+**Status**: Accepted
+
+**Context**: Users want to track which media they've already watched, regardless of whether it's in a library. This should work from both the media detail page (library items) and the media preview page (global search results). Multi-user households need the option for shared or per-user watched lists.
+
+**Decision**: Implemented a `WatchedItem` store model with full CRUD API and a configurable `watched_list_mode` setting. Key choices:
+
+1. **WatchedItem model** — stores `Source` + `ExternalID` (TMDB/TVDB numeric ID) as the canonical key, plus `ImdbID`, `Title`, `Year`, `MediaType`, `PosterPath` for standalone display without re-fetching. Composite unique index on `(UserID, Source, ExternalID)` prevents duplicates. `UserID` is always stored (FK to User with CASCADE delete).
+2. **Global vs per-user mode** — `watched_list_mode` setting (enum: `global`/`per_user`, default `global`). In global mode, all queries ignore `UserID` — anyone marking media as watched makes it visible to everyone. In per-user mode, queries filter by the authenticated user's ID. The setting is changeable at any time via the Settings UI.
+3. **API design** — 4 endpoints: `GET /watched` (list), `POST /watched` (create with 409 on duplicate), `DELETE /watched/{id}` (remove), `GET /watched/check?source=...&externalId=...` (quick boolean lookup). The check endpoint is called on page load to determine toggle state without fetching the full list.
+4. **No separate service package** — business logic is simple enough (setting check + store calls) that handlers call the store directly, consistent with the thin-handler pattern for straightforward CRUD.
+5. **Frontend** — eye icon toggle on both MediaDetailView and MediaPreviewView action bars, dedicated `/watched` page with poster grid and hover-to-unmark, sidebar nav item.
+
+**Rationale**: Keying by `Source + ExternalID` (not IMDb ID) ensures every TMDB/TVDB item can be tracked even when IMDb ID is unavailable (common for series, anime, non-English content). The `UserID` is always stored to enable seamless switching between global and per-user modes without data migration. The configurable mode satisfies both single-user setups (global is simpler) and multi-user households (per-user for privacy).

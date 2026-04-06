@@ -1677,6 +1677,92 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /watched:
+    get:
+      operationId: listWatched
+      summary: List watched items
+      responses:
+        "200":
+          description: Watched items list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WatchedItem"
+    post:
+      operationId: createWatched
+      summary: Mark media as watched
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchedItemCreate"
+      responses:
+        "201":
+          description: Marked as watched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchedItem"
+        "409":
+          description: Already marked as watched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /watched/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      operationId: deleteWatched
+      summary: Unmark media as watched
+      responses:
+        "204":
+          description: Unmarked successfully
+        "404":
+          description: Watched item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /watched/check:
+    get:
+      operationId: checkWatched
+      summary: Check if media is watched
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [tmdb, tvdb]
+        - name: externalId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Watched check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchedCheckResponse"
+
 components:
   schemas:
     HealthResponse:
@@ -2414,6 +2500,10 @@ components:
           items:
             type: string
           description: Tags excluded from ALL profile-based searches, merged with per-profile exclude tags.
+        watchedListMode:
+          type: string
+          enum: [global, per_user]
+          description: Whether watched-list is global (shared across all users) or per-user.
 
     ConnectionTestRequest:
       type: object
@@ -2773,6 +2863,75 @@ components:
           type: number
           format: float
           description: Download progress (0.0 to 1.0)
+
+    WatchedItem:
+      type: object
+      required:
+        - id
+        - source
+        - externalId
+        - title
+        - mediaType
+        - watchedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        source:
+          type: string
+          enum: [tmdb, tvdb]
+        externalId:
+          type: integer
+        imdbId:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, series]
+        year:
+          type: integer
+        posterPath:
+          type: string
+        watchedAt:
+          type: string
+          format: date-time
+
+    WatchedItemCreate:
+      type: object
+      required:
+        - source
+        - externalId
+        - title
+        - mediaType
+      properties:
+        source:
+          type: string
+          enum: [tmdb, tvdb]
+        externalId:
+          type: integer
+        imdbId:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, series]
+        year:
+          type: integer
+        posterPath:
+          type: string
+
+    WatchedCheckResponse:
+      type: object
+      required:
+        - watched
+      properties:
+        watched:
+          type: boolean
+        id:
+          type: integer
+          format: int64
 
     LoginRequest:
       type: object
