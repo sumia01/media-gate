@@ -86,6 +86,16 @@ type SeasonMonitor struct {
 	UpdatedAt    time.Time
 }
 
+type EpisodeMonitor struct {
+	ID            uint `gorm:"primarykey"`
+	MediaItemID   uint `gorm:"not null;uniqueIndex:idx_ep_monitor_unique;constraint:OnDelete:CASCADE"`
+	SeasonNumber  int  `gorm:"not null;uniqueIndex:idx_ep_monitor_unique"`
+	EpisodeNumber int  `gorm:"not null;uniqueIndex:idx_ep_monitor_unique"`
+	Monitored     bool `gorm:"not null"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type Episode struct {
 	ID            uint   `gorm:"primarykey"`
 	MediaItemID   uint   `gorm:"not null;index;uniqueIndex:idx_episode_unique;constraint:OnDelete:CASCADE"`

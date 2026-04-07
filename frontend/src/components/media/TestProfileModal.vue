@@ -325,10 +325,10 @@ function formatDate(unix: number): string {
 
         <!-- Results table (desktop) -->
         <div v-else class="overflow-auto min-h-0">
-          <!-- Auto-grab legend -->
+          <!-- Auto-download legend -->
           <div class="flex items-center gap-1.5 mb-3 text-xs text-gray-500">
             <span class="inline-block w-3 h-3 rounded-sm bg-emerald-500/40"></span>
-            <span>Auto-grab pick (highest seeders)</span>
+            <span>Auto-download pick (highest seeders)</span>
           </div>
 
           <table class="hidden md:table w-full text-sm">
@@ -359,7 +359,7 @@ function formatDate(unix: number): string {
                       v-if="idx === 0"
                       class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
                     >
-                      Auto-grab
+                      Auto-download
                     </span>
                     <a
                       v-if="result.detailsUrl"
@@ -426,7 +426,7 @@ function formatDate(unix: number): string {
                   v-if="idx === 0"
                   class="text-[9px] font-bold uppercase px-1 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 whitespace-nowrap flex-shrink-0"
                 >
-                  Auto-grab
+                  Auto-download
                 </span>
                 <span class="text-xs text-gray-200 truncate" :title="result.title">{{ result.title }}</span>
               </div>

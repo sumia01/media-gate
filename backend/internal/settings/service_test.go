@@ -70,6 +70,13 @@ func (s *settingsStubStore) ListSeasonMonitorsByMediaItem(uint) ([]store.SeasonM
 }
 func (s *settingsStubStore) UpdateSeasonMonitor(*store.SeasonMonitor) error { return nil }
 
+func (s *settingsStubStore) ListEpisodeMonitorsByMediaItem(uint) ([]store.EpisodeMonitor, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) UpsertEpisodeMonitor(*store.EpisodeMonitor) error { return nil }
+func (s *settingsStubStore) DeleteEpisodeMonitorsBySeason(uint, int) error    { return nil }
+func (s *settingsStubStore) DeleteEpisodeMonitorsByMediaItem(uint) error      { return nil }
+
 func (s *settingsStubStore) CreateEpisode(*store.Episode) error                    { return nil }
 func (s *settingsStubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
 func (s *settingsStubStore) DeleteEpisodesByMediaItem(uint) error                  { return nil }

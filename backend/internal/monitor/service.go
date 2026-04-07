@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -179,6 +180,14 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		monitorLookup[m.SeasonNumber] = m.Monitored
 	}
 
+	// Build episode monitor lookup for per-episode overrides
+	epMonitors, _ := s.store.ListEpisodeMonitorsByMediaItem(item.ID)
+	epMonitorLookup := make(map[string]bool, len(epMonitors))
+	for _, em := range epMonitors {
+		key := fmt.Sprintf("S%dE%d", em.SeasonNumber, em.EpisodeNumber)
+		epMonitorLookup[key] = em.Monitored
+	}
+
 	packPref := s.settings.GetWithDefault(settings.KeyMonitorSeasonPackPref, "prefer_packs")
 
 	// Build wanted episodes and count aired episodes per season
@@ -198,9 +207,14 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		if ep.AirDate == "" || ep.AirDate > today {
 			continue
 		}
-		// Must be in a monitored season (explicit: no row = not monitored)
-		if monitored, ok := monitorLookup[ep.SeasonNumber]; !ok || !monitored {
-			continue
+		// Resolve monitored: episode-level override > season-level > not monitored
+		epKey := fmt.Sprintf("S%dE%d", ep.SeasonNumber, ep.EpisodeNumber)
+		if epMon, ok := epMonitorLookup[epKey]; ok {
+			if !epMon {
+				continue // explicitly unmonitored episode
+			}
+		} else if seasonMon, ok := monitorLookup[ep.SeasonNumber]; !ok || !seasonMon {
+			continue // season not monitored and no episode override
 		}
 
 		airedPerSeason[ep.SeasonNumber]++

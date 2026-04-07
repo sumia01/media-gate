@@ -54,6 +54,10 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 
 	if req.Body.Monitored != nil {
 		item.Monitored = *req.Body.Monitored
+		// When disabling monitoring, clear all episode-level overrides
+		if !*req.Body.Monitored {
+			_ = h.store.DeleteEpisodeMonitorsByMediaItem(item.ID)
+		}
 	}
 
 	if req.Body.MonitorNewSeasons != nil {
@@ -71,6 +75,21 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 			monitors[i] = mediasync.SeasonMonitorInput{SeasonNumber: sm.SeasonNumber, Monitored: sm.Monitored}
 		}
 		if err := h.syncSvc.UpsertSeasonMonitors(item.ID, monitors); err != nil {
+			return nil, err
+		}
+	}
+
+	// Upsert episode monitors if provided.
+	if req.Body.EpisodeMonitors != nil {
+		epMonitors := make([]mediasync.EpisodeMonitorInput, len(*req.Body.EpisodeMonitors))
+		for i, em := range *req.Body.EpisodeMonitors {
+			epMonitors[i] = mediasync.EpisodeMonitorInput{
+				SeasonNumber:  em.SeasonNumber,
+				EpisodeNumber: em.EpisodeNumber,
+				Monitored:     em.Monitored,
+			}
+		}
+		if err := h.syncSvc.UpsertEpisodeMonitors(item.ID, epMonitors); err != nil {
 			return nil, err
 		}
 	}
@@ -254,12 +273,14 @@ func (h *Handlers) ListMediaEpisodes(_ context.Context, req ListMediaEpisodesReq
 		for j, es := range s.Episodes {
 			ep := es.Episode
 			hasFile := es.HasFile
+			monitored := es.Monitored
 			eps[j] = Episode{
 				Id:            int64(ep.ID),
 				MediaItemId:   int64(ep.MediaItemID),
 				SeasonNumber:  ep.SeasonNumber,
 				EpisodeNumber: ep.EpisodeNumber,
 				HasFile:       &hasFile,
+				Monitored:     &monitored,
 			}
 			if ep.Title != "" {
 				eps[j].Title = &ep.Title
@@ -353,6 +374,8 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 		if err := h.store.UpdateSeasonMonitor(existing); err != nil {
 			return nil, err
 		}
+		// Clear episode-level overrides — episodes now inherit from the season setting.
+		_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
 		return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 			Id:           int64(existing.ID),
 			MediaItemId:  int64(existing.MediaItemID),
@@ -370,6 +393,8 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 	if err := h.store.CreateSeasonMonitor(sm); err != nil {
 		return nil, err
 	}
+	// Clear episode-level overrides — episodes now inherit from the season setting.
+	_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
 
 	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 		Id:           int64(sm.ID),
@@ -377,4 +402,27 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 		SeasonNumber: sm.SeasonNumber,
 		Monitored:    sm.Monitored,
 	}), nil
+}
+
+func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMonitorRequestObject) (UpdateEpisodeMonitorResponseObject, error) {
+	if _, err := h.store.GetMediaItem(uint(req.Id)); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateEpisodeMonitor404JSONResponse{
+				Code:    http.StatusNotFound,
+				Message: "media item not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	if err := h.store.UpsertEpisodeMonitor(&store.EpisodeMonitor{
+		MediaItemID:   uint(req.Id),
+		SeasonNumber:  req.SeasonNumber,
+		EpisodeNumber: req.EpisodeNumber,
+		Monitored:     req.Body.Monitored,
+	}); err != nil {
+		return nil, err
+	}
+
+	return UpdateEpisodeMonitor200JSONResponse{Monitored: req.Body.Monitored}, nil
 }

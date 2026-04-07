@@ -105,6 +105,7 @@ async function handleAdd() {
     monitorNewSeasons?: boolean
     mediaProfileId?: number
     seasonMonitors?: { seasonNumber: number; monitored: boolean }[]
+    episodeMonitors?: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]
   } = {
     source: props.source as 'tmdb' | 'tvdb',
     externalId: props.externalId,
@@ -126,6 +127,21 @@ async function handleAdd() {
       seasonNumber: s.seasonNumber,
       monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
     }))
+
+    // Include episode-level overrides (only episodes differing from season default)
+    const epOverrides: { seasonNumber: number; episodeNumber: number; monitored: boolean }[] = []
+    for (const s of props.externalSeasons!) {
+      const seasonVal = seasonMonitored.value.get(s.seasonNumber) ?? true
+      for (const ep of s.episodes) {
+        const epVal = episodeMonitored.value.get(`${s.seasonNumber}-${ep.episodeNumber}`) ?? true
+        if (epVal !== seasonVal) {
+          epOverrides.push({ seasonNumber: s.seasonNumber, episodeNumber: ep.episodeNumber, monitored: epVal })
+        }
+      }
+    }
+    if (epOverrides.length) {
+      body.episodeMonitors = epOverrides
+    }
   }
 
   const { data, error: err } = await client.POST('/libraries/{id}/media', {

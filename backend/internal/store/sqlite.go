@@ -47,6 +47,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 		&MediaProfile{},
 		&MediaFile{},
 		&SeasonMonitor{},
+		&EpisodeMonitor{},
 		&Episode{},
 		&Setting{},
 		&JobRecord{},
@@ -81,6 +82,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV1, // 0→1: FK constraint rebuilds + orphan cleanup (existing tables)
 	migrateV2, // 1→2: watched_items — add media_item_id FK with SET NULL
 	migrateV3, // 2→3: explicit season monitoring — add monitor_new_seasons column + backfill SeasonMonitor rows
+	migrateV4, // 3→4: episode_monitors table (AutoMigrate handles creation, this is a no-op placeholder)
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -398,6 +400,13 @@ func migrateV3(db *sql.DB) error {
 	return nil
 }
 
+// migrateV4 is a no-op placeholder — AutoMigrate already creates the episode_monitors
+// table from the EpisodeMonitor model. The migration entry bumps schema_version so
+// future migrations can rely on the table existing.
+func migrateV4(_ *sql.DB) error {
+	return nil
+}
+
 // rebuildTable recreates a table using SQLite's 12-step ALTER TABLE procedure.
 // This is the only way to add FK constraints to an existing SQLite table.
 func rebuildTable(db *sql.DB, table, newDDL, columns string) error {
@@ -473,6 +482,7 @@ func cleanupOrphans(db *sql.DB) {
 		{"media_metadata", `DELETE FROM media_metadata WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"media_files", `DELETE FROM media_files WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"season_monitors", `DELETE FROM season_monitors WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
+		{"episode_monitors", `DELETE FROM episode_monitors WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"episodes", `DELETE FROM episodes WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads", `DELETE FROM downloads WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads.episode_id", `UPDATE downloads SET episode_id = NULL WHERE episode_id IS NOT NULL AND episode_id NOT IN (SELECT id FROM episodes)`},
@@ -786,6 +796,35 @@ func (s *SQLiteStore) ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, erro
 
 func (s *SQLiteStore) DeleteEpisodesByMediaItem(mediaItemID uint) error {
 	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&Episode{}).Error
+}
+
+// --- EpisodeMonitor ---
+
+func (s *SQLiteStore) ListEpisodeMonitorsByMediaItem(mediaItemID uint) ([]EpisodeMonitor, error) {
+	var monitors []EpisodeMonitor
+	if err := s.db.Where("media_item_id = ?", mediaItemID).Order("season_number ASC, episode_number ASC").Find(&monitors).Error; err != nil {
+		return nil, err
+	}
+	return monitors, nil
+}
+
+func (s *SQLiteStore) UpsertEpisodeMonitor(monitor *EpisodeMonitor) error {
+	var existing EpisodeMonitor
+	err := s.db.Where("media_item_id = ? AND season_number = ? AND episode_number = ?",
+		monitor.MediaItemID, monitor.SeasonNumber, monitor.EpisodeNumber).First(&existing).Error
+	if err == nil {
+		existing.Monitored = monitor.Monitored
+		return s.db.Save(&existing).Error
+	}
+	return s.db.Create(monitor).Error
+}
+
+func (s *SQLiteStore) DeleteEpisodeMonitorsBySeason(mediaItemID uint, seasonNumber int) error {
+	return s.db.Where("media_item_id = ? AND season_number = ?", mediaItemID, seasonNumber).Delete(&EpisodeMonitor{}).Error
+}
+
+func (s *SQLiteStore) DeleteEpisodeMonitorsByMediaItem(mediaItemID uint) error {
+	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&EpisodeMonitor{}).Error
 }
 
 // --- Settings ---

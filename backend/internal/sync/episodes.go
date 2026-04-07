@@ -11,6 +11,7 @@ import (
 type EpisodeSummary struct {
 	Episode        store.Episode
 	HasFile        bool
+	Monitored      bool
 	DownloadStatus string // empty means no active download
 }
 
@@ -62,6 +63,14 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 		monitorLookup[m.SeasonNumber] = m.Monitored
 	}
 
+	// Build episode monitor lookup: "S{season}E{episode}" → monitored
+	epMonitors, _ := s.store.ListEpisodeMonitorsByMediaItem(itemID)
+	epMonitorLookup := make(map[string]bool, len(epMonitors))
+	for _, em := range epMonitors {
+		key := fmt.Sprintf("S%dE%d", em.SeasonNumber, em.EpisodeNumber)
+		epMonitorLookup[key] = em.Monitored
+	}
+
 	// Build download status lookups.
 	// Priority: downloading > pending > downloaded > importing > seeding (completed/failed ignored).
 	dlStatusPriority := map[string]int{
@@ -102,6 +111,13 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 		summary := EpisodeSummary{
 			Episode: ep,
 			HasFile: fileLookup[key],
+		}
+
+		// Resolve monitored: episode-level override > season-level > false.
+		if epMon, ok := epMonitorLookup[key]; ok {
+			summary.Monitored = epMon
+		} else if seasonMon, ok := monitorLookup[ep.SeasonNumber]; ok {
+			summary.Monitored = seasonMon
 		}
 
 		// Resolve download status: episode-level > season-level > item-level.
@@ -152,6 +168,8 @@ type SeasonMonitorInput struct {
 }
 
 // UpsertSeasonMonitors creates or updates season monitors for a media item.
+// When a season's monitored status changes, episode-level overrides for that
+// season are cleared so episodes inherit the new season-level setting.
 func (s *Service) UpsertSeasonMonitors(itemID uint, monitors []SeasonMonitorInput) error {
 	existing, err := s.store.ListSeasonMonitorsByMediaItem(itemID)
 	if err != nil {
@@ -175,6 +193,30 @@ func (s *Service) UpsertSeasonMonitors(itemID uint, monitors []SeasonMonitorInpu
 			}); err != nil {
 				return err
 			}
+		}
+		// Clear episode-level overrides — episodes now inherit from the season setting.
+		_ = s.store.DeleteEpisodeMonitorsBySeason(itemID, sm.SeasonNumber)
+	}
+	return nil
+}
+
+// EpisodeMonitorInput represents an episode monitor create/update request.
+type EpisodeMonitorInput struct {
+	SeasonNumber  int
+	EpisodeNumber int
+	Monitored     bool
+}
+
+// UpsertEpisodeMonitors creates or updates episode monitors for a media item.
+func (s *Service) UpsertEpisodeMonitors(itemID uint, monitors []EpisodeMonitorInput) error {
+	for _, em := range monitors {
+		if err := s.store.UpsertEpisodeMonitor(&store.EpisodeMonitor{
+			MediaItemID:   itemID,
+			SeasonNumber:  em.SeasonNumber,
+			EpisodeNumber: em.EpisodeNumber,
+			Monitored:     em.Monitored,
+		}); err != nil {
+			return err
 		}
 	}
 	return nil

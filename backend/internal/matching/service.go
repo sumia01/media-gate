@@ -292,6 +292,9 @@ func (s *Service) Unmatch(mediaItemID uint) error {
 	// Delete episode records
 	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
 
+	// Delete episode monitor overrides (season monitors are kept)
+	_ = s.store.DeleteEpisodeMonitorsByMediaItem(mediaItemID)
+
 	// Requested items stay "requested" when unmatched (they have no disk presence to fall back to "new")
 	if item.Source == "request" {
 		item.Status = "requested"
@@ -402,12 +405,20 @@ type AddMediaRequest struct {
 	MonitorNewSeasons *bool
 	MediaProfileID    *uint
 	SeasonMonitors    []SeasonMonitorReq
+	EpisodeMonitors   []EpisodeMonitorReq
 }
 
 // SeasonMonitorReq represents a season monitor setting.
 type SeasonMonitorReq struct {
 	SeasonNumber int
 	Monitored    bool
+}
+
+// EpisodeMonitorReq represents an episode monitor setting.
+type EpisodeMonitorReq struct {
+	SeasonNumber  int
+	EpisodeNumber int
+	Monitored     bool
 }
 
 // AddMediaToLibraryFull creates a media item inside a transaction, applies
@@ -451,6 +462,17 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 				Monitored:    sm.Monitored,
 			}); err != nil {
 				return fmt.Errorf("creating season monitor for S%02d: %w", sm.SeasonNumber, err)
+			}
+		}
+
+		for _, em := range req.EpisodeMonitors {
+			if err := tx.UpsertEpisodeMonitor(&store.EpisodeMonitor{
+				MediaItemID:   item.ID,
+				SeasonNumber:  em.SeasonNumber,
+				EpisodeNumber: em.EpisodeNumber,
+				Monitored:     em.Monitored,
+			}); err != nil {
+				return fmt.Errorf("creating episode monitor for S%02dE%02d: %w", em.SeasonNumber, em.EpisodeNumber, err)
 			}
 		}
 

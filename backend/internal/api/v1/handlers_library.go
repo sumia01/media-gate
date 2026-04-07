@@ -300,6 +300,15 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 			})
 		}
 	}
+	if req.Body.EpisodeMonitors != nil {
+		for _, em := range *req.Body.EpisodeMonitors {
+			addReq.EpisodeMonitors = append(addReq.EpisodeMonitors, matching.EpisodeMonitorReq{
+				SeasonNumber:  em.SeasonNumber,
+				EpisodeNumber: em.EpisodeNumber,
+				Monitored:     em.Monitored,
+			})
+		}
+	}
 
 	item, meta, err := h.matchSvc.AddMediaToLibraryFull(h.store, lib, addReq)
 	if err != nil {
