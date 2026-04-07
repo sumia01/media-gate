@@ -369,6 +369,9 @@ func (h *Handlers) GetExternalMediaDetail(_ context.Context, req GetExternalMedi
 	if detail.ImdbID != "" {
 		apiDetail.ImdbId = &detail.ImdbID
 	}
+	if detail.TrailerURL != "" {
+		apiDetail.TrailerUrl = &detail.TrailerURL
+	}
 	if detail.Credits != "" {
 		var credits []CreditPerson
 		if err := json.Unmarshal([]byte(detail.Credits), &credits); err == nil {

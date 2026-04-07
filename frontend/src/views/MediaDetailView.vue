@@ -64,6 +64,8 @@ const imdbUrl = computed(() => {
   return `https://www.imdb.com/title/${metadata.value.imdbId}/`
 })
 
+const trailerUrl = computed(() => metadata.value?.trailerUrl ?? null)
+
 const credits = computed(() => metadata.value?.credits ?? [])
 const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
 const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
@@ -610,6 +612,19 @@ watch(() => route.params.id, loadAll)
                 View on IMDb &nearr;
               </a>
             </div>
+            <!-- Trailer card -->
+            <a
+              v-if="trailerUrl"
+              :href="trailerUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-2 px-4 py-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400 hover:text-red-300 transition-colors duration-200"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              Watch Trailer &nearr;
+            </a>
           </div>
         </div>
       </div>

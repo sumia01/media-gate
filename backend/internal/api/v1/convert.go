@@ -117,6 +117,9 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 	if meta.ReleaseDate != "" {
 		m.ReleaseDate = &meta.ReleaseDate
 	}
+	if meta.TrailerURL != "" {
+		m.TrailerUrl = &meta.TrailerURL
+	}
 	if meta.Credits != "" {
 		var credits []CreditPerson
 		if err := json.Unmarshal([]byte(meta.Credits), &credits); err == nil {

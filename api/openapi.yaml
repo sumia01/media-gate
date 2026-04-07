@@ -2055,6 +2055,9 @@ components:
         releaseDate:
           type: string
           description: "ISO date YYYY-MM-DD"
+        trailerUrl:
+          type: string
+          description: YouTube trailer URL
         credits:
           type: array
           items:
@@ -2454,6 +2457,9 @@ components:
           type: integer
         imdbId:
           type: string
+        trailerUrl:
+          type: string
+          description: YouTube trailer URL
         credits:
           type: array
           items:
