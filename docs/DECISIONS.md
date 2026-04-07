@@ -1266,3 +1266,44 @@ Changes:
 6. **Explicit `PRAGMA foreign_keys = ON` after migrations**: Both `glebarez/sqlite`'s AutoMigrate and our `rebuildTable` disable `PRAGMA foreign_keys` during table alterations. The `defer`-based restore targets the raw `*sql.DB` connection, which may differ from the pooled connection GORM actually uses for queries. The DSN `?_foreign_keys=ON` only fires at connection open time and doesn't survive a mid-session `PRAGMA foreign_keys = OFF`. Fix: `NewSQLite` explicitly runs `db.Exec("PRAGMA foreign_keys = ON")` on the GORM handle after all migrations complete.
 
 **Rationale**: The boolean `tableHasForeignKeys` guard is fundamentally incompatible with incremental FK additions. A version number provides a clear, ordered, idempotent migration path. Using the existing `settings` table avoids a new model/table. Raw SQL for version read/write avoids GORM lifecycle issues during early startup. Each migration is self-contained and can use targeted PRAGMA checks for the specific constraint it needs to add. The system is simple (no migration DSL, no rollback) because SQLite schema changes are rare and the app is single-binary.
+
+---
+
+## ADR-089: Episode-level monitoring
+**Date**: 2026-04-07
+**Status**: Accepted
+
+**Context**: Season-level monitoring was the finest granularity available. Users couldn't unmonitor individual episodes within a monitored season (e.g., skip specials or already-watched episodes). Sonarr supports episode-level monitoring with a clear resolution hierarchy, and our users expected the same control.
+
+**Decision**: Add episode-level monitor overrides with hierarchical resolution:
+
+1. **`EpisodeMonitor` model**: Separate table keyed by `(MediaItemID, SeasonNumber, EpisodeNumber)` composite unique index — NOT by `Episode.ID`, because episodes get deleted and recreated on re-match but season+episode numbers are stable identifiers.
+2. **Resolution priority** (like Sonarr): `EpisodeMonitor` (explicit override) → `SeasonMonitor` (season-level) → not monitored. Applied consistently in `AssembleEpisodes`, `processSeries` auto-grab, and frontend status display.
+3. **Season cascade**: Toggling a season's monitored state deletes all `EpisodeMonitor` rows for that season — episodes inherit the new season-level setting. Applied in `UpsertSeasonMonitors`, `UpdateSeasonMonitor` handler, and frontend `SeasonMonitorModal`.
+4. **Item disable cleanup**: Setting `item.monitored = false` deletes all `EpisodeMonitor` rows to prevent stale overrides when re-enabling monitoring.
+5. **Metarefresh**: New episodes inherit from season-level — no `EpisodeMonitor` rows created automatically.
+6. **API**: New `PUT /media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor` endpoint. `episodeMonitors` array added to `MediaItemUpdate` and `AddMediaRequest` schemas. `Episode` schema extended with `monitored` boolean.
+7. **Store**: 4 new methods — `ListEpisodeMonitorsByMediaItem`, `UpsertEpisodeMonitor`, `DeleteEpisodeMonitorsBySeason`, `DeleteEpisodeMonitorsByMediaItem`. Migration v4 (no-op — AutoMigrate creates the table).
+8. **Frontend**: Per-episode toggle buttons in `EpisodeGrid` and `SeasonMonitorModal`. "Unmonitored" episode status (gray styling) for aired episodes that are explicitly unmonitored. `AddToLibraryModal` sends episode overrides (only diffs from season default).
+
+**Rationale**: A separate table avoids schema changes on the existing `Episode` model, survives episode re-creation during re-match, and keeps the Episode model as pure external metadata. The hierarchical resolution minimizes DB rows (only overrides stored) while giving full granularity. The cascade on season toggle prevents confusing orphaned overrides.
+
+---
+
+## ADR-090: Download settings bar + UI consistency pass
+**Date**: 2026-04-07
+**Status**: Accepted
+
+**Context**: The media detail page had monitoring controls (auto-download toggle, quality profile dropdown) mixed into the top action bar alongside one-shot actions (Match, Search Indexers, Delete). The "Auto-grab" checkbox didn't match the toggle button styling used elsewhere. Season and episode monitoring used inconsistent controls (text tags vs checkboxes). The "New seasons auto-monitored" label was a passive state badge rather than an actionable toggle.
+
+**Decision**: UI consistency and layout improvements:
+
+1. **Download settings bar**: Moved auto-download toggle, "Monitor new seasons" toggle (series only, visible when auto-download enabled), and quality profile dropdown from the top action bar into a dedicated settings row between the hero section and content sections. Applies to both movies and series. Top bar now contains only Watched toggle and action buttons.
+2. **Unified toggle styling**: All monitoring controls use the same toggle pill pattern — season toggles (in `EpisodeGrid` header, right-aligned), episode toggles (in episode rows, right-aligned after status badge), auto-download and monitor-new-seasons (in settings bar). Green = on, gray = off, white pill slides.
+3. **Renamed "Auto-grab" to "Auto-download"**: Clearer, less jargon. Applied across `MediaDetailView` and `TestProfileModal`.
+4. **Renamed "New seasons auto-monitored" to "Monitor new seasons"**: Imperative action label matching toggle pattern, consistent with `SeasonMonitorModal`'s "Monitor future seasons".
+5. **Search icon**: Replaced "Search" text buttons in season headers and episode rows with magnifying glass icon (tooltip preserved).
+6. **Season header layout**: Split into left group (chevron + name + episode count) and right group (search icon + monitor toggle). Removed "episodes" suffix from badge text (`3/13` instead of `3/13 episodes`).
+7. **Non-flickering refetch**: `EpisodeGrid.fetchEpisodes` only sets `loading=true` on initial load (empty state), not on refetches — prevents list disappearing/reappearing when toggling season monitors.
+
+**Rationale**: Grouping persistent settings separately from one-shot actions reduces cognitive load. Consistent toggle styling across all monitoring levels (item → season → episode) creates a coherent visual language. Right-aligning toggles creates a clean column of controls. The settings bar works for both movies and series without special-casing.

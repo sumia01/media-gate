@@ -60,6 +60,12 @@ type Store interface {
 	ListSeasonMonitorsByMediaItem(mediaItemID uint) ([]SeasonMonitor, error)
 	UpdateSeasonMonitor(monitor *SeasonMonitor) error
 
+	// EpisodeMonitor CRUD
+	ListEpisodeMonitorsByMediaItem(mediaItemID uint) ([]EpisodeMonitor, error)
+	UpsertEpisodeMonitor(monitor *EpisodeMonitor) error
+	DeleteEpisodeMonitorsBySeason(mediaItemID uint, seasonNumber int) error
+	DeleteEpisodeMonitorsByMediaItem(mediaItemID uint) error
+
 	// Episode CRUD
 	CreateEpisode(episode *Episode) error
 	ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, error)

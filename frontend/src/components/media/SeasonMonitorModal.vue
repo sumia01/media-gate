@@ -10,21 +10,29 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  confirm: [monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean]
+  confirm: [monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean, episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]]
   cancel: []
 }>()
 
 const expandedSeasons = ref<Set<number>>(new Set())
 const seasonMonitored = ref<Map<number, boolean>>(new Map())
+const episodeMonitored = ref<Map<string, boolean>>(new Map())
 const monitorFutureSeasons = ref(true)
 
-// Initialize all seasons as monitored by default
+// Initialize all seasons and episodes as monitored by default
 watch(() => props.seasons, (seasons) => {
   const sm = new Map<number, boolean>()
+  const em = new Map<string, boolean>()
   for (const s of seasons) {
     sm.set(s.seasonNumber, true)
+    if (s.episodes) {
+      for (const ep of s.episodes) {
+        em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+      }
+    }
   }
   seasonMonitored.value = sm
+  episodeMonitored.value = em
 }, { immediate: true })
 
 watch(() => props.monitorNewSeasons, (val) => {
@@ -40,7 +48,23 @@ function toggleSeason(seasonNumber: number) {
 
 function toggleSeasonMonitor(seasonNumber: number) {
   const current = seasonMonitored.value.get(seasonNumber) ?? true
-  seasonMonitored.value = new Map(seasonMonitored.value.set(seasonNumber, !current))
+  const newVal = !current
+  seasonMonitored.value = new Map(seasonMonitored.value.set(seasonNumber, newVal))
+
+  // Cascade: set all episodes in this season to match
+  const season = props.seasons.find(s => s.seasonNumber === seasonNumber)
+  if (season?.episodes) {
+    for (const ep of season.episodes) {
+      episodeMonitored.value.set(`${seasonNumber}-${ep.episodeNumber}`, newVal)
+    }
+    episodeMonitored.value = new Map(episodeMonitored.value)
+  }
+}
+
+function toggleEpisodeMonitor(seasonNumber: number, episodeNumber: number) {
+  const key = `${seasonNumber}-${episodeNumber}`
+  const current = episodeMonitored.value.get(key) ?? true
+  episodeMonitored.value = new Map(episodeMonitored.value.set(key, !current))
 }
 
 const allSeasonsMonitored = computed(() =>
@@ -51,17 +75,38 @@ const allSeasonsMonitored = computed(() =>
 function toggleAllSeasons() {
   const newVal = !allSeasonsMonitored.value
   const sm = new Map<number, boolean>()
+  const em = new Map<string, boolean>()
   for (const s of props.seasons) {
     sm.set(s.seasonNumber, newVal)
+    if (s.episodes) {
+      for (const ep of s.episodes) {
+        em.set(`${s.seasonNumber}-${ep.episodeNumber}`, newVal)
+      }
+    }
   }
   seasonMonitored.value = sm
+  episodeMonitored.value = em
 }
 
 function handleConfirm() {
+  // Build episode-level overrides: only episodes that differ from their season setting
+  const epOverrides: { seasonNumber: number; episodeNumber: number; monitored: boolean }[] = []
+  for (const s of props.seasons) {
+    const seasonVal = seasonMonitored.value.get(s.seasonNumber) ?? true
+    if (s.episodes) {
+      for (const ep of s.episodes) {
+        const epVal = episodeMonitored.value.get(`${s.seasonNumber}-${ep.episodeNumber}`) ?? true
+        if (epVal !== seasonVal) {
+          epOverrides.push({ seasonNumber: s.seasonNumber, episodeNumber: ep.episodeNumber, monitored: epVal })
+        }
+      }
+    }
+  }
+
   emit('confirm', props.seasons.map(s => ({
     seasonNumber: s.seasonNumber,
     monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
-  })), monitorFutureSeasons.value)
+  })), monitorFutureSeasons.value, epOverrides)
 }
 </script>
 
@@ -143,7 +188,7 @@ function handleConfirm() {
             </button>
           </div>
 
-          <!-- Episode list (read-only, for context) -->
+          <!-- Episode list -->
           <div v-if="expandedSeasons.has(season.seasonNumber) && season.episodes?.length" class="divide-y divide-violet-900/10">
             <div
               v-for="ep in season.episodes"
@@ -151,7 +196,17 @@ function handleConfirm() {
               class="flex items-center gap-3 px-4 py-2 pl-10"
             >
               <span class="text-xs text-gray-500 font-mono w-6 text-right flex-shrink-0">{{ ep.episodeNumber }}</span>
-              <span class="flex-1 text-sm text-gray-300 truncate">{{ ep.title || `Episode ${ep.episodeNumber}` }}</span>
+              <span class="flex-1 text-sm truncate" :class="episodeMonitored.get(`${season.seasonNumber}-${ep.episodeNumber}`) ? 'text-gray-300' : 'text-gray-500'">{{ ep.title || `Episode ${ep.episodeNumber}` }}</span>
+              <button
+                class="relative w-8 h-[18px] rounded-full transition-colors duration-200 flex-shrink-0"
+                :class="episodeMonitored.get(`${season.seasonNumber}-${ep.episodeNumber}`) ? 'bg-emerald-600' : 'bg-gray-600'"
+                @click="toggleEpisodeMonitor(season.seasonNumber, ep.episodeNumber)"
+              >
+                <span
+                  class="absolute top-[3px] left-[3px] w-3 h-3 bg-white rounded-full transition-transform duration-200"
+                  :class="episodeMonitored.get(`${season.seasonNumber}-${ep.episodeNumber}`) ? 'translate-x-3.5' : ''"
+                />
+              </button>
             </div>
           </div>
         </div>

@@ -320,6 +320,24 @@
 - [x] "Monitor future seasons" toggle in SeasonMonitorModal and AddToLibraryModal
 - [x] "New seasons auto-monitored" badge in EpisodeGrid
 
+## Phase 7.4: Episode-level monitoring + UI polish ✅
+→ See ADR-089, ADR-090
+- [x] `EpisodeMonitor` model — separate table keyed by (MediaItemID, SeasonNumber, EpisodeNumber) surviving episode re-creation on re-match
+- [x] Store layer — ListEpisodeMonitorsByMediaItem, UpsertEpisodeMonitor, DeleteEpisodeMonitorsBySeason, DeleteEpisodeMonitorsByMediaItem + migration v4
+- [x] Hierarchical resolution — EpisodeMonitor > SeasonMonitor > not monitored (like Sonarr) in AssembleEpisodes and monitor worker auto-grab
+- [x] Season cascade — toggling season deletes all episode overrides for that season
+- [x] Item disable cleanup — setting monitored=false clears all episode monitors
+- [x] API — `PUT /media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor`, episodeMonitors on MediaItemUpdate and AddMediaRequest, monitored field on Episode schema
+- [x] Frontend: per-episode toggle in EpisodeGrid (right-aligned mini toggle pill) and SeasonMonitorModal (with cascade)
+- [x] Frontend: "unmonitored" episode status (gray styling for aired+unmonitored episodes)
+- [x] Frontend: AddToLibraryModal sends episode monitor overrides (only diffs from season default)
+- [x] Renamed "Auto-grab" → "Auto-download" across all UI
+- [x] Download settings bar — auto-download, monitor new seasons, quality profile moved to dedicated row between hero and content
+- [x] Unified toggle styling — all monitoring controls use consistent toggle pill pattern
+- [x] Season header layout — left (chevron+name+count) / right (search icon+toggle) split
+- [x] Search icon — replaced "Search" text with magnifying glass in season/episode rows
+- [x] Non-flickering refetch — EpisodeGrid only shows loading on initial load, not refetches
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

@@ -705,6 +705,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: seasonNumber
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: episodeNumber
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: updateEpisodeMonitor
+      summary: Set monitoring status for a specific episode
+      tags:
+        - media
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - monitored
+              properties:
+                monitored:
+                  type: boolean
+      responses:
+        "200":
+          description: Episode monitor updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - monitored
+                properties:
+                  monitored:
+                    type: boolean
+        "404":
+          description: Media item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /media/{id}/search:
     parameters:
       - name: id
@@ -2032,6 +2085,21 @@ components:
                 type: integer
               monitored:
                 type: boolean
+        episodeMonitors:
+          type: array
+          items:
+            type: object
+            required:
+              - seasonNumber
+              - episodeNumber
+              - monitored
+            properties:
+              seasonNumber:
+                type: integer
+              episodeNumber:
+                type: integer
+              monitored:
+                type: boolean
 
     CreditPerson:
       type: object
@@ -2202,6 +2270,8 @@ components:
           type: integer
         hasFile:
           type: boolean
+        monitored:
+          type: boolean
         downloadStatus:
           type: string
           enum:
@@ -2313,6 +2383,21 @@ components:
               - monitored
             properties:
               seasonNumber:
+                type: integer
+              monitored:
+                type: boolean
+        episodeMonitors:
+          type: array
+          items:
+            type: object
+            required:
+              - seasonNumber
+              - episodeNumber
+              - monitored
+            properties:
+              seasonNumber:
+                type: integer
+              episodeNumber:
                 type: integer
               monitored:
                 type: boolean

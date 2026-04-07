@@ -161,11 +161,10 @@ async function onProfileChange(event: Event) {
   await updateMediaItem({ mediaProfileId: value ? Number(value) : undefined })
 }
 
-async function onMonitoredToggle(event: Event) {
-  const checked = (event.target as HTMLInputElement).checked
-  if (checked && item.value?.mediaType === 'series') {
-    // Revert checkbox — will be set by PATCH response after modal confirm
-    ;(event.target as HTMLInputElement).checked = false
+async function onMonitoredToggle() {
+  if (!item.value) return
+  const newVal = !(item.value.monitored ?? false)
+  if (newVal && item.value.mediaType === 'series') {
     // Fetch seasons to show in modal
     const { data } = await client.GET('/media/{id}/episodes', {
       params: { path: { id: item.value.id } },
@@ -174,12 +173,21 @@ async function onMonitoredToggle(event: Event) {
     showSeasonMonitorModal.value = true
     return
   }
-  await updateMediaItem({ monitored: checked })
+  await updateMediaItem({ monitored: newVal })
+  episodeRefreshKey.value++
 }
 
-async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean) {
+async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean, episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]) {
   showSeasonMonitorModal.value = false
-  await updateMediaItem({ monitored: true, seasonMonitors: monitors, monitorNewSeasons })
+  const update: { monitored: boolean; seasonMonitors: { seasonNumber: number; monitored: boolean }[]; monitorNewSeasons: boolean; episodeMonitors?: { seasonNumber: number; episodeNumber: number; monitored: boolean }[] } = {
+    monitored: true,
+    seasonMonitors: monitors,
+    monitorNewSeasons,
+  }
+  if (episodeMonitors.length) {
+    update.episodeMonitors = episodeMonitors
+  }
+  await updateMediaItem(update)
   episodeRefreshKey.value++
 }
 
@@ -342,31 +350,6 @@ watch(() => route.params.id, loadAll)
       </router-link>
 
       <div v-if="item" class="flex items-center gap-2 flex-wrap">
-        <!-- Quality profile -->
-        <div class="flex items-center gap-2">
-          <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
-          <select
-            id="profile-select"
-            class="text-sm bg-[#161b2e] border border-violet-900/20 rounded-lg px-3 py-1.5 text-gray-200 focus:outline-none focus:border-violet-500/50"
-            :value="item.mediaProfileId ?? ''"
-            @change="onProfileChange"
-          >
-            <option value="">None</option>
-            <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-        </div>
-
-        <!-- Monitored (auto-grab) -->
-        <label v-if="metadata" class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            class="w-4 h-4 rounded border-violet-900/20 bg-[#161b2e] text-violet-600 focus:ring-violet-500/50 focus:ring-offset-0"
-            :checked="item.monitored ?? false"
-            @change="onMonitoredToggle"
-          />
-          <span class="text-xs text-gray-500">Auto-grab</span>
-        </label>
-
         <!-- Watched toggle -->
         <button
           v-if="metadata"
@@ -631,12 +614,69 @@ watch(() => route.params.id, loadAll)
         </div>
       </div>
 
+      <!-- Download settings bar -->
+      <div v-if="metadata" class="mt-8 flex items-center gap-4 flex-wrap px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
+        <!-- Auto-download toggle -->
+        <button
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
+          :class="item.monitored
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          @click="onMonitoredToggle"
+        >
+          <span
+            class="relative w-7 h-4 rounded-full transition-colors duration-200 flex-shrink-0"
+            :class="item.monitored ? 'bg-emerald-600' : 'bg-gray-600'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
+              :class="item.monitored ? 'translate-x-3' : ''"
+            />
+          </span>
+          <span>Auto-download</span>
+        </button>
+
+        <!-- Monitor new seasons toggle (series only) -->
+        <button
+          v-if="item.mediaType === 'series' && item.monitored"
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
+          :class="item.monitorNewSeasons
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          @click="updateMediaItem({ monitorNewSeasons: !(item.monitorNewSeasons ?? true) })"
+        >
+          <span
+            class="relative w-7 h-4 rounded-full transition-colors duration-200 flex-shrink-0"
+            :class="(item.monitorNewSeasons ?? true) ? 'bg-emerald-600' : 'bg-gray-600'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
+              :class="(item.monitorNewSeasons ?? true) ? 'translate-x-3' : ''"
+            />
+          </span>
+          <span>Monitor new seasons</span>
+        </button>
+
+        <!-- Quality profile -->
+        <div class="flex items-center gap-2">
+          <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
+          <select
+            id="profile-select"
+            class="text-sm bg-[#0f1225] border border-violet-900/20 rounded-lg px-3 py-1.5 text-gray-200 focus:outline-none focus:border-violet-500/50"
+            :value="item.mediaProfileId ?? ''"
+            @change="onProfileChange"
+          >
+            <option value="">None</option>
+            <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Episodes section (series only) -->
       <EpisodeGrid
         v-if="item.mediaType === 'series' && metadata"
         :mediaItemId="item.id"
         :monitored="item.monitored ?? false"
-        :monitorNewSeasons="item.monitorNewSeasons ?? true"
         :refreshKey="episodeRefreshKey"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
