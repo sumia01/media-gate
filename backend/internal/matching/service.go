@@ -396,11 +396,12 @@ func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalI
 // AddMediaRequest holds parameters for adding media to a library with optional
 // monitoring configuration.
 type AddMediaRequest struct {
-	Source         string
-	ExternalID     int
-	Monitored      *bool
-	MediaProfileID *uint
-	SeasonMonitors []SeasonMonitorReq
+	Source            string
+	ExternalID        int
+	Monitored         *bool
+	MonitorNewSeasons *bool
+	MediaProfileID    *uint
+	SeasonMonitors    []SeasonMonitorReq
 }
 
 // SeasonMonitorReq represents a season monitor setting.
@@ -427,6 +428,10 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 		needsUpdate := false
 		if req.Monitored != nil {
 			item.Monitored = *req.Monitored
+			needsUpdate = true
+		}
+		if req.MonitorNewSeasons != nil {
+			item.MonitorNewSeasons = *req.MonitorNewSeasons
 			needsUpdate = true
 		}
 		if req.MediaProfileID != nil {

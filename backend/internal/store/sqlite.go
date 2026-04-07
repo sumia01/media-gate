@@ -80,6 +80,7 @@ func NewSQLite(dbPath string) (*SQLiteStore, error) {
 var migrations = []func(*sql.DB) error{
 	migrateV1, // 0→1: FK constraint rebuilds + orphan cleanup (existing tables)
 	migrateV2, // 1→2: watched_items — add media_item_id FK with SET NULL
+	migrateV3, // 2→3: explicit season monitoring — add monitor_new_seasons column + backfill SeasonMonitor rows
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -326,6 +327,74 @@ func migrateV2(db *sql.DB) error {
 			slog.Warn("failed to recreate index", "ddl", ddl, "error", err)
 		}
 	}
+	return nil
+}
+
+// migrateV3 adds the monitor_new_seasons column to media_items and backfills
+// explicit SeasonMonitor rows for all monitored series. After this migration,
+// "no SeasonMonitor row" means "not monitored" (previously it meant monitored).
+func migrateV3(db *sql.DB) error {
+	// 1. Add column if not already present (AutoMigrate may have added it on fresh installs).
+	var hasColumn bool
+	rows, err := db.Query("PRAGMA table_info('media_items')")
+	if err != nil {
+		return fmt.Errorf("checking media_items columns: %w", err)
+	}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull int
+		var dfltValue *string
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		if name == "monitor_new_seasons" {
+			hasColumn = true
+			break
+		}
+	}
+	rows.Close()
+
+	if !hasColumn {
+		if _, err := db.Exec("ALTER TABLE media_items ADD COLUMN monitor_new_seasons BOOLEAN NOT NULL DEFAULT 1"); err != nil {
+			return fmt.Errorf("adding monitor_new_seasons column: %w", err)
+		}
+	}
+
+	// 2. Backfill SeasonMonitor rows for all monitored series.
+	// For each monitored series, create SeasonMonitor(monitored=true) for every
+	// season that has episodes but no existing SeasonMonitor row.
+	itemRows, err := db.Query("SELECT id FROM media_items WHERE monitored = 1 AND media_type = 'series'")
+	if err != nil {
+		return fmt.Errorf("querying monitored series: %w", err)
+	}
+	var itemIDs []int
+	for itemRows.Next() {
+		var id int
+		if err := itemRows.Scan(&id); err != nil {
+			continue
+		}
+		itemIDs = append(itemIDs, id)
+	}
+	itemRows.Close()
+
+	for _, itemID := range itemIDs {
+		// Find seasons that have episodes but no SeasonMonitor row.
+		_, err := db.Exec(`
+			INSERT INTO season_monitors (media_item_id, season_number, monitored, created_at, updated_at)
+			SELECT ?, e.season_number, 1, datetime('now'), datetime('now')
+			FROM (SELECT DISTINCT season_number FROM episodes WHERE media_item_id = ?) e
+			WHERE NOT EXISTS (
+				SELECT 1 FROM season_monitors
+				WHERE media_item_id = ? AND season_number = e.season_number
+			)
+		`, itemID, itemID, itemID)
+		if err != nil {
+			slog.Warn("migrateV3: failed to backfill season monitors", "item_id", itemID, "error", err)
+		}
+	}
+
 	return nil
 }
 

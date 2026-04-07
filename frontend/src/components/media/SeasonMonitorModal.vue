@@ -2,17 +2,21 @@
 import { ref, computed, watch } from 'vue'
 import type { SeasonSummary } from '@/types/api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   seasons: SeasonSummary[]
-}>()
+  monitorNewSeasons?: boolean
+}>(), {
+  monitorNewSeasons: true,
+})
 
 const emit = defineEmits<{
-  confirm: [monitors: { seasonNumber: number; monitored: boolean }[]]
+  confirm: [monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean]
   cancel: []
 }>()
 
 const expandedSeasons = ref<Set<number>>(new Set())
 const seasonMonitored = ref<Map<number, boolean>>(new Map())
+const monitorFutureSeasons = ref(true)
 
 // Initialize all seasons as monitored by default
 watch(() => props.seasons, (seasons) => {
@@ -21,6 +25,10 @@ watch(() => props.seasons, (seasons) => {
     sm.set(s.seasonNumber, true)
   }
   seasonMonitored.value = sm
+}, { immediate: true })
+
+watch(() => props.monitorNewSeasons, (val) => {
+  monitorFutureSeasons.value = val
 }, { immediate: true })
 
 function toggleSeason(seasonNumber: number) {
@@ -53,7 +61,7 @@ function handleConfirm() {
   emit('confirm', props.seasons.map(s => ({
     seasonNumber: s.seasonNumber,
     monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
-  })))
+  })), monitorFutureSeasons.value)
 }
 </script>
 
@@ -72,6 +80,22 @@ function handleConfirm() {
           <span
             class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
             :class="allSeasonsMonitored ? 'translate-x-4' : ''"
+          />
+        </button>
+      </div>
+
+      <!-- Monitor future seasons toggle -->
+      <div class="flex items-center justify-between px-1 mb-3 pb-3 border-b border-violet-900/20 flex-shrink-0">
+        <span class="text-sm text-gray-300">Monitor future seasons</span>
+        <button
+          class="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0"
+          :class="monitorFutureSeasons ? 'bg-emerald-600' : 'bg-gray-600'"
+          title="Automatically monitor new seasons when they are announced"
+          @click="monitorFutureSeasons = !monitorFutureSeasons"
+        >
+          <span
+            class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
+            :class="monitorFutureSeasons ? 'translate-x-4' : ''"
           />
         </button>
       </div>

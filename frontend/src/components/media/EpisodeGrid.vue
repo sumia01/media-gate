@@ -6,6 +6,7 @@ import type { SeasonSummary, Episode } from '@/types/api'
 const props = defineProps<{
   mediaItemId: number
   monitored: boolean
+  monitorNewSeasons: boolean
   refreshKey?: number
 }>()
 
@@ -80,6 +81,12 @@ watch(() => props.refreshKey, fetchEpisodes)
   <div>
     <div class="flex items-center gap-3 mb-4">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Episodes</h2>
+      <span
+        v-if="props.monitored && props.monitorNewSeasons"
+        class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300"
+      >
+        New seasons auto-monitored
+      </span>
     </div>
 
     <div v-if="loading" class="text-sm text-gray-500">Loading episodes...</div>

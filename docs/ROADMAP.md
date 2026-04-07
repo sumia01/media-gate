@@ -312,6 +312,14 @@
 ## Phase 7.2: Custom Scrollbar Styling ✅
 - [x] Themed scrollbar — thin, violet-tinted scrollbar matching dark UI theme via CSS `scrollbar-width`/`scrollbar-color` + WebKit pseudo-elements
 
+## Phase 7.3: Explicit Season Monitoring ✅
+- [x] `MonitorNewSeasons` bool on MediaItem — explicit control over auto-monitoring of newly discovered seasons
+- [x] Flipped implicit default — no SeasonMonitor row = not monitored (previously meant monitored)
+- [x] Migration v3 — backfills explicit SeasonMonitor rows for all monitored series to preserve existing behavior
+- [x] Metarefresh auto-creates SeasonMonitor rows for new seasons when MonitorNewSeasons is true
+- [x] "Monitor future seasons" toggle in SeasonMonitorModal and AddToLibraryModal
+- [x] "New seasons auto-monitored" badge in EpisodeGrid
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

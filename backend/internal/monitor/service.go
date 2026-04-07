@@ -198,8 +198,8 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		if ep.AirDate == "" || ep.AirDate > today {
 			continue
 		}
-		// Must be in a monitored season (default: true)
-		if monitored, ok := monitorLookup[ep.SeasonNumber]; ok && !monitored {
+		// Must be in a monitored season (explicit: no row = not monitored)
+		if monitored, ok := monitorLookup[ep.SeasonNumber]; !ok || !monitored {
 			continue
 		}
 

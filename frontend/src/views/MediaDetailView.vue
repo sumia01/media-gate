@@ -147,7 +147,7 @@ async function toggleWatched() {
   watchedLoading.value = false
 }
 
-async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean; seasonMonitors?: { seasonNumber: number; monitored: boolean }[] }) {
+async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean; monitorNewSeasons?: boolean; seasonMonitors?: { seasonNumber: number; monitored: boolean }[] }) {
   if (!item.value) return
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: item.value.id } },
@@ -177,9 +177,9 @@ async function onMonitoredToggle(event: Event) {
   await updateMediaItem({ monitored: checked })
 }
 
-async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[]) {
+async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean) {
   showSeasonMonitorModal.value = false
-  await updateMediaItem({ monitored: true, seasonMonitors: monitors })
+  await updateMediaItem({ monitored: true, seasonMonitors: monitors, monitorNewSeasons })
   episodeRefreshKey.value++
 }
 
@@ -636,6 +636,7 @@ watch(() => route.params.id, loadAll)
         v-if="item.mediaType === 'series' && metadata"
         :mediaItemId="item.id"
         :monitored="item.monitored ?? false"
+        :monitorNewSeasons="item.monitorNewSeasons ?? true"
         :refreshKey="episodeRefreshKey"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
@@ -744,6 +745,7 @@ watch(() => route.params.id, loadAll)
     <SeasonMonitorModal
       v-if="showSeasonMonitorModal"
       :seasons="seasonMonitorSeasons"
+      :monitorNewSeasons="item?.monitorNewSeasons ?? true"
       @confirm="onSeasonMonitorConfirm"
       @cancel="onSeasonMonitorCancel"
     />

@@ -1945,6 +1945,8 @@ components:
           format: int64
         monitored:
           type: boolean
+        monitorNewSeasons:
+          type: boolean
         monitorSearchStartedAt:
           type: string
           format: date-time
@@ -2015,6 +2017,8 @@ components:
           type: integer
           format: int64
         monitored:
+          type: boolean
+        monitorNewSeasons:
           type: boolean
         seasonMonitors:
           type: array
@@ -2294,6 +2298,8 @@ components:
         externalId:
           type: integer
         monitored:
+          type: boolean
+        monitorNewSeasons:
           type: boolean
         mediaProfileId:
           type: integer

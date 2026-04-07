@@ -127,7 +127,7 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 		}
 		monitored, ok := monitorLookup[sn]
 		if !ok {
-			monitored = true // default to monitored
+			monitored = false // explicit: no row = not monitored
 		}
 		seasons = append(seasons, SeasonSummary{
 			SeasonNumber:      sn,
