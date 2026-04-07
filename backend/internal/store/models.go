@@ -45,6 +45,7 @@ type MediaMetadata struct {
 	Runtime     *int
 	Seasons     *int
 	ReleaseDate string // ISO "YYYY-MM-DD" from TMDB/TVDB
+	TrailerURL  string
 	Confidence  float64
 	MatchedAt   time.Time
 	CreatedAt   time.Time

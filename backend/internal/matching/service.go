@@ -211,6 +211,7 @@ type ExternalDetail struct {
 	Runtime    *int
 	Seasons    *int
 	ImdbID     string
+	TrailerURL string
 }
 
 // GetExternalDetail fetches full metadata from TMDB/TVDB for preview without creating DB records.
@@ -246,6 +247,7 @@ func (s *Service) GetExternalDetail(source, mediaType string, externalID int) (*
 		Runtime:    meta.Runtime,
 		Seasons:    meta.Seasons,
 		ImdbID:     meta.ImdbID,
+		TrailerURL: meta.TrailerURL,
 	}, nil
 }
 
@@ -810,6 +812,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		meta.ReleaseDate = details.ReleaseDate
 		meta.Genres = genresToJSON(details.Genres)
 		meta.Credits = tmdbCreditsToJSON(details.Credits)
+		meta.TrailerURL = tmdb.BestTrailerURL(details.Videos)
 	} else {
 		details, err := client.GetTV(externalID)
 		if err != nil {
@@ -832,6 +835,7 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		meta.ReleaseDate = details.FirstAirDate
 		meta.Genres = genresToJSON(details.Genres)
 		meta.Credits = tmdbCreditsToJSON(details.Credits)
+		meta.TrailerURL = tmdb.BestTrailerURL(details.Videos)
 	}
 	return nil
 }

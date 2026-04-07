@@ -338,6 +338,15 @@
 - [x] Search icon — replaced "Search" text with magnifying glass in season/episode rows
 - [x] Non-flickering refetch — EpisodeGrid only shows loading on initial load, not refetches
 
+## Phase 7.5: YouTube trailer button ✅
+→ See ADR-091
+- [x] TMDB client — `videos` added to `append_to_response`, `VideoResult`/`VideosResult` types, `Videos` field on `MovieDetails`/`TVDetails`
+- [x] `BestTrailerURL` helper — picks best YouTube trailer: official EN > EN > any language, newest first
+- [x] `TrailerURL` field on `MediaMetadata` store model (auto-migrated by GORM)
+- [x] `trailerUrl` optional field on `MediaMetadata` and `ExternalMediaDetail` OpenAPI schemas
+- [x] API layer maps `TrailerURL` in `mediaMetadataToAPI` and `GetExternalMediaDetail`
+- [x] Frontend: red-themed "Watch Trailer" card on `MediaDetailView` and `MediaPreviewView` (hidden when no trailer)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

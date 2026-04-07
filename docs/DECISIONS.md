@@ -1307,3 +1307,20 @@ Changes:
 7. **Non-flickering refetch**: `EpisodeGrid.fetchEpisodes` only sets `loading=true` on initial load (empty state), not on refetches — prevents list disappearing/reappearing when toggling season monitors.
 
 **Rationale**: Grouping persistent settings separately from one-shot actions reduces cognitive load. Consistent toggle styling across all monitoring levels (item → season → episode) creates a coherent visual language. Right-aligning toggles creates a clean column of controls. The settings bar works for both movies and series without special-casing.
+
+## ADR-091: YouTube trailer button via TMDB videos
+**Date**: 2026-04-07
+**Status**: Accepted
+
+**Context**: Users wanted a quick way to watch trailers for movies and series without leaving the app or searching YouTube manually. TMDB provides trailer/video data via the existing `append_to_response` mechanism at no extra API cost.
+
+**Decision**: Add a "Watch Trailer" button on media detail and preview pages that opens a YouTube link in a new tab.
+
+1. **TMDB client**: Added `videos` to `append_to_response` on `GetMovie` (`credits,videos`) and `GetTV` (`credits,external_ids,videos`). New `VideoResult`/`VideosResult` types, `Videos` field on `MovieDetails`/`TVDetails`.
+2. **Trailer selection**: `BestTrailerURL` helper picks the best YouTube trailer with priority: official English > any English > any language, newest first within each tier.
+3. **Storage**: Single `TrailerURL string` field on `MediaMetadata` — stores the resolved YouTube URL. GORM AutoMigrate adds the column, no manual migration needed.
+4. **API**: Optional `trailerUrl` string on both `MediaMetadata` and `ExternalMediaDetail` schemas.
+5. **Frontend**: Red-themed "Watch Trailer" card (play icon + external link) in the Source/IMDb cards row on both `MediaDetailView` and `MediaPreviewView`. Hidden via `v-if` when no trailer available.
+6. **TVDB**: Not supported — TVDB v4 API does not expose trailer data. TVDB-only items show no trailer button.
+
+**Rationale**: Zero extra HTTP requests (piggybacks on existing `append_to_response`). Persisting the URL avoids re-fetching on every page load. English preference matches the target audience. Existing matched items get trailers on re-match; no backfill migration needed.

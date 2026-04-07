@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -70,7 +71,7 @@ func (c *Client) SearchTV(query string, year *int) ([]TVResult, error) {
 }
 
 func (c *Client) GetMovie(id int) (*MovieDetails, error) {
-	body, err := c.getWithParams(fmt.Sprintf("/movie/%d", id), url.Values{"append_to_response": {"credits"}})
+	body, err := c.getWithParams(fmt.Sprintf("/movie/%d", id), url.Values{"append_to_response": {"credits,videos"}})
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func (c *Client) GetMovie(id int) (*MovieDetails, error) {
 }
 
 func (c *Client) GetTV(id int) (*TVDetails, error) {
-	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits,external_ids"}})
+	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits,external_ids,videos"}})
 	if err != nil {
 		return nil, err
 	}
@@ -244,11 +245,12 @@ type Credits struct {
 
 type MovieDetails struct {
 	MovieResult
-	ImdbID  string   `json:"imdb_id"`
-	Genres  []Genre  `json:"genres"`
-	Runtime int      `json:"runtime"`
-	Status  string   `json:"status"`
-	Credits *Credits `json:"credits,omitempty"`
+	ImdbID  string        `json:"imdb_id"`
+	Genres  []Genre       `json:"genres"`
+	Runtime int           `json:"runtime"`
+	Status  string        `json:"status"`
+	Credits *Credits      `json:"credits,omitempty"`
+	Videos  *VideosResult `json:"videos,omitempty"`
 }
 
 type ExternalIds struct {
@@ -258,11 +260,12 @@ type ExternalIds struct {
 
 type TVDetails struct {
 	TVResult
-	Genres          []Genre      `json:"genres"`
-	NumberOfSeasons int          `json:"number_of_seasons"`
-	Status          string       `json:"status"`
-	Credits         *Credits     `json:"credits,omitempty"`
-	ExternalIds     *ExternalIds `json:"external_ids,omitempty"`
+	Genres          []Genre       `json:"genres"`
+	NumberOfSeasons int           `json:"number_of_seasons"`
+	Status          string        `json:"status"`
+	Credits         *Credits      `json:"credits,omitempty"`
+	ExternalIds     *ExternalIds  `json:"external_ids,omitempty"`
+	Videos          *VideosResult `json:"videos,omitempty"`
 }
 
 type TVEpisode struct {
@@ -279,4 +282,55 @@ type TVSeasonDetails struct {
 	ID           int         `json:"id"`
 	SeasonNumber int         `json:"season_number"`
 	Episodes     []TVEpisode `json:"episodes"`
+}
+
+type VideoResult struct {
+	Key         string `json:"key"`
+	Site        string `json:"site"`
+	Type        string `json:"type"`
+	Official    bool   `json:"official"`
+	Iso639_1    string `json:"iso_639_1"`
+	PublishedAt string `json:"published_at"`
+}
+
+type VideosResult struct {
+	Results []VideoResult `json:"results"`
+}
+
+// BestTrailerURL selects the best YouTube trailer URL from TMDB video results.
+// Priority: official EN trailer > any EN trailer > any trailer, newest first.
+func BestTrailerURL(vr *VideosResult) string {
+	if vr == nil {
+		return ""
+	}
+
+	var trailers []VideoResult
+	for _, v := range vr.Results {
+		if v.Site == "YouTube" && v.Type == "Trailer" {
+			trailers = append(trailers, v)
+		}
+	}
+	if len(trailers) == 0 {
+		return ""
+	}
+
+	// Sort newest first by published_at (lexicographic on ISO 8601 works)
+	sort.Slice(trailers, func(i, j int) bool {
+		return trailers[i].PublishedAt > trailers[j].PublishedAt
+	})
+
+	// Tier 1: official + English
+	for _, t := range trailers {
+		if t.Iso639_1 == "en" && t.Official {
+			return "https://www.youtube.com/watch?v=" + t.Key
+		}
+	}
+	// Tier 2: English
+	for _, t := range trailers {
+		if t.Iso639_1 == "en" {
+			return "https://www.youtube.com/watch?v=" + t.Key
+		}
+	}
+	// Tier 3: any language
+	return "https://www.youtube.com/watch?v=" + trailers[0].Key
 }
