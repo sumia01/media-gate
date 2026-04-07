@@ -68,6 +68,8 @@ func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem 
 	if item.Monitored {
 		apiItem.Monitored = &item.Monitored
 	}
+	mns := item.MonitorNewSeasons
+	apiItem.MonitorNewSeasons = &mns
 	apiItem.MonitorSearchStartedAt = item.MonitorSearchStartedAt
 	if meta != nil {
 		apiMeta := mediaMetadataToAPI(meta)

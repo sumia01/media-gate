@@ -283,9 +283,10 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 	}
 
 	addReq := matching.AddMediaRequest{
-		Source:     string(req.Body.Source),
-		ExternalID: req.Body.ExternalId,
-		Monitored:  req.Body.Monitored,
+		Source:            string(req.Body.Source),
+		ExternalID:        req.Body.ExternalId,
+		Monitored:         req.Body.Monitored,
+		MonitorNewSeasons: req.Body.MonitorNewSeasons,
 	}
 	if req.Body.MediaProfileId != nil {
 		pid := uint(*req.Body.MediaProfileId)

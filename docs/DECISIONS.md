@@ -1231,6 +1231,24 @@ Changes:
 
 ---
 
+## ADR-088: Explicit MonitorNewSeasons flag + fully explicit season monitoring
+**Date**: 2026-04-07
+**Status**: Accepted
+
+**Context**: Season monitoring relied on an implicit default: if no `SeasonMonitor` row existed for a season, it was treated as monitored. This caused a UX problem — when a user enabled monitoring on a series but unchecked all existing seasons (intending to grab only future seasons), the UI showed every season as "unmonitored" with no indication that new seasons would be auto-grabbed. The behavior was correct but invisible and confusing.
+
+**Decision**: Switch to fully explicit season monitoring:
+
+1. **`MonitorNewSeasons` bool** on `MediaItem` (default `true`) — controls whether the metadata refresh worker creates `SeasonMonitor` rows for newly discovered seasons.
+2. **Flipped implicit default**: "no `SeasonMonitor` row" now means "not monitored" (previously meant monitored). Both the monitor worker (`processSeries`) and `AssembleEpisodes` updated.
+3. **Metarefresh auto-creation**: When `RefreshSeriesMetadata` discovers new seasons and `MonitorNewSeasons` is true, `processOnce` creates explicit `SeasonMonitor(monitored=true)` rows for seasons that lack one.
+4. **Migration v3**: Adds the `monitor_new_seasons` column (default true) and backfills explicit `SeasonMonitor` rows for all monitored series — for every season that has episodes but no existing SeasonMonitor row, inserts `monitored=true`. This preserves pre-migration behavior exactly.
+5. **Frontend**: "Monitor future seasons" toggle in `SeasonMonitorModal` and `AddToLibraryModal`. "New seasons auto-monitored" badge in `EpisodeGrid`.
+
+**Rationale**: Coupling correct behavior to the absence of data is fragile and untestable. An explicit flag makes the intent visible to users and verifiable in code. The migration ensures zero behavioral regression for existing installations.
+
+---
+
 ## ADR-087: Versioned schema migration system
 **Date**: 2026-04-06
 **Status**: Accepted

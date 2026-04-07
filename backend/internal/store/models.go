@@ -22,6 +22,7 @@ type MediaItem struct {
 	Year             *int
 	MediaProfileID *uint
 	Monitored              bool       `gorm:"not null;default:false"`
+	MonitorNewSeasons      bool       `gorm:"not null;default:true"`
 	MonitorSearchStartedAt *time.Time
 	CreatedAt              time.Time
 	UpdatedAt              time.Time

@@ -87,6 +87,28 @@ func (s *Service) processOnce() {
 		}
 
 		if changed {
+			// Auto-create SeasonMonitor rows for new seasons when MonitorNewSeasons is enabled.
+			if item.MonitorNewSeasons {
+				monitors, _ := s.store.ListSeasonMonitorsByMediaItem(item.ID)
+				monitoredSet := make(map[int]bool, len(monitors))
+				for _, m := range monitors {
+					monitoredSet[m.SeasonNumber] = true
+				}
+				episodes, _ := s.store.ListEpisodesByMediaItem(item.ID)
+				seenSeasons := make(map[int]bool)
+				for _, ep := range episodes {
+					sn := ep.SeasonNumber
+					if !seenSeasons[sn] && !monitoredSet[sn] {
+						_ = s.store.CreateSeasonMonitor(&store.SeasonMonitor{
+							MediaItemID:  item.ID,
+							SeasonNumber: sn,
+							Monitored:    true,
+						})
+						seenSeasons[sn] = true
+					}
+				}
+			}
+
 			updated++
 			_ = s.syncSvc.RecalcMediaItemStatus(item.ID)
 			s.bus.Publish(eventbus.MetadataRefreshed, eventbus.MediaItemPayload{

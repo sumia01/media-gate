@@ -25,6 +25,7 @@ const libraries = ref<Library[]>([])
 const profiles = ref<MediaProfile[]>([])
 const selectedLibraryId = ref<number | null>(null)
 const monitored = ref(true)
+const monitorNewSeasons = ref(true)
 const selectedProfileId = ref<number | null>(null)
 const adding = ref(false)
 const error = ref('')
@@ -101,6 +102,7 @@ async function handleAdd() {
     source: 'tmdb' | 'tvdb'
     externalId: number
     monitored?: boolean
+    monitorNewSeasons?: boolean
     mediaProfileId?: number
     seasonMonitors?: { seasonNumber: number; monitored: boolean }[]
   } = {
@@ -110,6 +112,9 @@ async function handleAdd() {
 
   if (monitored.value) {
     body.monitored = true
+    if (isSeries.value) {
+      body.monitorNewSeasons = monitorNewSeasons.value
+    }
     if (selectedProfileId.value) {
       body.mediaProfileId = selectedProfileId.value
     }
@@ -258,6 +263,23 @@ function toggleAllSeasons() {
                 />
               </button>
               <span class="text-sm text-gray-300">Monitor</span>
+            </label>
+          </div>
+
+          <!-- Monitor future seasons toggle (series only, when monitoring enabled) -->
+          <div v-if="monitored && isSeries" class="mb-3 px-1">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <button
+                class="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0"
+                :class="monitorNewSeasons ? 'bg-emerald-600' : 'bg-gray-600'"
+                @click="monitorNewSeasons = !monitorNewSeasons"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
+                  :class="monitorNewSeasons ? 'translate-x-4' : ''"
+                />
+              </button>
+              <span class="text-sm text-gray-300">Monitor future seasons</span>
             </label>
           </div>
 

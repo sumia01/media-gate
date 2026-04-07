@@ -56,6 +56,10 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 		item.Monitored = *req.Body.Monitored
 	}
 
+	if req.Body.MonitorNewSeasons != nil {
+		item.MonitorNewSeasons = *req.Body.MonitorNewSeasons
+	}
+
 	if err := h.store.UpdateMediaItem(item); err != nil {
 		return nil, err
 	}
