@@ -1324,3 +1324,19 @@ Changes:
 6. **TVDB**: Not supported — TVDB v4 API does not expose trailer data. TVDB-only items show no trailer button.
 
 **Rationale**: Zero extra HTTP requests (piggybacks on existing `append_to_response`). Persisting the URL avoids re-fetching on every page load. English preference matches the target audience. Existing matched items get trailers on re-match; no backfill migration needed.
+
+---
+
+## ADR-092: Explicit watched item detach on media item delete
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: When a library media item is deleted, `WatchedItem.MediaItemID` should be set to NULL so the watched list falls back to the external TMDB poster URL via `posterPath`. The DB schema has `ON DELETE SET NULL` on the FK, but SQLite's `PRAGMA foreign_keys` is connection-scoped — in a connection-pooled environment the pragma may not be active on every connection, leaving stale `mediaItemId` references. The watched list then tries to load posters via `/api/v1/media/{id}/poster` which 404s (poster file deleted), and while the frontend `onerror` handler attempts a fallback, the broken image flickers before recovery.
+
+**Decision**: Explicitly clear `mediaItemId` on watched items before deleting the media item, as a belt-and-suspenders approach alongside the FK SET NULL.
+
+1. **Store interface**: Added `ClearWatchedMediaItemID(mediaItemID uint) error` — sets `media_item_id = NULL` on all watched items referencing the given media item.
+2. **SQLite implementation**: `UPDATE watched_items SET media_item_id = NULL WHERE media_item_id = ?`.
+3. **Delete flow**: `media.Service.DeleteMediaItem` calls `ClearWatchedMediaItemID` after deleting the poster file and before deleting the DB record. Failure is logged but non-fatal (best-effort).
+
+**Rationale**: The FK SET NULL may not fire reliably due to SQLite connection pooling and per-connection PRAGMA state. Explicit cleanup guarantees that watched items always fall back to the TMDB `posterPath` URL when their library item is removed, regardless of driver behavior. The cost is one extra UPDATE query per delete — negligible for a rare operation.

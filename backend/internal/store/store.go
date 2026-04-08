@@ -119,6 +119,7 @@ type Store interface {
 	ListWatchedItems() ([]WatchedItem, error)
 	ListWatchedItemsByUser(userID uint) ([]WatchedItem, error)
 	GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*WatchedItem, error)
+	ClearWatchedMediaItemID(mediaItemID uint) error
 
 	// WithTx executes fn inside a database transaction.
 	// The Store passed to fn uses the transaction; if fn returns an error the transaction is rolled back.

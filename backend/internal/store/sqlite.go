@@ -1082,6 +1082,10 @@ func (s *SQLiteStore) GetWatchedBySourceExternal(userID *uint, source string, ex
 	return &item, nil
 }
 
+func (s *SQLiteStore) ClearWatchedMediaItemID(mediaItemID uint) error {
+	return s.db.Model(&WatchedItem{}).Where("media_item_id = ?", mediaItemID).Update("media_item_id", nil).Error
+}
+
 func (s *SQLiteStore) WithTx(fn func(Store) error) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		return fn(&SQLiteStore{db: tx})

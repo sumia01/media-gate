@@ -87,6 +87,11 @@ func (s *Service) DeleteMediaItem(itemID uint) error {
 	posterPath := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", item.ID))
 	_ = os.Remove(posterPath)
 
+	// Detach watched items so they fall back to external poster URL.
+	if err := s.store.ClearWatchedMediaItemID(item.ID); err != nil {
+		slog.Warn("failed to clear watched media item references", "media_item_id", item.ID, "error", err)
+	}
+
 	// Delete DB record (CASCADE removes MediaFile, Download, Episode, etc.).
 	if err := s.store.DeleteMediaItem(item.ID); err != nil {
 		return err
