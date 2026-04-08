@@ -65,3 +65,11 @@ func (h *Handlers) TestFlaresolverrConnection(_ context.Context, req TestFlareso
 	}
 	return TestFlaresolverrConnection200JSONResponse{Success: success, Message: &msg}, nil
 }
+
+func (h *Handlers) TestDiscordConnection(_ context.Context, req TestDiscordConnectionRequestObject) (TestDiscordConnectionResponseObject, error) {
+	success, msg, err := h.settings.TestDiscord(req.Body.Url)
+	if err != nil {
+		return nil, err
+	}
+	return TestDiscordConnection200JSONResponse{Success: success, Message: &msg}, nil
+}
