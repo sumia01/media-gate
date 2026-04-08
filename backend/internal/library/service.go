@@ -3,6 +3,7 @@ package library
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +66,11 @@ func (s *Service) Create(lib *store.Library) error {
 	if err := s.checkNotDownloadPath(lib.Path); err != nil {
 		return err
 	}
-	return s.store.CreateLibrary(lib)
+	if err := s.store.CreateLibrary(lib); err != nil {
+		return err
+	}
+	slog.Info("library: created", "library_id", lib.ID, "name", lib.Name, "path", lib.Path, "media_type", lib.MediaType)
+	return nil
 }
 
 func (s *Service) List() ([]store.Library, error) {
@@ -83,11 +88,19 @@ func (s *Service) Update(lib *store.Library) error {
 	if err := s.checkNotDownloadPath(lib.Path); err != nil {
 		return err
 	}
-	return s.store.UpdateLibrary(lib)
+	if err := s.store.UpdateLibrary(lib); err != nil {
+		return err
+	}
+	slog.Info("library: updated", "library_id", lib.ID, "name", lib.Name, "path", lib.Path)
+	return nil
 }
 
 func (s *Service) Delete(id uint) error {
-	return s.store.DeleteLibrary(id)
+	if err := s.store.DeleteLibrary(id); err != nil {
+		return err
+	}
+	slog.Info("library: deleted", "library_id", id)
+	return nil
 }
 
 // Scan reads the immediate children of the library's path and returns them as ScanEntry values.
