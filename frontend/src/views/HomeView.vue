@@ -124,7 +124,7 @@ function getRecentPoster(item: MediaItem): string | null {
       <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Recently Added</h2>
       <div v-if="recentLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-xl bg-white/5" />
+          <div class="aspect-[2/3] rounded-lg bg-white/5" />
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
           <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
         </div>
@@ -133,15 +133,15 @@ function getRecentPoster(item: MediaItem): string | null {
         <div
           v-for="item in recentItems"
           :key="item.id"
-          class="group relative cursor-pointer transition-all duration-300 hover:shadow-[0_0_24px_rgba(139,92,246,0.3)] hover:scale-[1.03]"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
           @click="goToMedia(item)"
         >
-          <div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20">
+          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
             <img
               v-if="getRecentPoster(item)"
               :src="getRecentPoster(item)!"
               :alt="item.title"
-              class="absolute inset-0 w-full h-full object-cover"
+              class="w-full h-full object-cover"
               loading="lazy"
             />
             <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
@@ -158,11 +158,10 @@ function getRecentPoster(item: MediaItem): string | null {
             <div v-if="item.metadata?.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.metadata.rating.toFixed(1) }}
             </div>
-            <div class="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent rounded-b-xl" />
           </div>
-          <div class="mt-2 px-0.5">
-            <p class="text-sm font-medium text-gray-100 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500">{{ item.year }}</p>
+          <div class="p-3">
+            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
           </div>
         </div>
       </div>
@@ -173,7 +172,7 @@ function getRecentPoster(item: MediaItem): string | null {
       <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Trending This Week</h2>
       <div v-if="trendingLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-xl bg-white/5" />
+          <div class="aspect-[2/3] rounded-lg bg-white/5" />
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
           <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
         </div>
@@ -182,15 +181,15 @@ function getRecentPoster(item: MediaItem): string | null {
         <div
           v-for="item in trendingItems"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative cursor-pointer transition-all duration-300 hover:shadow-[0_0_24px_rgba(139,92,246,0.3)] hover:scale-[1.03]"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
           @click="goToPreview(item)"
         >
-          <div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20">
+          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
             <img
               v-if="item.posterUrl"
               :src="item.posterUrl"
               :alt="item.title"
-              class="absolute inset-0 w-full h-full object-cover"
+              class="w-full h-full object-cover"
               loading="lazy"
             />
             <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
@@ -211,11 +210,10 @@ function getRecentPoster(item: MediaItem): string | null {
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>
-            <div class="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent rounded-b-xl" />
           </div>
-          <div class="mt-2 px-0.5">
-            <p class="text-sm font-medium text-gray-100 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500">{{ item.year }}</p>
+          <div class="p-3">
+            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
           </div>
         </div>
       </div>
@@ -226,7 +224,7 @@ function getRecentPoster(item: MediaItem): string | null {
       <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Popular Movies</h2>
       <div v-if="moviesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-xl bg-white/5" />
+          <div class="aspect-[2/3] rounded-lg bg-white/5" />
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
           <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
         </div>
@@ -235,15 +233,15 @@ function getRecentPoster(item: MediaItem): string | null {
         <div
           v-for="item in popularMovies"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative cursor-pointer transition-all duration-300 hover:shadow-[0_0_24px_rgba(139,92,246,0.3)] hover:scale-[1.03]"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
           @click="goToPreview(item)"
         >
-          <div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20">
+          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
             <img
               v-if="item.posterUrl"
               :src="item.posterUrl"
               :alt="item.title"
-              class="absolute inset-0 w-full h-full object-cover"
+              class="w-full h-full object-cover"
               loading="lazy"
             />
             <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
@@ -262,11 +260,10 @@ function getRecentPoster(item: MediaItem): string | null {
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>
-            <div class="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent rounded-b-xl" />
           </div>
-          <div class="mt-2 px-0.5">
-            <p class="text-sm font-medium text-gray-100 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500">{{ item.year }}</p>
+          <div class="p-3">
+            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
           </div>
         </div>
       </div>
@@ -277,7 +274,7 @@ function getRecentPoster(item: MediaItem): string | null {
       <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Popular Series</h2>
       <div v-if="seriesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-xl bg-white/5" />
+          <div class="aspect-[2/3] rounded-lg bg-white/5" />
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
           <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
         </div>
@@ -286,15 +283,15 @@ function getRecentPoster(item: MediaItem): string | null {
         <div
           v-for="item in popularSeries"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative cursor-pointer transition-all duration-300 hover:shadow-[0_0_24px_rgba(139,92,246,0.3)] hover:scale-[1.03]"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
           @click="goToPreview(item)"
         >
-          <div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20">
+          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
             <img
               v-if="item.posterUrl"
               :src="item.posterUrl"
               :alt="item.title"
-              class="absolute inset-0 w-full h-full object-cover"
+              class="w-full h-full object-cover"
               loading="lazy"
             />
             <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
@@ -313,11 +310,10 @@ function getRecentPoster(item: MediaItem): string | null {
             <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
               &#9733; {{ item.rating.toFixed(1) }}
             </div>
-            <div class="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent rounded-b-xl" />
           </div>
-          <div class="mt-2 px-0.5">
-            <p class="text-sm font-medium text-gray-100 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500">{{ item.year }}</p>
+          <div class="p-3">
+            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
           </div>
         </div>
       </div>
