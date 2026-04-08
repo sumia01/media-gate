@@ -18,6 +18,7 @@ const moviesLoading = ref(true)
 const seriesLoading = ref(true)
 
 const watchedSet = ref<Set<string>>(new Set())
+const libraryMap = ref<Map<string, number>>(new Map())
 
 function watchedKey(source: string, externalId: number): string {
   return `${source}:${externalId}`
@@ -32,6 +33,14 @@ function isRecentWatched(item: MediaItem): boolean {
   return isWatched(item.metadata.source, item.metadata.externalId)
 }
 
+function isInLibrary(source: string, externalId: number): boolean {
+  return libraryMap.value.has(watchedKey(source, externalId))
+}
+
+function libraryMediaId(source: string, externalId: number): number | undefined {
+  return libraryMap.value.get(watchedKey(source, externalId))
+}
+
 async function fetchWatched() {
   const { data } = await client.GET('/watched')
   const set = new Set<string>()
@@ -41,12 +50,22 @@ async function fetchWatched() {
   watchedSet.value = set
 }
 
+async function fetchLibraryItems() {
+  const { data } = await client.GET('/media/external-ids')
+  const map = new Map<string, number>()
+  for (const item of data?.items ?? []) {
+    map.set(watchedKey(item.source, item.externalId), item.mediaItemId)
+  }
+  libraryMap.value = map
+}
+
 onMounted(() => {
   fetchRecent()
   fetchTrending()
   fetchPopularMovies()
   fetchPopularSeries()
   fetchWatched()
+  fetchLibraryItems()
 })
 
 async function fetchRecent() {
@@ -78,6 +97,11 @@ function goToMedia(item: MediaItem) {
 }
 
 function goToPreview(item: DiscoverItem) {
+  const mediaId = libraryMediaId(item.source, item.externalId)
+  if (mediaId !== undefined) {
+    router.push({ name: 'media-detail', params: { id: mediaId } })
+    return
+  }
   router.push({
     name: 'media-preview',
     params: { source: item.source, externalId: item.externalId },
@@ -175,6 +199,10 @@ function getRecentPoster(item: MediaItem): string | null {
               >
                 {{ item.mediaType }}
               </span>
+              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
+                in library
+              </span>
               <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
                 <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
                 seen
@@ -222,6 +250,10 @@ function getRecentPoster(item: MediaItem): string | null {
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-violet-600/90 text-violet-100">
                 movie
               </span>
+              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
+                in library
+              </span>
               <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
                 <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
                 seen
@@ -268,6 +300,10 @@ function getRecentPoster(item: MediaItem): string | null {
             <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-fuchsia-600/90 text-fuchsia-100">
                 series
+              </span>
+              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
+                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
+                in library
               </span>
               <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
                 <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>

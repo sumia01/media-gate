@@ -40,3 +40,11 @@ func (s *SQLiteStore) ListMediaMetadataByMediaItemIDs(ids []uint) ([]store.Media
 	}
 	return metas, nil
 }
+
+func (s *SQLiteStore) ListMediaMetadataExternalIDs() ([]store.MediaMetadata, error) {
+	var metas []store.MediaMetadata
+	if err := s.db.Select("media_item_id", "source", "external_id").Find(&metas).Error; err != nil {
+		return nil, err
+	}
+	return metas, nil
+}

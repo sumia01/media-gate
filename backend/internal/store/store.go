@@ -38,6 +38,7 @@ type Store interface {
 	UpdateMediaMetadata(meta *MediaMetadata) error
 	DeleteMediaMetadataByMediaItem(mediaItemID uint) error
 	ListMediaMetadataByMediaItemIDs(ids []uint) ([]MediaMetadata, error)
+	ListMediaMetadataExternalIDs() ([]MediaMetadata, error)
 
 	// MediaProfile CRUD
 	CreateMediaProfile(profile *MediaProfile) error

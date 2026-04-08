@@ -467,6 +467,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /media/external-ids:
+    get:
+      operationId: getMediaExternalIds
+      tags:
+        - media
+      summary: List source and external ID pairs for all library media items
+      responses:
+        "200":
+          description: External ID list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - source
+                        - externalId
+                        - mediaItemId
+                      properties:
+                        source:
+                          type: string
+                        externalId:
+                          type: integer
+                        mediaItemId:
+                          type: integer
+
   /media/{id}:
     parameters:
       - name: id

@@ -49,6 +49,9 @@ func (s *settingsStubStore) DeleteMediaMetadataByMediaItem(uint) error         {
 func (s *settingsStubStore) ListMediaMetadataByMediaItemIDs([]uint) ([]store.MediaMetadata, error) {
 	return nil, nil
 }
+func (s *settingsStubStore) ListMediaMetadataExternalIDs() ([]store.MediaMetadata, error) {
+	return nil, nil
+}
 
 func (s *settingsStubStore) CreateMediaProfile(*store.MediaProfile) error              { return nil }
 func (s *settingsStubStore) GetMediaProfile(uint) (*store.MediaProfile, error)         { return nil, nil }
