@@ -1359,3 +1359,20 @@ Changes:
 6. **Consumer impact**: Only `main.go` changed (`store.NewSQLite()` → `sqlite.New()`). All other ~28 files import `store` for the interface and models only.
 
 **Rationale**: Each CRUD file is 20–90 lines — immediately scannable by a human. The subpackage pattern (`store/sqlite/`, future `store/postgres/`) mirrors Go convention for pluggable backend implementations. The `Store` interface and models remain in the parent package, shared by all backends. Constructor rename from `NewSQLite` to `New` follows Go naming convention since the package name already provides context.
+
+---
+
+## ADR-094: "In library" badge on discover page
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: The discover page (trending, popular movies/series) shows TMDB items, but there's no way to tell which ones are already in the user's library. Users might click a trending item only to find they already have it. The existing "seen" badge pattern (batch lookup via `Set`) was proven effective for watched items.
+
+**Decision**: Add an "in library" indicator to discover cards using the same batch-lookup pattern as the "seen" badge.
+
+1. **API endpoint**: `GET /api/v1/media/external-ids` returns `{source, externalId, mediaItemId}[]` — all matched media metadata pairs. Lightweight: only 3 columns selected via GORM `Select`.
+2. **Store method**: `ListMediaMetadataExternalIDs()` on the `Store` interface, implemented in `store/sqlite/media_metadata.go`.
+3. **Frontend**: `HomeView.vue` fetches the endpoint on mount, builds a `Map<string, number>` keyed by `source:externalId` → `mediaItemId`. Sky-blue badge with house icon on trending/popular cards.
+4. **Navigation shortcut**: Clicking an "in library" discover item navigates directly to `/media/:id` (library detail page) instead of the TMDB preview page — `goToPreview()` checks `libraryMap` first.
+
+**Rationale**: Mirrors the proven "seen" badge pattern — single API call, client-side `Map` for O(1) lookups, no per-card backend queries. Adding `mediaItemId` to the response enables the navigation shortcut without extra requests. The `Map` (vs `Set` for watched) is the only structural difference since we need the ID for routing.

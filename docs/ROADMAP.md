@@ -355,6 +355,14 @@
 - [x] `NewSQLite()` renamed to `sqlite.New()` — only `main.go` import changed
 - [x] Clean separation enables future database backends (e.g. `store/postgres/`)
 
+## Phase 7.7: "In library" badge on discover ✅
+→ See ADR-094
+- [x] `GET /api/v1/media/external-ids` — lightweight endpoint returning `{source, externalId, mediaItemId}` tuples from `MediaMetadata`
+- [x] `ListMediaMetadataExternalIDs()` store method selecting only `media_item_id`, `source`, `external_id`
+- [x] Frontend `libraryMap` (`Map<string, number>`) built on mount, keyed by `source:externalId` → `mediaItemId`
+- [x] Sky-blue "in library" badge with house icon on trending, popular movies, and popular series cards
+- [x] Clicking an "in library" discover item navigates to `/media/:id` (library detail) instead of TMDB preview
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

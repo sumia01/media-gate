@@ -10,6 +10,24 @@ import (
 	"github.com/sumia01/media-gate/internal/store"
 )
 
+func (h *Handlers) GetMediaExternalIds(_ context.Context, _ GetMediaExternalIdsRequestObject) (GetMediaExternalIdsResponseObject, error) {
+	metas, err := h.store.ListMediaMetadataExternalIDs()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]struct {
+		ExternalId  int    `json:"externalId"`
+		MediaItemId int    `json:"mediaItemId"`
+		Source      string `json:"source"`
+	}, len(metas))
+	for i, m := range metas {
+		items[i].Source = m.Source
+		items[i].ExternalId = m.ExternalID
+		items[i].MediaItemId = int(m.MediaItemID)
+	}
+	return GetMediaExternalIds200JSONResponse{Items: items}, nil
+}
+
 func (h *Handlers) GetRecentlyAdded(_ context.Context, _ GetRecentlyAddedRequestObject) (GetRecentlyAddedResponseObject, error) {
 	items, err := h.store.ListRecentMediaItems(20)
 	if err != nil {
