@@ -219,7 +219,6 @@ func migrateV1(db *sql.DB) error {
 		}
 	}
 
-	cleanupOrphans(db)
 	return nil
 }
 

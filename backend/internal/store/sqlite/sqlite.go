@@ -56,9 +56,10 @@ func New(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
 
-	// Run versioned schema migrations (FK rebuilds, orphan cleanup, etc.).
+	// Run versioned schema migrations (FK rebuilds, etc.).
 	if sqlDB != nil {
 		runMigrations(sqlDB)
+		cleanupOrphans(sqlDB)
 	}
 
 	// Re-enable foreign keys — AutoMigrate and rebuildTable both disable
