@@ -155,6 +155,7 @@ func (s *settingsStubStore) DeleteWatchedItem(uint) error                       
 func (s *settingsStubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
 func (s *settingsStubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
 func (s *settingsStubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
+func (s *settingsStubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
 
 // --- Existing path validation tests ---
 

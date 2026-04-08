@@ -112,6 +112,7 @@ func (s *stubStore) DeleteWatchedItem(uint) error                              {
 func (s *stubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
 func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
 func (s *stubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
+func (s *stubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
 
 // staticBasePath implements BasePathProvider for testing.
 type staticBasePath string
