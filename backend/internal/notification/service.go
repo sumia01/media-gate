@@ -48,7 +48,12 @@ func (s *Service) handleImportCompleted(e eventbus.Event) {
 	item, _ := s.store.GetMediaItem(dl.MediaItemID)
 	meta, _ := s.store.GetMediaMetadataByMediaItem(dl.MediaItemID)
 
-	embed := s.buildImportEmbed(dl, item, meta, p.FilesCount)
+	var lib *store.Library
+	if item != nil {
+		lib, _ = s.store.GetLibrary(item.LibraryID)
+	}
+
+	embed := s.buildImportEmbed(dl, item, meta, lib, p.FilesCount)
 
 	client := discord.NewClient(webhookURL)
 	if err := client.Send(embed); err != nil {
@@ -56,7 +61,7 @@ func (s *Service) handleImportCompleted(e eventbus.Event) {
 	}
 }
 
-func (s *Service) buildImportEmbed(dl *store.Download, item *store.MediaItem, meta *store.MediaMetadata, filesCount int) *discord.Embed {
+func (s *Service) buildImportEmbed(dl *store.Download, item *store.MediaItem, meta *store.MediaMetadata, lib *store.Library, filesCount int) *discord.Embed {
 	// Title: "Movie Name (2024)" or just "Movie Name"
 	title := dl.Title
 	if item != nil {
@@ -123,7 +128,13 @@ func (s *Service) buildImportEmbed(dl *store.Download, item *store.MediaItem, me
 		}
 	}
 
-	e.Footer(mediaType)
+	// Footer: "Movie Imported to Movies" or "Movie Imported"
+	footer := mediaType
+	if lib != nil {
+		footer = fmt.Sprintf("%s to %s", mediaType, lib.Name)
+	}
+
+	e.Footer(footer)
 
 	return e
 }
