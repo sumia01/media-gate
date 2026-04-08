@@ -1340,3 +1340,22 @@ Changes:
 3. **Delete flow**: `media.Service.DeleteMediaItem` calls `ClearWatchedMediaItemID` after deleting the poster file and before deleting the DB record. Failure is logged but non-fatal (best-effort).
 
 **Rationale**: The FK SET NULL may not fire reliably due to SQLite connection pooling and per-connection PRAGMA state. Explicit cleanup guarantees that watched items always fall back to the TMDB `posterPath` URL when their library item is removed, regardless of driver behavior. The cost is one extra UPDATE query per delete — negligible for a rare operation.
+
+---
+
+## ADR-093: Store subpackage split — `store/sqlite/`
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: The `store/sqlite.go` file had grown to 1093 lines, containing all SQLite CRUD implementations for 14+ domain entities, plus versioned migrations, table rebuild helpers, and orphan cleanup — all in a single file. While functional, this made the codebase hard for a human to navigate. Additionally, the `SQLiteStore` type lived in the same package as the `Store` interface and models, which would make adding a second database backend (e.g. Postgres) awkward — both implementations would need to coexist in the same package or the interface would need to move.
+
+**Decision**: Split the SQLite implementation into a `store/sqlite/` subpackage with one file per domain entity.
+
+1. **New package**: `backend/internal/store/sqlite/` (package `sqlite`)
+2. **`sqlite.go`**: `SQLiteStore` struct, `New()` constructor (renamed from `NewSQLite()`), `Ping()`, `Close()`, `WithTx()`, and generic CRUD helpers (`getByID`, `save`, `deleteByID`)
+3. **`migrations.go`**: All versioned migration infrastructure — `migrations` slice, `getSchemaVersion`/`setSchemaVersion`, `runMigrations`, `migrateV1`–`migrateV4`, `rebuildTable`, `tableHasForeignKeys`/`tableHasFKOnColumn`, `cleanupOrphans`
+4. **Domain CRUD files** (14 files): `library.go`, `media_item.go`, `media_metadata.go`, `media_profile.go`, `media_file.go`, `season_monitor.go`, `episode_monitor.go`, `episode.go`, `setting.go`, `job_record.go`, `indexer.go`, `download.go`, `user.go`, `watched_item.go`
+5. **`store/` retains**: `store.go` (interface + `ErrNotFound`) and `models.go` (all model structs) — unchanged
+6. **Consumer impact**: Only `main.go` changed (`store.NewSQLite()` → `sqlite.New()`). All other ~28 files import `store` for the interface and models only.
+
+**Rationale**: Each CRUD file is 20–90 lines — immediately scannable by a human. The subpackage pattern (`store/sqlite/`, future `store/postgres/`) mirrors Go convention for pluggable backend implementations. The `Store` interface and models remain in the parent package, shared by all backends. Constructor rename from `NewSQLite` to `New` follows Go naming convention since the package name already provides context.

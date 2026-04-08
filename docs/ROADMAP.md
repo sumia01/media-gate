@@ -347,6 +347,14 @@
 - [x] API layer maps `TrailerURL` in `mediaMetadataToAPI` and `GetExternalMediaDetail`
 - [x] Frontend: red-themed "Watch Trailer" card on `MediaDetailView` and `MediaPreviewView` (hidden when no trailer)
 
+## Phase 7.6: Store subpackage split ✅
+→ See ADR-093
+- [x] Moved 1093-line monolithic `store/sqlite.go` into `store/sqlite/` subpackage
+- [x] 16 domain-focused files: `sqlite.go` (struct, constructor, helpers), `migrations.go` (versioned migrations), and one file per entity CRUD
+- [x] `store/` retains only the `Store` interface (`store.go`) and models (`models.go`)
+- [x] `NewSQLite()` renamed to `sqlite.New()` — only `main.go` import changed
+- [x] Clean separation enables future database backends (e.g. `store/postgres/`)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
