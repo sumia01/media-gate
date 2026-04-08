@@ -73,6 +73,11 @@ const router = createRouter({
           component: WatchedView,
         },
         {
+          path: 'downloads',
+          name: 'downloads',
+          component: () => import('@/views/DownloadsView.vue'),
+        },
+        {
           path: 'indexers',
           name: 'indexers',
           component: IndexersView,

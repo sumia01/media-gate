@@ -29,6 +29,7 @@ const userName = computed(() => {
 const staticTop = [
   { icon: '\u25C8', label: 'Discover', to: '/' },
   { icon: '\u25C9', label: 'Watched', to: '/watched' },
+  { icon: '\u2913', label: 'Downloads', to: '/downloads' },
 ]
 
 const staticBottom = [

@@ -167,6 +167,9 @@ type Download struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time
+
+	// Populated by JOIN in ListDownloads, not a DB column.
+	MediaItemTitle string `gorm:"-"`
 }
 
 type User struct {

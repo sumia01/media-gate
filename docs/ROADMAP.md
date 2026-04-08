@@ -363,6 +363,18 @@
 - [x] Sky-blue "in library" badge with house icon on trending, popular movies, and popular series cards
 - [x] Clicking an "in library" discover item navigates to `/media/:id` (library detail) instead of TMDB preview
 
+## Phase 7.8: All Downloads page ✅
+→ See ADR-095
+- [x] `DownloadsView.vue` — standalone page listing all downloads across all media items
+- [x] `mediaItemTitle` optional field added to `Download` OpenAPI schema — populated via LEFT JOIN on `media_items` in `ListDownloads()`
+- [x] Sidebar nav item (`Downloads`) in top navigation after Watched
+- [x] Status filter dropdown (all/pending/downloading/seeding/completed/failed/etc.)
+- [x] Same row structure as per-media `DownloadList.vue`: status/season/indexer badges, title, progress bar, speed, error/retry info
+- [x] Media item title shown as clickable link navigating to media detail page
+- [x] "Open in library" icon button replaces "Replace" button
+- [x] SSE subscription + progress polling for real-time updates
+- [x] Retry/delete actions with inline confirmation
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
