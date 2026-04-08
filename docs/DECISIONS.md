@@ -1394,3 +1394,15 @@ Changes:
 5. **Navigation**: Route at `/downloads` (lazy-loaded), sidebar item in `staticTop` after "Watched".
 
 **Rationale**: Reuses the existing `GET /downloads` endpoint (already supports unfiltered listing). The `mediaItemTitle` JOIN is cheap (LEFT JOIN on indexed FK) and avoids N+1 frontend queries. The page mirrors the per-media download row styling for consistency, while adding the media context needed for a global view.
+
+---
+
+## ADR-096: Per-connection SQLite foreign key enforcement
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: SQLite's `PRAGMA foreign_keys` is per-connection, not per-database. The previous DSN parameter `?_foreign_keys=ON` only set the pragma on the initial connection. With GORM's connection pool, subsequent connections could operate without FK enforcement, causing CASCADE and SET NULL actions to silently not fire — resulting in orphan records (e.g. downloads referencing deleted media items).
+
+**Decision**: Switch from `?_foreign_keys=ON` to `?_pragma=foreign_keys(1)` in the SQLite DSN. This is a `glebarez/sqlite` driver feature that executes the specified PRAGMA on every new connection opened by the pool. The existing `db.Exec("PRAGMA foreign_keys = ON")` after migrations remains as belt-and-suspenders. Startup orphan cleanup (`cleanupOrphans`) also remains to handle legacy data.
+
+**Rationale**: `_pragma=` is the driver's built-in mechanism for per-connection initialization — it guarantees FK enforcement on every pooled connection without requiring custom connection hooks or `SetMaxOpenConns(1)`. Zero performance cost, eliminates the root cause of orphan records.

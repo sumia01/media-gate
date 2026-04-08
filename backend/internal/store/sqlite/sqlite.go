@@ -17,7 +17,7 @@ type SQLiteStore struct {
 }
 
 func New(dbPath string) (*SQLiteStore, error) {
-	dsn := dbPath + "?_foreign_keys=ON"
+	dsn := dbPath + "?_pragma=foreign_keys(1)"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
