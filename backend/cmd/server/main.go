@@ -27,6 +27,7 @@ import (
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/metarefresh"
+	"github.com/sumia01/media-gate/internal/notification"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -99,6 +100,10 @@ func main() {
 		}
 		sseBroker.Broadcast(string(e.Type), data)
 	})
+
+	// Notification service (must subscribe before bus.Start).
+	notification.NewService(db, settingsSvc, bus)
+
 	bus.Start()
 	defer bus.Stop()
 

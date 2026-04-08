@@ -1014,6 +1014,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
+  /settings/test-discord:
+    post:
+      operationId: testDiscordConnection
+      summary: Test Discord webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
   /search:
     get:
       operationId: globalSearch
@@ -2640,6 +2658,9 @@ components:
         flaresolverrUrl:
           type: string
           description: URL of a FlareSolverr instance for solving Cloudflare challenges (e.g. http://flaresolverr:8191)
+        discordWebhookUrl:
+          type: string
+          description: Discord webhook URL for notifications (e.g. https://discord.com/api/webhooks/...)
         globalExcludeTags:
           type: array
           items:
@@ -2667,6 +2688,12 @@ components:
           type: string
 
     FlareSolverrTestRequest:
+      type: object
+      properties:
+        url:
+          type: string
+
+    DiscordTestRequest:
       type: object
       properties:
         url:

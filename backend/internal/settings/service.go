@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sumia01/media-gate/internal/crypto"
+	"github.com/sumia01/media-gate/internal/integration/discord"
 	"github.com/sumia01/media-gate/internal/integration/flaresolverr"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
@@ -33,7 +34,8 @@ const (
 	KeyQBitCategory           = "qbit_category"
 	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
 
-	KeyFlareSolverrURL = "flaresolverr_url"
+	KeyFlareSolverrURL     = "flaresolverr_url"
+	KeyDiscordWebhookURL = "discord_webhook_url"
 
 	KeyWorkerMonitorInterval         = "worker_monitor_interval"
 	KeyWorkerDownloadInterval        = "worker_download_interval"
@@ -50,9 +52,10 @@ const (
 )
 
 var sensitiveKeys = map[string]bool{
-	KeyTMDBApiKey:   true,
-	KeyTVDBApiKey:   true,
-	KeyQBitPassword: true,
+	KeyTMDBApiKey:        true,
+	KeyTVDBApiKey:        true,
+	KeyQBitPassword:      true,
+	KeyDiscordWebhookURL: true,
 }
 
 func isSensitiveKey(key string) bool {
@@ -156,10 +159,19 @@ func (s *Service) Update(items []KeyValue) error {
 				return err
 			}
 		}
-		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL) && item.Value != "" {
+		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL) && item.Value != "" {
 			if err := validateURL(item.Value); err != nil {
 				return fmt.Errorf("invalid URL for %s: %w", item.Key, err)
 			}
+		}
+		// Clearing the Discord webhook URL deletes the row so List() won't
+		// return a masked "****" placeholder for an empty value.
+		if item.Key == KeyDiscordWebhookURL && item.Value == "" {
+			if err := s.store.DeleteSetting(item.Key); err != nil {
+				return fmt.Errorf("deleting setting %q: %w", item.Key, err)
+			}
+			s.notify(item.Key)
+			continue
 		}
 		sensitive := isSensitiveKey(item.Key)
 		value := item.Value
@@ -287,6 +299,15 @@ func (s *Service) TestFlareSolverr(urlVal *string) (bool, string, error) {
 	}
 
 	return flaresolverr.TestConnection(u)
+}
+
+func (s *Service) TestDiscord(urlVal *string) (bool, string, error) {
+	u, err := s.resolveKey(urlVal, KeyDiscordWebhookURL)
+	if err != nil {
+		return false, "Discord webhook URL not configured", nil
+	}
+
+	return discord.TestConnection(u)
 }
 
 // resolveKey returns the provided key if non-empty, otherwise falls back to the saved value.

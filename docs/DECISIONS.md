@@ -1406,3 +1406,21 @@ Changes:
 **Decision**: Switch from `?_foreign_keys=ON` to `?_pragma=foreign_keys(1)` in the SQLite DSN. This is a `glebarez/sqlite` driver feature that executes the specified PRAGMA on every new connection opened by the pool. The existing `db.Exec("PRAGMA foreign_keys = ON")` after migrations remains as belt-and-suspenders. Startup orphan cleanup (`cleanupOrphans`) also remains to handle legacy data.
 
 **Rationale**: `_pragma=` is the driver's built-in mechanism for per-connection initialization — it guarantees FK enforcement on every pooled connection without requiring custom connection hooks or `SetMaxOpenConns(1)`. Zero performance cost, eliminates the root cause of orphan records.
+
+---
+
+## ADR-097: Discord webhook notifications
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: Users had no way to receive push notifications when downloads completed and were imported into their library. The only feedback was in-browser SSE events, requiring the UI to be open.
+
+**Decision**: Add Discord webhook notifications as the first outbound notification channel, triggered by the `ImportCompleted` eventbus event.
+
+1. **Integration client** (`backend/internal/integration/discord/client.go`): Discord webhook HTTP client following the existing integration pattern (alongside `tmdb`, `tvdb`, `qbittorrent`, `flaresolverr`). Builder-pattern `Embed` struct supporting author, title, description, color, thumbnail, fields, footer, and timestamp. `TestConnection()` sends a test embed.
+2. **Notification service** (`backend/internal/notification/service.go`): Subscribes to `eventbus.ImportCompleted` before `bus.Start()`. Handler looks up download title and media metadata (overview, poster, rating, genres, TMDB/IMDb IDs) from the store, constructs a Radarr-style rich embed with TMDB poster thumbnail, and posts to the configured webhook. Errors are logged but never block the event bus.
+3. **Settings**: `discord_webhook_url` key marked as sensitive (encrypted at rest, masked in API responses). URL validation on save. Clearing the URL deletes the DB row entirely (avoids `maskValue("")` returning `"****"` for an empty value). When no URL is configured, the notification handler returns immediately — feature is implicitly disabled.
+4. **API**: `discordWebhookUrl` field on `Settings` schema, `POST /settings/test-discord` endpoint with `DiscordTestRequest` schema. `TestDiscord()` on settings service follows the `TestFlareSolverr` pattern.
+5. **Frontend**: "Notifications" section in Settings page with Discord card — webhook URL input with show/hide toggle, "Test Webhook" button, red "Disconnect" button (visible only when URL is configured). Disconnect sends `PUT /settings { discordWebhookUrl: "" }` which triggers row deletion.
+
+**Rationale**: Discord webhooks are simple HTTP POSTs with no authentication handshake — a single `client.go` file covers the entire integration. The notification service is decoupled from both the importer and Discord via the event bus, making it trivial to add future notification channels (Telegram, email, etc.) by subscribing to the same events. Sensitive key treatment ensures webhook tokens (embedded in the URL) are encrypted at rest.

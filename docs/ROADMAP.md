@@ -375,6 +375,15 @@
 - [x] SSE subscription + progress polling for real-time updates
 - [x] Retry/delete actions with inline confirmation
 
+## Phase 7.9: Discord webhook notifications ✅
+→ See ADR-097
+- [x] Discord integration client (`backend/internal/integration/discord/client.go`) — rich embed builder with thumbnail, fields, footer, timestamp
+- [x] Notification service (`backend/internal/notification/service.go`) — subscribes to `ImportCompleted` eventbus event, sends Radarr-style rich embed with poster, overview, rating, genres, quality, size, TMDB/IMDb links
+- [x] `discord_webhook_url` sensitive setting with URL validation and at-rest encryption
+- [x] `POST /settings/test-discord` endpoint for webhook connectivity test
+- [x] Settings UI "Notifications" section with Discord card: webhook URL input (show/hide), Test Webhook button, Disconnect button
+- [x] Disconnect clears webhook URL from DB (row deletion, not empty string) — no notification sent when URL absent
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

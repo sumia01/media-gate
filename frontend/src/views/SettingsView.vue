@@ -52,6 +52,13 @@ const fsUrlDirty = ref(false)
 const fsTest = ref<{ success: boolean; message: string } | null>(null)
 const fsTesting = ref(false)
 
+const discordUrl = ref('')
+const discordUrlDirty = ref(false)
+const showDiscordUrl = ref(false)
+const discordTest = ref<{ success: boolean; message: string } | null>(null)
+const discordTesting = ref(false)
+const discordConnected = computed(() => discordUrl.value !== '')
+
 const seasonPackPref = ref('prefer_packs')
 const seasonPackPrefDirty = ref(false)
 
@@ -72,7 +79,7 @@ const anyDirty = computed(() =>
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
   qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
   qbDownloadPathDirty.value || qbSavePathDirty.value || qbCategoryDirty.value ||
-  fsUrlDirty.value ||
+  fsUrlDirty.value || discordUrlDirty.value ||
   seasonPackPrefDirty.value ||
   watchedListModeDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
@@ -104,6 +111,7 @@ async function fetchSettings() {
     qbSavePath.value = s.qbitSavePath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
+    discordUrl.value = s.discordWebhookUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     watchedListMode.value = s.watchedListMode ?? 'global'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
@@ -123,6 +131,7 @@ async function fetchSettings() {
   qbSavePathDirty.value = false
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
+  discordUrlDirty.value = false
   seasonPackPrefDirty.value = false
   watchedListModeDirty.value = false
   monitorIntervalDirty.value = false
@@ -153,6 +162,7 @@ async function saveSettings() {
   if (qbSavePathDirty.value) body.qbitSavePath = qbSavePath.value
   if (qbCategoryDirty.value) body.qbitCategory = qbCategory.value
   if (fsUrlDirty.value) body.flaresolverrUrl = fsUrl.value
+  if (discordUrlDirty.value && !isMasked(discordUrl.value)) body.discordWebhookUrl = discordUrl.value
   if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
   if (watchedListModeDirty.value) body.watchedListMode = watchedListMode.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
@@ -191,6 +201,7 @@ async function saveSettings() {
     qbSavePath.value = s.qbitSavePath ?? ''
     qbCategory.value = s.qbitCategory ?? ''
     fsUrl.value = s.flaresolverrUrl ?? ''
+    discordUrl.value = s.discordWebhookUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     watchedListMode.value = s.watchedListMode ?? 'global'
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
@@ -210,6 +221,7 @@ async function saveSettings() {
   qbSavePathDirty.value = false
   qbCategoryDirty.value = false
   fsUrlDirty.value = false
+  discordUrlDirty.value = false
   seasonPackPrefDirty.value = false
   watchedListModeDirty.value = false
   monitorIntervalDirty.value = false
@@ -274,6 +286,34 @@ async function testFlaresolverr() {
     return
   }
   fsTest.value = { success: data!.success, message: data!.message ?? '' }
+}
+
+async function testDiscord() {
+  discordTesting.value = true
+  discordTest.value = null
+  const body: Record<string, string> = {}
+  if (discordUrlDirty.value) body.url = discordUrl.value
+  const { data, error: err } = await client.POST('/settings/test-discord', { body })
+  discordTesting.value = false
+  if (err) {
+    discordTest.value = { success: false, message: 'Request failed' }
+    return
+  }
+  discordTest.value = { success: data!.success, message: data!.message ?? '' }
+}
+
+async function disconnectDiscord() {
+  saving.value = true
+  error.value = ''
+  const { error: err } = await client.PUT('/settings', { body: { discordWebhookUrl: '' } })
+  saving.value = false
+  if (err) {
+    error.value = 'Failed to disconnect Discord'
+    return
+  }
+  discordUrl.value = ''
+  discordUrlDirty.value = false
+  discordTest.value = null
 }
 
 onMounted(fetchSettings)
@@ -557,6 +597,72 @@ onMounted(fetchSettings)
               >
                 <span>{{ fsTest.success ? '\u2713' : '\u2717' }}</span>
                 {{ fsTest.message }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notifications section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Notifications</h2>
+
+      <div class="space-y-4">
+        <!-- Discord -->
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-sm font-semibold text-gray-200">Discord</span>
+            <span class="text-[10px] text-gray-500">Webhook Notifications</span>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">Webhook URL</label>
+              <p class="text-[10px] text-gray-500 mb-2">Receive notifications when downloads are imported. Create a webhook in Discord channel settings.</p>
+              <div class="flex gap-2">
+                <div class="relative flex-1">
+                  <input
+                    v-model="discordUrl"
+                    :type="showDiscordUrl ? 'text' : 'password'"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                    @input="discordUrlDirty = true"
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
+                    @click="showDiscordUrl = !showDiscordUrl"
+                  >
+                    {{ showDiscordUrl ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+                <button
+                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
+                  :disabled="discordTesting"
+                  @click="testDiscord"
+                >
+                  {{ discordTesting ? 'Testing...' : 'Test Webhook' }}
+                </button>
+                <button
+                  v-if="discordConnected"
+                  class="px-3 py-2 rounded-lg border border-red-800/30 text-sm text-red-400 hover:text-red-300 hover:border-red-500/50 transition-colors duration-200 whitespace-nowrap"
+                  :disabled="saving"
+                  @click="disconnectDiscord"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            <!-- Discord test result -->
+            <div v-if="discordTest" class="flex items-center gap-2">
+              <span
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                :class="discordTest.success
+                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
+              >
+                <span>{{ discordTest.success ? '\u2713' : '\u2717' }}</span>
+                {{ discordTest.message }}
               </span>
             </div>
           </div>
