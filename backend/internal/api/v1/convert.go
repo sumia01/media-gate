@@ -627,5 +627,8 @@ func downloadToAPI(dl *store.Download) Download {
 	if dl.LastError != "" {
 		api.LastError = &dl.LastError
 	}
+	if dl.MediaItemTitle != "" {
+		api.MediaItemTitle = &dl.MediaItemTitle
+	}
 	return api
 }

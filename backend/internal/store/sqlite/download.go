@@ -16,12 +16,15 @@ func (s *SQLiteStore) UpdateDownload(download *store.Download) error {
 
 func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]store.Download, error) {
 	var downloads []store.Download
-	q := s.db.Order("created_at DESC")
+	q := s.db.
+		Select("downloads.*, media_items.title AS media_item_title").
+		Joins("LEFT JOIN media_items ON media_items.id = downloads.media_item_id").
+		Order("created_at DESC")
 	if mediaItemID != nil {
-		q = q.Where("media_item_id = ?", *mediaItemID)
+		q = q.Where("downloads.media_item_id = ?", *mediaItemID)
 	}
 	if status != nil {
-		q = q.Where("status = ?", *status)
+		q = q.Where("downloads.status = ?", *status)
 	}
 	if err := q.Find(&downloads).Error; err != nil {
 		return nil, err

@@ -2939,6 +2939,9 @@ components:
         lastError:
           type: string
           description: Error message from the last failed attempt
+        mediaItemTitle:
+          type: string
+          description: Title of the associated media item
 
     DownloadCreate:
       type: object

@@ -1376,3 +1376,21 @@ Changes:
 4. **Navigation shortcut**: Clicking an "in library" discover item navigates directly to `/media/:id` (library detail page) instead of the TMDB preview page — `goToPreview()` checks `libraryMap` first.
 
 **Rationale**: Mirrors the proven "seen" badge pattern — single API call, client-side `Map` for O(1) lookups, no per-card backend queries. Adding `mediaItemId` to the response enables the navigation shortcut without extra requests. The `Map` (vs `Set` for watched) is the only structural difference since we need the ID for routing.
+
+---
+
+## ADR-095: All Downloads page
+**Date**: 2026-04-08
+**Status**: Accepted
+
+**Context**: Downloads were only visible within individual media detail pages — there was no way to see a global overview of all downloads across the system. Users had to navigate to each media item to check download progress, failures, or seeding status.
+
+**Decision**: Add a dedicated `/downloads` page listing all downloads system-wide, with a new `mediaItemTitle` field on the `Download` API response.
+
+1. **OpenAPI schema**: Added optional `mediaItemTitle` string field to the `Download` schema.
+2. **Store layer**: `ListDownloads()` now uses `LEFT JOIN media_items ON media_items.id = downloads.media_item_id` with `Select("downloads.*, media_items.title AS media_item_title")`. The `Download` model has a `MediaItemTitle string \`gorm:"-"\`` field (not a DB column, populated by the JOIN).
+3. **Converter**: `downloadToAPI()` maps `MediaItemTitle` when non-empty.
+4. **Frontend**: `DownloadsView.vue` — calls `GET /downloads` with no `mediaItemId` filter. Same row structure as `DownloadList.vue` (status/season/indexer badges, progress bar, speed, error/retry info). Adds media item title as a clickable link and an "open in library" icon button (replaces "Replace"). Status filter dropdown. SSE + polling for live updates.
+5. **Navigation**: Route at `/downloads` (lazy-loaded), sidebar item in `staticTop` after "Watched".
+
+**Rationale**: Reuses the existing `GET /downloads` endpoint (already supports unfiltered listing). The `mediaItemTitle` JOIN is cheap (LEFT JOIN on indexed FK) and avoids N+1 frontend queries. The page mirrors the per-media download row styling for consistency, while adding the media context needed for a global view.
