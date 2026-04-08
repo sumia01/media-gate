@@ -29,7 +29,7 @@ import (
 	"github.com/sumia01/media-gate/internal/metarefresh"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
-	"github.com/sumia01/media-gate/internal/store"
+	"github.com/sumia01/media-gate/internal/store/sqlite"
 	"github.com/sumia01/media-gate/internal/sync"
 )
 
@@ -45,7 +45,7 @@ func main() {
 
 	logging.Setup(cfg.Log.Format, cfg.Log.Level)
 
-	db, err := store.NewSQLite(cfg.DB.Path)
+	db, err := sqlite.New(cfg.DB.Path)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
