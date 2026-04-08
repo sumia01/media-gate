@@ -22,7 +22,7 @@ frontend/src/api/schema.d.ts
 
 # Plans
 .plans/
-.claude/plans/
+.claude/
 playground.md
 
 # Environment
