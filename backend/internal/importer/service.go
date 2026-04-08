@@ -88,6 +88,7 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		slog.Error("importer: failed to set importing status", "download_id", dl.ID, "error", err)
 		return
 	}
+	slog.Info("importer: starting import", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID)
 
 	// Look up media item and library
 	item, err := s.store.GetMediaItem(dl.MediaItemID)

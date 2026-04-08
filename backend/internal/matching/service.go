@@ -492,6 +492,7 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 	// Re-read metadata to include poster path.
 	resultMeta, _ = topStore.GetMediaMetadataByMediaItem(resultItem.ID)
 
+	slog.Info("matching: media added to library", "media_item_id", resultItem.ID, "title", resultItem.Title, "library_id", lib.ID, "library", lib.Name)
 	return resultItem, resultMeta, nil
 }
 
@@ -541,6 +542,7 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 
 	// Notify frontend so it can refresh the media item.
 	if s.bus != nil {
+		slog.Info("matching: match applied", "media_item_id", item.ID, "title", meta.Title, "source", source, "external_id", externalID)
 		s.bus.Publish(eventbus.MediaItemMatched, eventbus.MediaItemPayload{
 			MediaItemID: item.ID,
 			LibraryID:   item.LibraryID,

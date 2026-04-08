@@ -197,6 +197,7 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		}
 	}
 
+	slog.Info("sync: library sync complete", "library_id", lib.ID, "library", lib.Name, "files_added", added, "files_removed", removed)
 	return added, removed, nil
 }
 
@@ -353,6 +354,7 @@ func (s *Service) ResyncMediaItem(itemID uint) (updated, added, removed int, err
 		})
 	}
 
+	slog.Info("sync: resync complete", "media_item_id", itemID, "updated", updated, "added", added, "removed", removed)
 	return updated, added, removed, nil
 }
 

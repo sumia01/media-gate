@@ -284,6 +284,7 @@ func (s *Service) Create(dl *store.Download) error {
 	if err := s.store.CreateDownload(dl); err != nil {
 		return err
 	}
+	slog.Info("download: created", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID)
 	s.bus.Publish(eventbus.DownloadCreated, eventbus.DownloadPayload{
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: dl.Status,
 	})

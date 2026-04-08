@@ -36,6 +36,7 @@ func (s *Service) DeleteMediaItem(itemID uint) error {
 	if err != nil {
 		return err
 	}
+	slog.Info("media: deleting media item", "media_item_id", item.ID, "title", item.Title, "library_id", item.LibraryID)
 
 	// Collect file paths before DB cascade deletes the records.
 	mediaFiles, _ := s.store.ListMediaFilesByMediaItem(item.ID)
@@ -97,6 +98,7 @@ func (s *Service) DeleteMediaItem(itemID uint) error {
 		return err
 	}
 
+	slog.Info("media: media item deleted", "media_item_id", item.ID, "title", item.Title, "downloads_removed", len(downloads), "files_removed", len(mediaFiles))
 	s.bus.Publish(eventbus.MediaItemDeleted, eventbus.MediaItemPayload{
 		MediaItemID: item.ID, LibraryID: item.LibraryID, Title: item.Title,
 	})
@@ -128,7 +130,11 @@ func (s *Service) DeleteDownload(dlID uint, deleteFiles bool) error {
 		}
 	}
 
-	return s.store.DeleteDownload(dl.ID)
+	if err := s.store.DeleteDownload(dl.ID); err != nil {
+		return err
+	}
+	slog.Info("media: download deleted", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID, "delete_files", deleteFiles)
+	return nil
 }
 
 // CleanupImportedFiles removes library files that were imported from a specific download.
