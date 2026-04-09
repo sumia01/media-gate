@@ -421,6 +421,22 @@ func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("creating download request: %w", err)
 	}
 
+	// Apply search.headers (e.g. x-milkie-auth) to download requests too.
+	if len(e.def.Search.Headers) > 0 {
+		tmplCtx := &TemplateContext{
+			Config: e.config,
+		}
+		for name, vals := range e.def.Search.Headers {
+			for _, v := range vals {
+				rendered, err := RenderTemplate(v, tmplCtx)
+				if err != nil {
+					continue
+				}
+				req.Header.Set(name, rendered)
+			}
+		}
+	}
+
 	resp, err := e.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("download request: %w", err)
@@ -643,6 +659,15 @@ func (e *Engine) buildSearchResult(fields map[string]string, tmplCtx *TemplateCo
 			}
 			return nil, fmt.Errorf("rendering text for field %q: %w", name, err)
 		}
+
+		// Apply filters to the rendered text value (e.g. urlencode on _apikey).
+		if len(fieldDef.Filters) > 0 {
+			rendered, err = ApplyFilters(rendered, fieldDef.Filters)
+			if err != nil {
+				return nil, fmt.Errorf("filtering field %q: %w", name, err)
+			}
+		}
+
 		fields[name] = rendered
 	}
 

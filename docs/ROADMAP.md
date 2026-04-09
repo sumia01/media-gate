@@ -387,6 +387,9 @@
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
+- [x] Cardigann `urlencode` filter missing — text field filters (e.g. API key encoding in download URLs) silently skipped
+- [x] Cardigann `search.headers` not applied to download requests — indexers using header-based auth (e.g. Milkie `x-milkie-auth`) fail with 401 on torrent fetch
+- [x] Cardigann text field filters not applied after template rendering — filters on `.Text` fields with `.Result` references were never executed
 
 ---
 
