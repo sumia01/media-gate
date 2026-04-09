@@ -59,11 +59,15 @@ func (h *Handlers) GetRecentlyAdded(_ context.Context, _ GetRecentlyAddedRequest
 	return GetRecentlyAdded200JSONResponse{Items: apiItems}, nil
 }
 
-func (h *Handlers) GetTrending(_ context.Context, _ GetTrendingRequestObject) (GetTrendingResponseObject, error) {
-	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
-		results, err := c.TrendingAll("week")
+func (h *Handlers) GetTrending(_ context.Context, request GetTrendingRequestObject) (GetTrendingResponseObject, error) {
+	page := 1
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	items, totalPages, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, int, error) {
+		results, tp, err := c.TrendingAll("week", page)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out := make([]DiscoverItem, len(results))
 		for i, r := range results {
@@ -73,65 +77,73 @@ func (h *Handlers) GetTrending(_ context.Context, _ GetTrendingRequestObject) (G
 				out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
 			}
 		}
-		return out, nil
+		return out, tp, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return GetTrending200JSONResponse{Items: items}, nil
+	return GetTrending200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
 }
 
-func (h *Handlers) GetPopularMovies(_ context.Context, _ GetPopularMoviesRequestObject) (GetPopularMoviesResponseObject, error) {
-	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
-		results, err := c.PopularMovies()
+func (h *Handlers) GetPopularMovies(_ context.Context, request GetPopularMoviesRequestObject) (GetPopularMoviesResponseObject, error) {
+	page := 1
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	items, totalPages, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, int, error) {
+		results, tp, err := c.PopularMovies(page)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out := make([]DiscoverItem, len(results))
 		for i, r := range results {
 			out[i] = toDiscoverItem(r.ID, r.Title, r.ReleaseDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeMovie)
 		}
-		return out, nil
+		return out, tp, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return GetPopularMovies200JSONResponse{Items: items}, nil
+	return GetPopularMovies200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
 }
 
-func (h *Handlers) GetPopularSeries(_ context.Context, _ GetPopularSeriesRequestObject) (GetPopularSeriesResponseObject, error) {
-	items, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, error) {
-		results, err := c.PopularTV()
+func (h *Handlers) GetPopularSeries(_ context.Context, request GetPopularSeriesRequestObject) (GetPopularSeriesResponseObject, error) {
+	page := 1
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	items, totalPages, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, int, error) {
+		results, tp, err := c.PopularTV(page)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out := make([]DiscoverItem, len(results))
 		for i, r := range results {
 			out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
 		}
-		return out, nil
+		return out, tp, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return GetPopularSeries200JSONResponse{Items: items}, nil
+	return GetPopularSeries200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
 }
 
 const tmdbPosterW342 = "https://image.tmdb.org/t/p/w342"
 
 // fetchDiscover handles the common discover pattern: get a TMDB client from the
 // matching service, call the fetch function, return empty slice on missing key or API error.
-func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, error)) ([]DiscoverItem, error) {
+func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, int, error)) ([]DiscoverItem, int, error) {
 	client := h.matchSvc.TMDBClient()
 	if client == nil {
-		return []DiscoverItem{}, nil
+		return []DiscoverItem{}, 0, nil
 	}
-	items, err := fetch(client)
+	items, totalPages, err := fetch(client)
 	if err != nil {
 		slog.Warn("discover fetch failed", "error", err)
-		return []DiscoverItem{}, nil
+		return []DiscoverItem{}, 0, nil
 	}
-	return items, nil
+	return items, totalPages, nil
 }
 
 // toDiscoverItem builds a DiscoverItem from common TMDB result fields.

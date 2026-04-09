@@ -9,6 +9,7 @@ import MediaDetailView from '@/views/MediaDetailView.vue'
 import MediaPreviewView from '@/views/MediaPreviewView.vue'
 import MediaProfilesView from '@/views/MediaProfilesView.vue'
 import WatchedView from '@/views/WatchedView.vue'
+import DiscoverCategoryView from '@/views/DiscoverCategoryView.vue'
 import IndexersView from '@/views/IndexersView.vue'
 import IndexerSearchView from '@/views/IndexerSearchView.vue'
 import SettingsView from '@/views/SettingsView.vue'
@@ -38,6 +39,24 @@ const router = createRouter({
           path: '',
           name: 'home',
           component: HomeView,
+        },
+        {
+          path: 'discover/trending',
+          name: 'discover-trending',
+          component: DiscoverCategoryView,
+          props: { category: 'trending' },
+        },
+        {
+          path: 'discover/popular-movies',
+          name: 'discover-popular-movies',
+          component: DiscoverCategoryView,
+          props: { category: 'popular-movies' },
+        },
+        {
+          path: 'discover/popular-series',
+          name: 'discover-popular-series',
+          component: DiscoverCategoryView,
+          props: { category: 'popular-series' },
         },
         {
           path: 'libraries',
@@ -141,6 +160,10 @@ router.beforeEach(async (to) => {
   }
 
   return { name: 'login', query: { redirect: to.fullPath } }
+})
+
+router.afterEach(() => {
+  document.querySelector('main')?.scrollTo(0, 0)
 })
 
 export default router

@@ -106,46 +106,52 @@ func (c *Client) GetTVSeason(seriesID, seasonNumber int) (*TVSeasonDetails, erro
 	return &details, nil
 }
 
-func (c *Client) TrendingAll(timeWindow string) ([]TrendingResult, error) {
-	body, err := c.get(fmt.Sprintf("/trending/all/%s", timeWindow))
+func (c *Client) TrendingAll(timeWindow string, page int) ([]TrendingResult, int, error) {
+	params := url.Values{"page": {strconv.Itoa(page)}}
+	body, err := c.getWithParams(fmt.Sprintf("/trending/all/%s", timeWindow), params)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var resp struct {
-		Results []TrendingResult `json:"results"`
+		Results    []TrendingResult `json:"results"`
+		TotalPages int              `json:"total_pages"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+		return nil, 0, fmt.Errorf("decoding response: %w", err)
 	}
-	return resp.Results, nil
+	return resp.Results, resp.TotalPages, nil
 }
 
-func (c *Client) PopularMovies() ([]MovieResult, error) {
-	body, err := c.get("/movie/popular")
+func (c *Client) PopularMovies(page int) ([]MovieResult, int, error) {
+	params := url.Values{"page": {strconv.Itoa(page)}}
+	body, err := c.getWithParams("/movie/popular", params)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var resp struct {
-		Results []MovieResult `json:"results"`
+		Results    []MovieResult `json:"results"`
+		TotalPages int           `json:"total_pages"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+		return nil, 0, fmt.Errorf("decoding response: %w", err)
 	}
-	return resp.Results, nil
+	return resp.Results, resp.TotalPages, nil
 }
 
-func (c *Client) PopularTV() ([]TVResult, error) {
-	body, err := c.get("/tv/popular")
+func (c *Client) PopularTV(page int) ([]TVResult, int, error) {
+	params := url.Values{"page": {strconv.Itoa(page)}}
+	body, err := c.getWithParams("/tv/popular", params)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var resp struct {
-		Results []TVResult `json:"results"`
+		Results    []TVResult `json:"results"`
+		TotalPages int        `json:"total_pages"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+		return nil, 0, fmt.Errorf("decoding response: %w", err)
 	}
-	return resp.Results, nil
+	return resp.Results, resp.TotalPages, nil
 }
 
 func (c *Client) get(path string) ([]byte, error) {

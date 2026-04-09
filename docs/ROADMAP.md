@@ -384,6 +384,17 @@
 - [x] Settings UI "Notifications" section with Discord card: webhook URL input (show/hide), Test Webhook button, Disconnect button
 - [x] Disconnect clears webhook URL from DB (row deletion, not empty string) — no notification sent when URL absent
 
+## Phase 8.0: Discover category pages with infinite scroll ✅
+→ See ADR-099
+- [x] TMDB client `TrendingAll`, `PopularMovies`, `PopularTV` accept `page` parameter and return `totalPages`
+- [x] OpenAPI spec: optional `page` query param + `page`/`totalPages` response fields on trending, popular-movies, popular-series endpoints
+- [x] Backend handlers pass `page` through to TMDB client, default to page 1
+- [x] Reusable `DiscoverCard.vue` component extracted from HomeView (poster, mediaType/inLibrary/seen badges, rating, title, year)
+- [x] `DiscoverCategoryView.vue` — single view for all 3 categories via route prop, `IntersectionObserver`-based infinite scroll with 200px pre-fetch margin
+- [x] Routes: `/discover/trending`, `/discover/popular-movies`, `/discover/popular-series`
+- [x] "See more →" links on each HomeView discover section header
+- [x] Router `afterEach` hook scrolls `<main>` container to top on navigation (inner scroll container, not window)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
