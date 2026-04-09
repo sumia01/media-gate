@@ -1424,3 +1424,23 @@ Changes:
 5. **Frontend**: "Notifications" section in Settings page with Discord card — webhook URL input with show/hide toggle, "Test Webhook" button, red "Disconnect" button (visible only when URL is configured). Disconnect sends `PUT /settings { discordWebhookUrl: "" }` which triggers row deletion.
 
 **Rationale**: Discord webhooks are simple HTTP POSTs with no authentication handshake — a single `client.go` file covers the entire integration. The notification service is decoupled from both the importer and Discord via the event bus, making it trivial to add future notification channels (Telegram, email, etc.) by subscribing to the same events. Sensitive key treatment ensures webhook tokens (embedded in the URL) are encrypted at rest.
+
+---
+
+## ADR-098: Cardigann download auth and filter fixes
+**Date**: 2026-04-09
+**Status**: Accepted
+
+**Context**: Indexers like Milkie use API key authentication for both search and download requests. Search worked but torrent downloads failed with 401/400 errors. Three interrelated bugs prevented proper download authentication:
+
+1. `search.headers` (e.g. `x-milkie-auth`) were only applied to search requests, not download requests in `fetchURL`.
+2. The `urlencode` filter was missing from the Cardigann filter engine — the `default` switch branch silently returned values unchanged.
+3. Text fields with filters (e.g. `_apikey` with `urlencode`) had filters skipped entirely: `extractField` returned the raw template for later rendering, but `buildSearchResult` only rendered the template without applying the field's filters afterward.
+
+**Decision**: Fix all three issues in the Cardigann engine:
+
+1. **Apply `search.headers` to download requests** (`engine.go:fetchURL`): Render `e.def.Search.Headers` with a `TemplateContext` containing `e.config` and set them on the download HTTP request, mirroring what `Search` already does.
+2. **Add `urlencode` filter** (`filters.go`): `case "urlencode": return url.QueryEscape(value), nil` — uses Go's `url.QueryEscape` which correctly encodes `+` as `%2B`.
+3. **Apply filters after text field rendering** (`engine.go:buildSearchResult`): After `RenderTemplate` for text fields, call `ApplyFilters` with the field's filters on the rendered value.
+
+**Rationale**: These are complementary fixes — any indexer using header-based auth on downloads, URL-encoded credentials in download links, or filtered text fields was silently broken. The fixes are minimal and localized to the Cardigann engine with no API or schema changes.

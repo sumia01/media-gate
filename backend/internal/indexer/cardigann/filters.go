@@ -41,6 +41,8 @@ func applyFilter(value string, f Filter) (string, error) {
 		return filterSplit(value, f.Args)
 	case "urldecode":
 		return filterUrldecode(value)
+	case "urlencode":
+		return url.QueryEscape(value), nil
 	case "fuzzytime":
 		return filterFuzzytime(value)
 	default:
