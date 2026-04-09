@@ -1173,6 +1173,13 @@ paths:
       tags:
         - discover
       summary: Trending movies and series from TMDB
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
       responses:
         "200":
           description: Trending items
@@ -1182,11 +1189,17 @@ paths:
                 type: object
                 required:
                   - items
+                  - page
+                  - totalPages
                 properties:
                   items:
                     type: array
                     items:
                       $ref: "#/components/schemas/DiscoverItem"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
 
   /discover/popular-movies:
     get:
@@ -1194,6 +1207,13 @@ paths:
       tags:
         - discover
       summary: Popular movies from TMDB
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
       responses:
         "200":
           description: Popular movies
@@ -1203,11 +1223,17 @@ paths:
                 type: object
                 required:
                   - items
+                  - page
+                  - totalPages
                 properties:
                   items:
                     type: array
                     items:
                       $ref: "#/components/schemas/DiscoverItem"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
 
   /discover/popular-series:
     get:
@@ -1215,6 +1241,13 @@ paths:
       tags:
         - discover
       summary: Popular series from TMDB
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
       responses:
         "200":
           description: Popular series
@@ -1224,11 +1257,17 @@ paths:
                 type: object
                 required:
                   - items
+                  - page
+                  - totalPages
                 properties:
                   items:
                     type: array
                     items:
                       $ref: "#/components/schemas/DiscoverItem"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
 
   /media-profiles:
     get:

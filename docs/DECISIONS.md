@@ -1444,3 +1444,22 @@ Changes:
 3. **Apply filters after text field rendering** (`engine.go:buildSearchResult`): After `RenderTemplate` for text fields, call `ApplyFilters` with the field's filters on the rendered value.
 
 **Rationale**: These are complementary fixes — any indexer using header-based auth on downloads, URL-encoded credentials in download links, or filtered text fields was silently broken. The fixes are minimal and localized to the Cardigann engine with no API or schema changes.
+
+---
+
+## ADR-099: Discover category pages with infinite scroll
+**Date**: 2026-04-09
+**Status**: Accepted
+
+**Context**: The discover home page shows 20 items per section (TMDB default page size) with no way to browse deeper. Users wanting to explore more trending or popular content had to leave the app. TMDB's API supports pagination via a `page` query parameter (up to 500 pages of 20 results each).
+
+**Decision**: Add dedicated category sub-pages (`/discover/trending`, `/discover/popular-movies`, `/discover/popular-series`) with infinite scroll, linked from "See more" on the home page:
+
+1. **TMDB client**: `TrendingAll`, `PopularMovies`, `PopularTV` now accept `page int` and return `(results, totalPages, error)`. Uses existing `getWithParams` to pass `page` to TMDB API.
+2. **OpenAPI spec**: Optional `page` query param (default 1) + `page`/`totalPages` response fields on the 3 discover endpoints. `recently-added` unchanged (local data, fixed set).
+3. **Backend handlers**: Read `page` from request params (default 1), pass to TMDB client, return pagination metadata in response. `fetchDiscover` helper updated to propagate `totalPages`.
+4. **`DiscoverCard.vue`**: Reusable card component extracted from HomeView — poster, mediaType/inLibrary/seen badges, rating, title, year. Used by both HomeView and category pages.
+5. **`DiscoverCategoryView.vue`**: Single view handling all 3 categories via route prop. `IntersectionObserver` on sentinel element with 200px rootMargin for pre-fetching. Stops when `page >= totalPages`.
+6. **Router**: `afterEach` hook scrolls `<main>` to top on navigation (LayoutA uses inner scroll container with `overflow-y-auto`, so Vue Router's `scrollBehavior` doesn't apply).
+
+**Rationale**: One parameterized view component (`category` prop) avoids 3 near-identical files. `IntersectionObserver` is more performant than scroll event listeners and handles edge cases (fast scroll, resize) automatically. The 200px rootMargin pre-fetches before the user reaches the bottom, making scrolling feel seamless. Extracting `DiscoverCard` eliminates ~100 lines of duplicated card markup across HomeView's 3 discover sections.

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { MediaItem, DiscoverItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
+import DiscoverCard from '@/components/media/DiscoverCard.vue'
 
 const router = useRouter()
 
@@ -169,7 +170,10 @@ function getRecentPoster(item: MediaItem): string | null {
 
     <!-- Trending -->
     <section v-if="trendingLoading || trendingItems.length" class="mb-10">
-      <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Trending This Week</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Trending This Week</h2>
+        <router-link :to="{ name: 'discover-trending' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+      </div>
       <div v-if="trendingLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
           <div class="aspect-[2/3] rounded-lg bg-white/5" />
@@ -178,50 +182,23 @@ function getRecentPoster(item: MediaItem): string | null {
         </div>
       </div>
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <div
+        <DiscoverCard
           v-for="item in trendingItems"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
+          :item="item"
+          :in-library="isInLibrary(item.source, item.externalId)"
+          :watched="isWatched(item.source, item.externalId)"
           @click="goToPreview(item)"
-        >
-          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
-            <img
-              v-if="item.posterUrl"
-              :src="item.posterUrl"
-              :alt="item.title"
-              class="w-full h-full object-cover"
-              loading="lazy"
-            />
-            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
-              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
-                :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
-              >
-                {{ item.mediaType }}
-              </span>
-              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
-                in library
-              </span>
-              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
-                seen
-              </span>
-            </div>
-            <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
-              &#9733; {{ item.rating.toFixed(1) }}
-            </div>
-          </div>
-          <div class="p-3">
-            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
-          </div>
-        </div>
+        />
       </div>
     </section>
 
     <!-- Popular Movies -->
     <section v-if="moviesLoading || popularMovies.length" class="mb-10">
-      <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Popular Movies</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Movies</h2>
+        <router-link :to="{ name: 'discover-popular-movies' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+      </div>
       <div v-if="moviesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
           <div class="aspect-[2/3] rounded-lg bg-white/5" />
@@ -230,48 +207,23 @@ function getRecentPoster(item: MediaItem): string | null {
         </div>
       </div>
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <div
+        <DiscoverCard
           v-for="item in popularMovies"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
+          :item="item"
+          :in-library="isInLibrary(item.source, item.externalId)"
+          :watched="isWatched(item.source, item.externalId)"
           @click="goToPreview(item)"
-        >
-          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
-            <img
-              v-if="item.posterUrl"
-              :src="item.posterUrl"
-              :alt="item.title"
-              class="w-full h-full object-cover"
-              loading="lazy"
-            />
-            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
-              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-violet-600/90 text-violet-100">
-                movie
-              </span>
-              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
-                in library
-              </span>
-              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
-                seen
-              </span>
-            </div>
-            <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
-              &#9733; {{ item.rating.toFixed(1) }}
-            </div>
-          </div>
-          <div class="p-3">
-            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
-          </div>
-        </div>
+        />
       </div>
     </section>
 
     <!-- Popular Series -->
     <section v-if="seriesLoading || popularSeries.length" class="mb-10">
-      <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Popular Series</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Series</h2>
+        <router-link :to="{ name: 'discover-popular-series' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+      </div>
       <div v-if="seriesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
           <div class="aspect-[2/3] rounded-lg bg-white/5" />
@@ -280,42 +232,14 @@ function getRecentPoster(item: MediaItem): string | null {
         </div>
       </div>
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <div
+        <DiscoverCard
           v-for="item in popularSeries"
           :key="`${item.source}-${item.externalId}`"
-          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
+          :item="item"
+          :in-library="isInLibrary(item.source, item.externalId)"
+          :watched="isWatched(item.source, item.externalId)"
           @click="goToPreview(item)"
-        >
-          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
-            <img
-              v-if="item.posterUrl"
-              :src="item.posterUrl"
-              :alt="item.title"
-              class="w-full h-full object-cover"
-              loading="lazy"
-            />
-            <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
-              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-fuchsia-600/90 text-fuchsia-100">
-                series
-              </span>
-              <span v-if="isInLibrary(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
-                in library
-              </span>
-              <span v-if="isWatched(item.source, item.externalId)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
-                seen
-              </span>
-            </div>
-            <div v-if="item.rating" class="absolute bottom-2 right-2 z-10 text-[11px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm">
-              &#9733; {{ item.rating.toFixed(1) }}
-            </div>
-          </div>
-          <div class="p-3">
-            <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
-          </div>
-        </div>
+        />
       </div>
     </section>
 
