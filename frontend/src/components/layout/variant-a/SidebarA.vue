@@ -78,12 +78,12 @@ onMounted(() => {
       : collapsed ? 'w-16' : 'w-56'"
   >
     <!-- Brand -->
-    <div class="flex items-center h-16 px-4 gap-3">
+    <router-link to="/" class="flex items-center h-16 px-4 gap-3 no-underline">
       <img src="/small_logo.png" alt="MediaGate" class="w-8 h-8 flex-shrink-0" />
       <span v-if="!collapsed" class="font-semibold text-sm tracking-tight text-[#c4b5fd] transition-opacity duration-200" style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.3)">
         MediaGate
       </span>
-    </div>
+    </router-link>
 
     <!-- Nav -->
     <nav class="flex-1 px-2 mt-2 space-y-1 overflow-y-auto scrollbar-none">
