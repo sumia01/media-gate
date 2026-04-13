@@ -267,6 +267,24 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 		case settings.KeyWatchedListMode:
 			m := SettingsWatchedListMode(v)
 			s.WatchedListMode = &m
+		case settings.KeyOpenSubtitlesApiKey:
+			s.OpensubtitlesApiKey = &v
+		case settings.KeyOpenSubtitlesUsername:
+			s.OpensubtitlesUsername = &v
+		case settings.KeyOpenSubtitlesPassword:
+			s.OpensubtitlesPassword = &v
+		case settings.KeyOpenSubtitlesRateLimit:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.OpensubtitlesRateLimit = &n
+			}
+		case settings.KeySubtitleLanguages:
+			var langs []string
+			if err := json.Unmarshal([]byte(v), &langs); err == nil {
+				s.SubtitleLanguages = &langs
+			}
+		case settings.KeySubtitleAutoSearch:
+			b := v == "true"
+			s.SubtitleAutoSearch = &b
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -361,6 +379,28 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.WatchedListMode != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWatchedListMode, Value: string(*s.WatchedListMode)})
+	}
+	if s.OpensubtitlesApiKey != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOpenSubtitlesApiKey, Value: *s.OpensubtitlesApiKey})
+	}
+	if s.OpensubtitlesUsername != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOpenSubtitlesUsername, Value: *s.OpensubtitlesUsername})
+	}
+	if s.OpensubtitlesPassword != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOpenSubtitlesPassword, Value: *s.OpensubtitlesPassword})
+	}
+	if s.OpensubtitlesRateLimit != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOpenSubtitlesRateLimit, Value: strconv.Itoa(*s.OpensubtitlesRateLimit)})
+	}
+	if s.SubtitleLanguages != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeySubtitleLanguages, Value: marshalJSON(*s.SubtitleLanguages)})
+	}
+	if s.SubtitleAutoSearch != nil {
+		val := "false"
+		if *s.SubtitleAutoSearch {
+			val = "true"
+		}
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeySubtitleAutoSearch, Value: val})
 	}
 	return kvs
 }

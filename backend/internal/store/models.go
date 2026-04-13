@@ -191,6 +191,27 @@ type RefreshToken struct {
 	CreatedAt time.Time
 }
 
+type Subtitle struct {
+	ID               uint   `gorm:"primarykey"`
+	MediaItemID      uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	MediaFileID      *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
+	SeasonNumber     *int
+	EpisodeNumber    *int
+	Language         string `gorm:"not null"`           // ISO 639-1 ("en", "hu")
+	Provider         string `gorm:"not null"`           // "opensubtitles"
+	ProviderFileID   string                             // opaque provider ID
+	ReleaseName      string
+	FileName         string `gorm:"not null"`
+	FilePath         string `gorm:"not null;uniqueIndex"`
+	Format           string                             // "srt", "ass", "sub"
+	Score            int
+	HearingImpaired  bool   `gorm:"not null;default:false"`
+	ForeignPartsOnly bool   `gorm:"not null;default:false"`
+	Source           string `gorm:"not null;default:manual"` // "manual" or "auto"
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type WatchedItem struct {
 	ID          uint   `gorm:"primarykey"`
 	UserID      uint   `gorm:"not null;index;uniqueIndex:idx_watched_user_source_ext;constraint:OnDelete:CASCADE"`

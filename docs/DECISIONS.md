@@ -1463,3 +1463,22 @@ Changes:
 6. **Router**: `afterEach` hook scrolls `<main>` to top on navigation (LayoutA uses inner scroll container with `overflow-y-auto`, so Vue Router's `scrollBehavior` doesn't apply).
 
 **Rationale**: One parameterized view component (`category` prop) avoids 3 near-identical files. `IntersectionObserver` is more performant than scroll event listeners and handles edge cases (fast scroll, resize) automatically. The 200px rootMargin pre-fetches before the user reaches the bottom, making scrolling feel seamless. Extracting `DiscoverCard` eliminates ~100 lines of duplicated card markup across HomeView's 3 discover sections.
+
+---
+
+## ADR-100: Subtitle search & download (Bazarr replacement)
+**Date**: 2026-04-13
+**Status**: Accepted
+
+**Context**: MediaGate relies on external Bazarr for subtitle management. Bazarr is another service to deploy and configure, with its own database and settings. Subtitle search and download is a natural extension of the media management workflow — search by TMDB/IMDB ID, file hash, and release name; score results; download to the correct library folder.
+
+**Decision**: Build subtitle support directly into MediaGate with a provider-based architecture:
+
+1. **OpenSubtitles.com client** (`backend/internal/integration/opensubtitles/`): REST API client with JWT auth (user+password+API key), mutex-protected token, `base_url` capture from login response for download endpoint routing, 401 retry with fresh HTTP request body, file hash computation (first+last 64KB as uint64 LE sum + filesize, 16-digit hex).
+2. **Generic Provider interface** (`backend/internal/subtitle/provider.go`): `Search(ctx, SearchRequest) ([]SearchResult, error)` and `Download(ctx, providerFileID) (*DownloadedFile, error)` — enables future providers (e.g. Addic7ed, Subscene) without service changes.
+3. **Subtitle service** (`backend/internal/subtitle/service.go`): Coordinates search (multi-provider, rate-limited), download (determines save path using `importer.BuildTargetDir`, writes file, creates DB record, publishes event), list, delete (disk + DB), and auto-search on import completion.
+4. **Scoring algorithm** (`score.go`): Hash match (+500), release group exact match (+200), partial token overlap (+100), language priority (50→0), trusted source (+50), download count (capped at 30), HI penalty (-50), foreign-only penalty (-100).
+5. **Auto-search**: `HandleImportCompleted` subscribes to `eventbus.ImportCompleted`, checks `subtitle_auto_search` setting, searches all providers, downloads best result per configured language. Uses `DownloadOpts` struct to pass metadata (source, release name, score, flags) through a single `Download()` call — avoids double-create bug (GORM `Create` always inserts).
+6. **Frontend**: `SubtitleSearchModal` (follows `IndexerSearchModal` pattern), `SubtitleList` for movies with SSE-driven refresh, EpisodeGrid subtitle search buttons at season/episode level, auto-subtitle toggle in download settings bar, Settings UI for credentials and preferences.
+
+**Rationale**: Provider interface mirrors the indexer pattern — new subtitle sources slot in without touching the service layer. Scoring is simpler than Bazarr's (no ML, no fuzzy FPS matching) but covers the key signals (hash match, release name, language priority). File hash computation follows the OpenSubtitles spec exactly, enabling hash-based matching when media files exist on disk. Auto-search on import completion is the same event-driven pattern used by Discord notifications. The `DownloadOpts` pattern eliminates the double-create issue where `HandleImportCompleted` was calling both `Download()` (which creates a DB record) and then `CreateSubtitle()` again.

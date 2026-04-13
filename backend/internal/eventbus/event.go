@@ -40,6 +40,13 @@ const (
 	MonitorGrabbed EventType = "monitor.grabbed"
 )
 
+// Subtitle events.
+const (
+	SubtitleDownloaded          EventType = "subtitle.downloaded"
+	SubtitleDeleted             EventType = "subtitle.deleted"
+	SubtitleAutoSearchCompleted EventType = "subtitle.auto_search_completed"
+)
+
 // Event is a single occurrence published on the bus.
 type Event struct {
 	Type      EventType `json:"type"`
@@ -102,4 +109,13 @@ type MonitorPayload struct {
 	MediaItemID uint   `json:"mediaItemId"`
 	Title       string `json:"title"`
 	ResultTitle string `json:"resultTitle"`
+}
+
+// SubtitlePayload carries subtitle event data.
+type SubtitlePayload struct {
+	SubtitleID  uint   `json:"subtitleId"`
+	MediaItemID uint   `json:"mediaItemId"`
+	Language    string `json:"language"`
+	Provider    string `json:"provider"`
+	FileName    string `json:"fileName"`
 }

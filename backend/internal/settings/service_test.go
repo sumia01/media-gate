@@ -160,6 +160,11 @@ func (s *settingsStubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, e
 func (s *settingsStubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
 func (s *settingsStubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
 
+func (s *settingsStubStore) CreateSubtitle(*store.Subtitle) error                         { return nil }
+func (s *settingsStubStore) GetSubtitle(uint) (*store.Subtitle, error)                    { return nil, nil }
+func (s *settingsStubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error)      { return nil, nil }
+func (s *settingsStubStore) DeleteSubtitle(uint) error                                    { return nil }
+
 // --- Existing path validation tests ---
 
 func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {

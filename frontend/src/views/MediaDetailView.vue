@@ -9,6 +9,8 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
+import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
+import SubtitleList from '@/components/media/SubtitleList.vue'
 import DownloadList from '@/components/media/DownloadList.vue'
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 
@@ -31,13 +33,18 @@ const indexerSearchEpisode = ref<number | undefined>()
 const indexerSearchEpisodeId = ref<number | undefined>()
 const episodeRefreshKey = ref(0)
 const downloadRefreshKey = ref(0)
+const subtitleRefreshKey = ref(0)
 const replacingDownloadId = ref<number | null>(null)
 const showSeasonMonitorModal = ref(false)
 const seasonMonitorSeasons = ref<SeasonSummary[]>([])
+const showSubtitleSearch = ref(false)
+const subtitleSearchSeason = ref<number | undefined>()
+const subtitleSearchEpisode = ref<number | undefined>()
 
 const isWatched = ref(false)
 const watchedId = ref<number | null>(null)
 const watchedLoading = ref(false)
+const subtitleAutoSearch = ref(false)
 const metadata = computed(() => item.value?.metadata ?? null)
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
@@ -106,6 +113,17 @@ async function fetchFiles(id: number) {
 async function fetchProfiles() {
   const { data } = await client.GET('/media-profiles')
   profiles.value = data?.profiles ?? []
+}
+
+async function fetchSubtitleAutoSearch() {
+  const { data } = await client.GET('/settings')
+  subtitleAutoSearch.value = data?.settings?.subtitleAutoSearch ?? false
+}
+
+async function toggleSubtitleAutoSearch() {
+  const newVal = !subtitleAutoSearch.value
+  await client.PUT('/settings', { body: { subtitleAutoSearch: newVal } })
+  subtitleAutoSearch.value = newVal
 }
 
 async function checkWatched() {
@@ -275,6 +293,19 @@ async function closeIndexerSearch() {
   downloadRefreshKey.value++
 }
 
+function openSubtitleSearch(season?: number, episode?: number) {
+  subtitleSearchSeason.value = season
+  subtitleSearchEpisode.value = episode
+  showSubtitleSearch.value = true
+}
+
+function closeSubtitleSearch() {
+  showSubtitleSearch.value = false
+  subtitleSearchSeason.value = undefined
+  subtitleSearchEpisode.value = undefined
+  subtitleRefreshKey.value++
+}
+
 function onDownloadReplace(downloadId: number, seasonNumber?: number, episodeNumber?: number, episodeId?: number) {
   replacingDownloadId.value = downloadId
   openIndexerSearch(seasonNumber, episodeNumber, episodeId)
@@ -312,10 +343,23 @@ const importEvents = [
   'download.import_completed',
 ]
 
+const subtitleEvents = [
+  'subtitle.downloaded',
+  'subtitle.deleted',
+  'subtitle.auto_search_completed',
+]
+
+function handleSubtitleEvent(data: any) {
+  if (item.value && data.mediaItemId === item.value.id) {
+    subtitleRefreshKey.value++
+  }
+}
+
 function loadAll() {
   const id = Number(route.params.id)
   fetchItem(id)
   fetchProfiles()
+  fetchSubtitleAutoSearch()
 }
 
 onMounted(() => {
@@ -326,6 +370,9 @@ onMounted(() => {
   for (const type of importEvents) {
     on(type, handleImportEvent)
   }
+  for (const type of subtitleEvents) {
+    on(type, handleSubtitleEvent)
+  }
 })
 onUnmounted(() => {
   for (const type of mediaEvents) {
@@ -333,6 +380,9 @@ onUnmounted(() => {
   }
   for (const type of importEvents) {
     off(type, handleImportEvent)
+  }
+  for (const type of subtitleEvents) {
+    off(type, handleSubtitleEvent)
   }
 })
 watch(() => route.params.id, loadAll)
@@ -672,6 +722,26 @@ watch(() => route.params.id, loadAll)
           <span>Monitor new seasons</span>
         </button>
 
+        <!-- Auto-subtitles toggle -->
+        <button
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
+          :class="subtitleAutoSearch
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          @click="toggleSubtitleAutoSearch"
+        >
+          <span
+            class="relative w-7 h-4 rounded-full transition-colors duration-200 flex-shrink-0"
+            :class="subtitleAutoSearch ? 'bg-emerald-600' : 'bg-gray-600'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
+              :class="subtitleAutoSearch ? 'translate-x-3' : ''"
+            />
+          </span>
+          <span>Auto-subtitles</span>
+        </button>
+
         <!-- Quality profile -->
         <div class="flex items-center gap-2">
           <label for="profile-select" class="text-xs text-gray-500">Quality Profile</label>
@@ -695,6 +765,8 @@ watch(() => route.params.id, loadAll)
         :refreshKey="episodeRefreshKey"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
+        @search-season-subtitles="(sn: number) => openSubtitleSearch(sn)"
+        @search-episode-subtitles="(sn: number, en: number) => openSubtitleSearch(sn, en)"
         class="mt-8"
       />
 
@@ -708,6 +780,15 @@ watch(() => route.params.id, loadAll)
         :refreshKey="downloadRefreshKey"
         @replace="onDownloadReplace"
         @downloadsChanged="onDownloadsChanged"
+        class="mt-8"
+      />
+
+      <!-- Subtitles section (movies only) -->
+      <SubtitleList
+        v-if="item && item.mediaType === 'movie'"
+        :mediaItemId="item.id"
+        :refreshKey="subtitleRefreshKey"
+        @search-subtitles="openSubtitleSearch()"
         class="mt-8"
       />
 
@@ -794,6 +875,17 @@ watch(() => route.params.id, loadAll)
       :episodeId="indexerSearchEpisodeId"
       :mediaProfile="activeProfile"
       @close="closeIndexerSearch"
+    />
+
+    <!-- Subtitle Search Modal -->
+    <SubtitleSearchModal
+      v-if="showSubtitleSearch && item"
+      :mediaItemId="item.id"
+      :title="item.title"
+      :seasonNumber="subtitleSearchSeason"
+      :episodeNumber="subtitleSearchEpisode"
+      @close="closeSubtitleSearch"
+      @downloaded="subtitleRefreshKey++"
     />
 
     <!-- Season monitor modal (shown when enabling monitoring on a series) -->

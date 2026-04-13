@@ -16,6 +16,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV2, // 1→2: watched_items — add media_item_id FK with SET NULL
 	migrateV3, // 2→3: explicit season monitoring — add monitor_new_seasons column + backfill SeasonMonitor rows
 	migrateV4, // 3→4: episode_monitors table (AutoMigrate handles creation, this is a no-op placeholder)
+	migrateV5, // 4→5: subtitles table (AutoMigrate handles creation, this is a no-op placeholder)
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -329,6 +330,11 @@ func migrateV4(_ *sql.DB) error {
 	return nil
 }
 
+// migrateV5 is a no-op placeholder — AutoMigrate already creates the subtitles table.
+func migrateV5(_ *sql.DB) error {
+	return nil
+}
+
 // rebuildTable recreates a table using SQLite's 12-step ALTER TABLE procedure.
 func rebuildTable(db *sql.DB, table, newDDL, columns string) error {
 	slog.Info("rebuilding table", "table", table)
@@ -403,6 +409,7 @@ func cleanupOrphans(db *sql.DB) {
 		{"episodes", `DELETE FROM episodes WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads", `DELETE FROM downloads WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads.episode_id", `UPDATE downloads SET episode_id = NULL WHERE episode_id IS NOT NULL AND episode_id NOT IN (SELECT id FROM episodes)`},
+		{"subtitles", `DELETE FROM subtitles WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"media_items", `DELETE FROM media_items WHERE library_id NOT IN (SELECT id FROM libraries)`},
 		{"refresh_tokens", `DELETE FROM refresh_tokens WHERE user_id NOT IN (SELECT id FROM users)`},
 	}

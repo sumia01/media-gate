@@ -117,6 +117,11 @@ func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  {
 func (s *stubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
 func (s *stubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
 
+func (s *stubStore) CreateSubtitle(*store.Subtitle) error                         { return nil }
+func (s *stubStore) GetSubtitle(uint) (*store.Subtitle, error)                    { return nil, nil }
+func (s *stubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error)      { return nil, nil }
+func (s *stubStore) DeleteSubtitle(uint) error                                    { return nil }
+
 // staticBasePath implements BasePathProvider for testing.
 type staticBasePath string
 

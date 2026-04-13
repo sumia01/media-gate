@@ -65,6 +65,23 @@ const seasonPackPrefDirty = ref(false)
 const watchedListMode = ref('global')
 const watchedListModeDirty = ref(false)
 
+const osApiKey = ref('')
+const osApiKeyDirty = ref(false)
+const showOsApiKey = ref(false)
+const osUsername = ref('')
+const osPassword = ref('')
+const osRateLimit = ref('3')
+const osUsernameDirty = ref(false)
+const osPasswordDirty = ref(false)
+const osRateLimitDirty = ref(false)
+const showOsPassword = ref(false)
+const osTest = ref<{ success: boolean; message: string } | null>(null)
+const osTesting = ref(false)
+const subtitleLanguages = ref('')
+const subtitleLanguagesDirty = ref(false)
+const subtitleAutoSearch = ref(false)
+const subtitleAutoSearchDirty = ref(false)
+
 const monitorInterval = ref('900')
 const downloadInterval = ref('5')
 const importerInterval = ref('10')
@@ -82,6 +99,8 @@ const anyDirty = computed(() =>
   fsUrlDirty.value || discordUrlDirty.value ||
   seasonPackPrefDirty.value ||
   watchedListModeDirty.value ||
+  osApiKeyDirty.value || osUsernameDirty.value || osPasswordDirty.value || osRateLimitDirty.value ||
+  subtitleLanguagesDirty.value || subtitleAutoSearchDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
   metadataRefreshIntervalDirty.value
 )
@@ -114,6 +133,12 @@ async function fetchSettings() {
     discordUrl.value = s.discordWebhookUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     watchedListMode.value = s.watchedListMode ?? 'global'
+    osApiKey.value = s.opensubtitlesApiKey ?? ''
+    osUsername.value = s.opensubtitlesUsername ?? ''
+    osPassword.value = s.opensubtitlesPassword ?? ''
+    osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
+    subtitleLanguages.value = (s.subtitleLanguages ?? []).join(', ')
+    subtitleAutoSearch.value = s.subtitleAutoSearch ?? false
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
@@ -134,6 +159,12 @@ async function fetchSettings() {
   discordUrlDirty.value = false
   seasonPackPrefDirty.value = false
   watchedListModeDirty.value = false
+  osApiKeyDirty.value = false
+  osUsernameDirty.value = false
+  osPasswordDirty.value = false
+  osRateLimitDirty.value = false
+  subtitleLanguagesDirty.value = false
+  subtitleAutoSearchDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
@@ -165,6 +196,12 @@ async function saveSettings() {
   if (discordUrlDirty.value && !isMasked(discordUrl.value)) body.discordWebhookUrl = discordUrl.value
   if (seasonPackPrefDirty.value) body.monitorSeasonPackPreference = seasonPackPref.value
   if (watchedListModeDirty.value) body.watchedListMode = watchedListMode.value
+  if (osApiKeyDirty.value && !isMasked(osApiKey.value)) body.opensubtitlesApiKey = osApiKey.value
+  if (osUsernameDirty.value) body.opensubtitlesUsername = osUsername.value
+  if (osPasswordDirty.value && !isMasked(osPassword.value)) body.opensubtitlesPassword = osPassword.value
+  if (osRateLimitDirty.value) body.opensubtitlesRateLimit = Number(osRateLimit.value)
+  if (subtitleLanguagesDirty.value) body.subtitleLanguages = subtitleLanguages.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+  if (subtitleAutoSearchDirty.value) body.subtitleAutoSearch = subtitleAutoSearch.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
@@ -204,6 +241,12 @@ async function saveSettings() {
     discordUrl.value = s.discordWebhookUrl ?? ''
     seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
     watchedListMode.value = s.watchedListMode ?? 'global'
+    osApiKey.value = s.opensubtitlesApiKey ?? ''
+    osUsername.value = s.opensubtitlesUsername ?? ''
+    osPassword.value = s.opensubtitlesPassword ?? ''
+    osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
+    subtitleLanguages.value = (s.subtitleLanguages ?? []).join(', ')
+    subtitleAutoSearch.value = s.subtitleAutoSearch ?? false
     monitorInterval.value = String(s.workerMonitorInterval ?? 900)
     downloadInterval.value = String(s.workerDownloadInterval ?? 5)
     importerInterval.value = String(s.workerImporterInterval ?? 10)
@@ -224,6 +267,12 @@ async function saveSettings() {
   discordUrlDirty.value = false
   seasonPackPrefDirty.value = false
   watchedListModeDirty.value = false
+  osApiKeyDirty.value = false
+  osUsernameDirty.value = false
+  osPasswordDirty.value = false
+  osRateLimitDirty.value = false
+  subtitleLanguagesDirty.value = false
+  subtitleAutoSearchDirty.value = false
   monitorIntervalDirty.value = false
   downloadIntervalDirty.value = false
   importerIntervalDirty.value = false
@@ -300,6 +349,22 @@ async function testDiscord() {
     return
   }
   discordTest.value = { success: data!.success, message: data!.message ?? '' }
+}
+
+async function testOpenSubtitles() {
+  osTesting.value = true
+  osTest.value = null
+  const body: Record<string, string> = {}
+  if (osApiKeyDirty.value) body.apiKey = osApiKey.value
+  if (osUsernameDirty.value) body.username = osUsername.value
+  if (osPasswordDirty.value) body.password = osPassword.value
+  const { data, error: err } = await client.POST('/settings/test-opensubtitles', { body })
+  osTesting.value = false
+  if (err) {
+    osTest.value = { success: false, message: 'Request failed' }
+    return
+  }
+  osTest.value = { success: data!.success, message: data!.message ?? '' }
 }
 
 async function disconnectDiscord() {
@@ -664,6 +729,149 @@ onMounted(fetchSettings)
                 <span>{{ discordTest.success ? '\u2713' : '\u2717' }}</span>
                 {{ discordTest.message }}
               </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subtitles section -->
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Subtitles</h2>
+
+      <div class="space-y-4">
+        <!-- OpenSubtitles -->
+        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-sm font-semibold text-gray-200">OpenSubtitles</span>
+            <span class="text-[10px] text-gray-500">opensubtitles.com</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- API Key -->
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
+              <p class="text-[10px] text-gray-500 mb-2">Register your app at opensubtitles.com/consumers to get an API key.</p>
+              <div class="relative">
+                <input
+                  v-model="osApiKey"
+                  :type="showOsApiKey ? 'text' : 'password'"
+                  placeholder="Enter API key"
+                  class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                  @input="osApiKeyDirty = true"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
+                  @click="showOsApiKey = !showOsApiKey"
+                >
+                  {{ showOsApiKey ? 'Hide' : 'Show' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Username & Password -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
+                <input
+                  v-model="osUsername"
+                  type="text"
+                  placeholder="Enter username"
+                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                  @input="osUsernameDirty = true"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                <div class="relative">
+                  <input
+                    v-model="osPassword"
+                    :type="showOsPassword ? 'text' : 'password'"
+                    placeholder="Enter password"
+                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+                    @input="osPasswordDirty = true"
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
+                    @click="showOsPassword = !showOsPassword"
+                  >
+                    {{ showOsPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Test button -->
+            <div class="flex items-center gap-3">
+              <button
+                class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
+                :disabled="osTesting"
+                @click="testOpenSubtitles"
+              >
+                {{ osTesting ? 'Testing...' : 'Test Connection' }}
+              </button>
+            </div>
+
+            <!-- Test result -->
+            <div v-if="osTest" class="flex items-center gap-2">
+              <span
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                :class="osTest.success
+                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
+              >
+                <span>{{ osTest.success ? '\u2713' : '\u2717' }}</span>
+                {{ osTest.message }}
+              </span>
+            </div>
+
+            <!-- Languages & rate limit -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Preferred Languages</label>
+                <input
+                  v-model="subtitleLanguages"
+                  type="text"
+                  placeholder="hu, en"
+                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                  @input="subtitleLanguagesDirty = true"
+                />
+                <p class="text-[10px] text-gray-500 mt-1">ISO 639-1 codes, comma-separated. First language gets highest priority.</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5">Rate Limit (req/sec)</label>
+                <input
+                  v-model="osRateLimit"
+                  type="number"
+                  min="1"
+                  max="20"
+                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+                  @input="osRateLimitDirty = true"
+                />
+              </div>
+            </div>
+
+            <!-- Auto-search toggle -->
+            <div class="flex items-center gap-3 mt-2">
+              <button
+                class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
+                :class="subtitleAutoSearch
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+                  : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+                @click="subtitleAutoSearch = !subtitleAutoSearch; subtitleAutoSearchDirty = true"
+              >
+                <span
+                  class="relative w-7 h-4 rounded-full transition-colors duration-200 flex-shrink-0"
+                  :class="subtitleAutoSearch ? 'bg-emerald-600' : 'bg-gray-600'"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
+                    :class="subtitleAutoSearch ? 'translate-x-3' : ''"
+                  />
+                </span>
+                <span>Auto-search after import</span>
+              </button>
+              <p class="text-[10px] text-gray-500">Automatically search and download subtitles when a new media file is imported.</p>
             </div>
           </div>
         </div>

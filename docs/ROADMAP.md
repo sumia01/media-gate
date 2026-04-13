@@ -395,6 +395,27 @@
 - [x] "See more →" links on each HomeView discover section header
 - [x] Router `afterEach` hook scrolls `<main>` container to top on navigation (inner scroll container, not window)
 
+## Phase 8.1: Subtitle Search & Download (Bazarr replacement) ✅
+→ See ADR-100
+- [x] OpenSubtitles.com REST API client (`backend/internal/integration/opensubtitles/`) — JWT auth with mutex, login `base_url` capture, 401 retry with fresh request body, file hash computation
+- [x] Generic subtitle `Provider` interface (`backend/internal/subtitle/provider.go`) — `Search`, `Download`, `Name` methods for multi-provider extensibility
+- [x] OpenSubtitles adapter (`backend/internal/subtitle/opensubtitles_adapter.go`) — wraps API client into generic Provider interface
+- [x] Subtitle service (`backend/internal/subtitle/service.go`) — search (multi-provider with rate limiting), download (save to library with release folder placement), list, delete (disk + DB), auto-search on import completion
+- [x] Scoring algorithm (`backend/internal/subtitle/score.go`) — hash match +500, release group match +200, language priority, trusted source, download count, HI/foreign penalty
+- [x] Release name tokenizer (`backend/internal/subtitle/release.go`) — token overlap matching between subtitle release and download title
+- [x] Store model + CRUD (`store/models.go`, `store/sqlite/subtitle.go`) — Subtitle with language, provider, score, HI/foreign flags, source (manual/auto)
+- [x] Event bus events — `subtitle.downloaded`, `subtitle.deleted`, `subtitle.auto_search_completed`
+- [x] Settings — `opensubtitles_api_key`, `opensubtitles_username`, `opensubtitles_password`, `opensubtitles_rate_limit`, `subtitle_languages`, `subtitle_auto_search`
+- [x] OpenAPI spec — `GET /subtitles/search`, `POST /subtitles/download`, `GET /subtitles`, `DELETE /subtitles/{id}`, `POST /settings/test-opensubtitles`
+- [x] API handlers (`handlers_subtitle.go`) — thin HTTP adapters calling subtitle service
+- [x] `SubtitleSearchModal.vue` — search results sorted by score with language/release/HI/hash/downloads columns, download button per result
+- [x] `SubtitleList.vue` — movie subtitle list with SSE-driven refresh, delete button, language/provider/score/HI/auto badges
+- [x] EpisodeGrid integration — subtitle search buttons at season and episode level
+- [x] MediaDetailView integration — SubtitleList for movies, SubtitleSearchModal overlay, auto-subtitle toggle in download settings bar
+- [x] Settings UI — Subtitles section with API key, username, password, test connection, language picker, auto-search toggle, rate limit
+- [x] Auto-search on import — `HandleImportCompleted` event handler downloads best subtitle per language after media import
+- [x] `TestOpenSubtitles` connection test via settings service
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

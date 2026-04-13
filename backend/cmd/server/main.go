@@ -20,6 +20,7 @@ import (
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/monitor"
+	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -31,6 +32,7 @@ import (
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
+	"github.com/sumia01/media-gate/internal/subtitle"
 	"github.com/sumia01/media-gate/internal/sync"
 )
 
@@ -101,8 +103,16 @@ func main() {
 		sseBroker.Broadcast(string(e.Type), data)
 	})
 
+	// Subtitle service.
+	osProvider := opensubtitles.NewProvider(settingsSvc)
+	osAdapter := subtitle.NewOpenSubtitlesProvider(osProvider)
+	subtitleSvc := subtitle.NewService(db, settingsSvc, bus, []subtitle.Provider{osAdapter})
+
 	// Notification service (must subscribe before bus.Start).
 	notification.NewService(db, settingsSvc, bus)
+
+	// Auto-subtitle search on import (must subscribe before bus.Start).
+	bus.Subscribe(eventbus.ImportCompleted, subtitleSvc.HandleImportCompleted)
 
 	bus.Start()
 	defer bus.Stop()
@@ -134,14 +144,17 @@ func main() {
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, version)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, version)
 
-	// Invalidate cached qBit client when connection settings change.
+	// Invalidate cached clients when connection settings change.
 	go func() {
 		ch := settingsSvc.Subscribe()
 		for key := range ch {
 			if key == settings.KeyQBitURL || key == settings.KeyQBitUsername || key == settings.KeyQBitPassword {
 				qbitProvider.Invalidate()
+			}
+			if key == settings.KeyOpenSubtitlesApiKey || key == settings.KeyOpenSubtitlesUsername || key == settings.KeyOpenSubtitlesPassword {
+				osProvider.Invalidate()
 			}
 		}
 	}()
