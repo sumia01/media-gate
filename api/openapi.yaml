@@ -1905,6 +1905,132 @@ paths:
               schema:
                 $ref: "#/components/schemas/WatchedCheckResponse"
 
+  /subtitles/search:
+    get:
+      operationId: searchSubtitles
+      summary: Search for subtitles
+      parameters:
+        - name: mediaItemId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: seasonNumber
+          in: query
+          schema:
+            type: integer
+        - name: episodeNumber
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Subtitle search results
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - results
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SubtitleSearchResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subtitles/download:
+    post:
+      operationId: downloadSubtitle
+      summary: Download a subtitle from a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubtitleDownloadRequest"
+      responses:
+        "201":
+          description: Subtitle downloaded and saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subtitle"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subtitles:
+    get:
+      operationId: listSubtitles
+      summary: List subtitles for a media item
+      parameters:
+        - name: mediaItemId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of subtitles
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Subtitle"
+
+  /subtitles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      operationId: deleteSubtitle
+      summary: Delete a subtitle
+      responses:
+        "204":
+          description: Subtitle deleted
+        "404":
+          description: Subtitle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /settings/test-opensubtitles:
+    post:
+      operationId: testOpenSubtitlesConnection
+      summary: Test OpenSubtitles credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenSubtitlesTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
 components:
   schemas:
     HealthResponse:
@@ -2709,6 +2835,26 @@ components:
           type: string
           enum: [global, per_user]
           description: Whether watched-list is global (shared across all users) or per-user.
+        opensubtitlesApiKey:
+          type: string
+          description: OpenSubtitles.com API key (register at opensubtitles.com/consumers)
+        opensubtitlesUsername:
+          type: string
+          description: OpenSubtitles.com username
+        opensubtitlesPassword:
+          type: string
+          description: OpenSubtitles.com password
+        opensubtitlesRateLimit:
+          type: integer
+          description: OpenSubtitles rate limit (requests per second)
+        subtitleLanguages:
+          type: array
+          items:
+            type: string
+          description: Preferred subtitle languages in priority order (ISO 639-1 codes, e.g. ["hu", "en"])
+        subtitleAutoSearch:
+          type: boolean
+          description: Automatically search and download subtitles after media import
 
     ConnectionTestRequest:
       type: object
@@ -3283,3 +3429,113 @@ components:
         rating:
           type: number
           format: float
+
+    SubtitleSearchResult:
+      type: object
+      required:
+        - providerName
+        - providerFileId
+        - language
+        - score
+      properties:
+        providerName:
+          type: string
+        providerFileId:
+          type: string
+        language:
+          type: string
+        releaseName:
+          type: string
+        fileName:
+          type: string
+        hearingImpaired:
+          type: boolean
+        foreignPartsOnly:
+          type: boolean
+        downloadCount:
+          type: integer
+        hashMatch:
+          type: boolean
+        trusted:
+          type: boolean
+        score:
+          type: integer
+
+    SubtitleDownloadRequest:
+      type: object
+      required:
+        - mediaItemId
+        - providerName
+        - providerFileId
+        - language
+      properties:
+        mediaItemId:
+          type: integer
+        providerName:
+          type: string
+        providerFileId:
+          type: string
+        language:
+          type: string
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+
+    Subtitle:
+      type: object
+      required:
+        - id
+        - mediaItemId
+        - language
+        - provider
+        - fileName
+        - filePath
+        - source
+      properties:
+        id:
+          type: integer
+        mediaItemId:
+          type: integer
+        mediaFileId:
+          type: integer
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        language:
+          type: string
+        provider:
+          type: string
+        providerFileId:
+          type: string
+        releaseName:
+          type: string
+        fileName:
+          type: string
+        filePath:
+          type: string
+        format:
+          type: string
+        score:
+          type: integer
+        hearingImpaired:
+          type: boolean
+        foreignPartsOnly:
+          type: boolean
+        source:
+          type: string
+          enum: [manual, auto]
+        createdAt:
+          type: string
+          format: date-time
+
+    OpenSubtitlesTestRequest:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        username:
+          type: string
+        password:
+          type: string

@@ -33,3 +33,6 @@ export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest
 export type DiscoverItem = components['schemas']['DiscoverItem']
 export type ProfileTestSearchResult = components['schemas']['ProfileTestSearchResult']
 export type WatchedItem = components['schemas']['WatchedItem']
+export type Subtitle = components['schemas']['Subtitle']
+export type SubtitleSearchResult = components['schemas']['SubtitleSearchResult']
+export type SubtitleDownloadRequest = components['schemas']['SubtitleDownloadRequest']

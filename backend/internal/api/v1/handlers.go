@@ -18,6 +18,7 @@ import (
 	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
+	"github.com/sumia01/media-gate/internal/subtitle"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
@@ -35,14 +36,15 @@ type Handlers struct {
 	authSvc       *auth.Service
 	mediaSvc      *media.Service
 	downloadSvc   *download.Service
+	subtitleSvc   *subtitle.Service
 	posterDir     string
 	secureCookies bool
 	setupMu       sync.Mutex
 	version       string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, version string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, version: version}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, version string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, version: version}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

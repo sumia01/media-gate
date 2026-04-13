@@ -14,6 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/crypto"
 	"github.com/sumia01/media-gate/internal/integration/discord"
 	"github.com/sumia01/media-gate/internal/integration/flaresolverr"
+	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
@@ -46,16 +47,25 @@ const (
 
 	KeyWatchedListMode = "watched_list_mode"
 
+	KeyOpenSubtitlesApiKey    = "opensubtitles_api_key"
+	KeyOpenSubtitlesUsername  = "opensubtitles_username"
+	KeyOpenSubtitlesPassword  = "opensubtitles_password"
+	KeyOpenSubtitlesRateLimit = "opensubtitles_rate_limit"
+	KeySubtitleLanguages      = "subtitle_languages"
+	KeySubtitleAutoSearch     = "subtitle_auto_search"
+
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
 	KeyOnboardingCompleted = "onboarding_completed"
 )
 
 var sensitiveKeys = map[string]bool{
-	KeyTMDBApiKey:        true,
-	KeyTVDBApiKey:        true,
-	KeyQBitPassword:      true,
-	KeyDiscordWebhookURL: true,
+	KeyTMDBApiKey:            true,
+	KeyTVDBApiKey:            true,
+	KeyQBitPassword:          true,
+	KeyDiscordWebhookURL:      true,
+	KeyOpenSubtitlesApiKey:    true,
+	KeyOpenSubtitlesPassword:  true,
 }
 
 func isSensitiveKey(key string) bool {
@@ -308,6 +318,26 @@ func (s *Service) TestDiscord(urlVal *string) (bool, string, error) {
 	}
 
 	return discord.TestConnection(u)
+}
+
+func (s *Service) TestOpenSubtitles(apiKey, username, password *string) (bool, string, error) {
+	key, err := s.resolveKey(apiKey, KeyOpenSubtitlesApiKey)
+	if err != nil {
+		return false, "OpenSubtitles API key not configured", nil
+	}
+	user, err := s.resolveKey(username, KeyOpenSubtitlesUsername)
+	if err != nil {
+		return false, "OpenSubtitles username not configured", nil
+	}
+	pass, err := s.resolveKey(password, KeyOpenSubtitlesPassword)
+	if err != nil {
+		return false, "OpenSubtitles password not configured", nil
+	}
+	client := opensubtitles.NewClient(key, user, pass)
+	if err := client.TestConnection(); err != nil {
+		return false, fmt.Sprintf("Connection failed: %v", err), nil
+	}
+	return true, "Connection successful", nil
 }
 
 // resolveKey returns the provided key if non-empty, otherwise falls back to the saved value.

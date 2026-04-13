@@ -122,6 +122,12 @@ type Store interface {
 	GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*WatchedItem, error)
 	ClearWatchedMediaItemID(mediaItemID uint) error
 
+	// Subtitle CRUD
+	CreateSubtitle(subtitle *Subtitle) error
+	GetSubtitle(id uint) (*Subtitle, error)
+	ListSubtitlesByMediaItem(mediaItemID uint) ([]Subtitle, error)
+	DeleteSubtitle(id uint) error
+
 	// WithTx executes fn inside a database transaction.
 	// The Store passed to fn uses the transaction; if fn returns an error the transaction is rolled back.
 	WithTx(fn func(Store) error) error

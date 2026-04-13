@@ -52,6 +52,7 @@ func New(dbPath string) (*SQLiteStore, error) {
 		&store.User{},
 		&store.RefreshToken{},
 		&store.WatchedItem{},
+		&store.Subtitle{},
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrating database: %w", err)
 	}
