@@ -197,6 +197,42 @@ func TestIsJunkFile(t *testing.T) {
 	}
 }
 
+func TestIsSampleFile(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		// Positive: sample in directory name
+		{"Sample/movie.mkv", true},
+		{"sample/movie.mkv", true},
+		// Positive: sample as token in filename
+		{"movie.sample.mkv", true},
+		{"Movie-Sample.avi", true},
+		{"Movie_Sample_2019.mkv", true},
+		{"Movie Sample.mkv", true},
+		// Positive: standalone sample filename
+		{"sample.mkv", true},
+		{"SAMPLE.MKV", true},
+		// Positive: bare directory name
+		{"Sample", true},
+		// Negative: not a word boundary
+		{"Sampler.mkv", false},
+		{"example.mkv", false},
+		{"resampled.mkv", false},
+		// Negative: normal files
+		{"movie.mkv", false},
+		{"Movie.2019.1080p.mkv", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			if got := IsSampleFile(tt.path); got != tt.want {
+				t.Errorf("IsSampleFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseSeasonFromDir(t *testing.T) {
 	tests := []struct {
 		name string

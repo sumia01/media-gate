@@ -147,7 +147,7 @@ func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, 
 		return nil, fmt.Errorf("downloading subtitle: %w", err)
 	}
 
-	savePath, err := s.determineSavePath(mediaItemID, seasonNumber, dlFile.FileName)
+	savePath, matchedFile, err := s.determineSavePath(mediaItemID, seasonNumber, episodeNumber, language, dlFile.Format)
 	if err != nil {
 		return nil, fmt.Errorf("determining save path: %w", err)
 	}
@@ -175,6 +175,10 @@ func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, 
 		FilePath:       savePath,
 		Format:         dlFile.Format,
 		Source:         source,
+	}
+
+	if matchedFile != nil {
+		sub.MediaFileID = &matchedFile.ID
 	}
 
 	if opts != nil {
@@ -337,29 +341,52 @@ func (s *Service) getLanguages() []string {
 	return langs
 }
 
-func (s *Service) computeFileHash(mediaItemID uint, seasonNumber, episodeNumber *int) string {
+func (s *Service) findMatchingMediaFile(mediaItemID uint, seasonNumber, episodeNumber *int) *store.MediaFile {
 	files, err := s.store.ListMediaFilesByMediaItem(mediaItemID)
 	if err != nil {
-		return ""
+		return nil
 	}
-
-	for _, f := range files {
-		// Match by season/episode if provided
+	var best *store.MediaFile
+	for i := range files {
+		f := &files[i]
 		if seasonNumber != nil && (f.SeasonNumber == nil || *f.SeasonNumber != *seasonNumber) {
 			continue
 		}
 		if episodeNumber != nil && (f.EpisodeNumber == nil || *f.EpisodeNumber != *episodeNumber) {
 			continue
 		}
-
-		hash, err := opensubtitles.ComputeHash(f.Path)
-		if err != nil {
-			slog.Debug("failed to compute file hash", "path", f.Path, "error", err)
-			continue
+		if best == nil || f.Size > best.Size {
+			best = f
 		}
-		return hash
 	}
-	return ""
+	return best
+}
+
+func (s *Service) computeFileHash(mediaItemID uint, seasonNumber, episodeNumber *int) string {
+	mf := s.findMatchingMediaFile(mediaItemID, seasonNumber, episodeNumber)
+	if mf == nil {
+		return ""
+	}
+	hash, err := opensubtitles.ComputeHash(mf.Path)
+	if err != nil {
+		slog.Debug("failed to compute file hash", "path", mf.Path, "error", err)
+		return ""
+	}
+	return hash
+}
+
+func (s *Service) countExistingSubtitles(mediaItemID uint, mediaFileID uint, language string) int {
+	subs, err := s.store.ListSubtitlesByMediaItem(mediaItemID)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, sub := range subs {
+		if sub.MediaFileID != nil && *sub.MediaFileID == mediaFileID && strings.EqualFold(sub.Language, language) {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *Service) findReleaseName(mediaItemID uint, seasonNumber *int) string {
@@ -385,32 +412,50 @@ func (s *Service) findReleaseName(mediaItemID uint, seasonNumber *int) string {
 	return ""
 }
 
-func (s *Service) determineSavePath(mediaItemID uint, seasonNumber *int, fileName string) (string, error) {
+func (s *Service) determineSavePath(mediaItemID uint, seasonNumber, episodeNumber *int, language, format string) (string, *store.MediaFile, error) {
 	item, err := s.store.GetMediaItem(mediaItemID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	lib, err := s.store.GetLibrary(item.LibraryID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	meta, _ := s.store.GetMediaMetadataByMediaItem(mediaItemID)
-
 	targetDir := importer.BuildTargetDir(lib, item, meta, seasonNumber)
 
-	// If a linked download exists, place subtitle in its release folder
-	downloads, _ := s.store.ListDownloads(&mediaItemID, nil)
-	for _, dl := range downloads {
-		if dl.LinkedToLibrary && dl.Title != "" {
-			if seasonNumber != nil && dl.SeasonNumber != nil && *dl.SeasonNumber != *seasonNumber {
-				continue
+	// Try to find the matching video file
+	matchedFile := s.findMatchingMediaFile(mediaItemID, seasonNumber, episodeNumber)
+	if matchedFile == nil {
+		// Fallback: no video file yet — use old-style placement
+		fallbackName := fmt.Sprintf("subtitle.%s.%s", language, format)
+		downloads, _ := s.store.ListDownloads(&mediaItemID, nil)
+		for _, dl := range downloads {
+			if dl.LinkedToLibrary && dl.Title != "" {
+				if seasonNumber != nil && dl.SeasonNumber != nil && *dl.SeasonNumber != *seasonNumber {
+					continue
+				}
+				releaseDir := filepath.Join(targetDir, importer.BuildReleaseFolderName(dl.Title))
+				return filepath.Join(releaseDir, fallbackName), nil, nil
 			}
-			releaseDir := filepath.Join(targetDir, importer.BuildReleaseFolderName(dl.Title))
-			return filepath.Join(releaseDir, fileName), nil
 		}
+		return filepath.Join(targetDir, fallbackName), nil, nil
 	}
 
-	return filepath.Join(targetDir, fileName), nil
+	// Build subtitle filename from video file name
+	videoDir := filepath.Dir(matchedFile.Path)
+	videoBase := strings.TrimSuffix(matchedFile.FileName, filepath.Ext(matchedFile.FileName))
+
+	seq := s.countExistingSubtitles(mediaItemID, matchedFile.ID, language)
+
+	var subtitleFileName string
+	if seq == 0 {
+		subtitleFileName = fmt.Sprintf("%s.%s.%s", videoBase, language, format)
+	} else {
+		subtitleFileName = fmt.Sprintf("%s.%s.%02d.%s", videoBase, language, seq, format)
+	}
+
+	return filepath.Join(videoDir, subtitleFileName), matchedFile, nil
 }
 
 func (s *Service) newLimiter() *ratelimit.Limiter {

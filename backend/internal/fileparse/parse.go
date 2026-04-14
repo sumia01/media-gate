@@ -53,6 +53,9 @@ var (
 
 	junkNameRe = regexp.MustCompile(`(?i)^(?:RARBG|WWW\..+\.txt$)`)
 
+	// sampleRe matches "sample" as a discrete token in filenames and paths.
+	sampleRe = regexp.MustCompile(`(?i)(?:^|[._\-/\\ ])sample(?:$|[._\-/\\ ])`)
+
 	sourceAliases = map[string]string{
 		"bluray":  "bluray",
 		"blu-ray": "bluray",
@@ -139,6 +142,12 @@ func IsJunkFile(name string) bool {
 		return true
 	}
 	return junkNameRe.MatchString(base)
+}
+
+// IsSampleFile returns true if the path contains "sample" as a discrete token.
+// Matches: "Sample/movie.mkv", "movie.sample.mkv", "Movie-Sample.avi", "Sample"
+func IsSampleFile(path string) bool {
+	return sampleRe.MatchString(path)
 }
 
 // ParseSeasonFromDir extracts a season number from a directory name.

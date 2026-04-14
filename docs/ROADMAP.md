@@ -416,6 +416,16 @@
 - [x] Auto-search on import — `HandleImportCompleted` event handler downloads best subtitle per language after media import
 - [x] `TestOpenSubtitles` connection test via settings service
 
+## Phase 8.2: Sample filtering & subtitle improvements ✅
+→ See ADR-101
+- [x] `fileparse.IsSampleFile` — regex-based sample file/directory detection with word-boundary matching
+- [x] Importer sample skip — sample files excluded from import (no hardlink, no MediaFile record)
+- [x] Sync sample skip — sample directories and files excluded from library scanning
+- [x] Subtitle placement: `findMatchingMediaFile` prefers largest file by size (not first DB match)
+- [x] Subtitle placement: `determineSavePath` builds filename from video file basename + language + format (replaces provider filename)
+- [x] Subtitle `MediaFileID` association — subtitle DB records linked to matched video file
+- [x] Subtitle cleanup on download delete — `CleanupImportedFiles` removes subtitle DB records under release folder + publishes `SubtitleDeleted` SSE events
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

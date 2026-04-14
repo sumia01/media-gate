@@ -148,6 +148,10 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		if fileparse.IsJunkFile(f.Name) {
 			continue
 		}
+		if fileparse.IsSampleFile(f.Name) {
+			slog.Debug("importer: skipping sample file", "download_id", dl.ID, "file", f.Name)
+			continue
+		}
 
 		// Strip torrent root folder to avoid double-nesting (release dir already isolates)
 		relPath := f.Name
