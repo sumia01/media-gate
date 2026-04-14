@@ -175,6 +175,24 @@ func (s *Service) CleanupImportedFiles(dl *store.Download) {
 		}
 	}
 
+	// Remove subtitle DB records whose files live under the release folder.
+	subtitles, _ := s.store.ListSubtitlesByMediaItem(item.ID)
+	for _, sub := range subtitles {
+		if strings.HasPrefix(sub.FilePath, prefix) {
+			if err := s.store.DeleteSubtitle(sub.ID); err != nil {
+				slog.Warn("cleanup: failed to delete subtitle record", "subtitle_id", sub.ID, "error", err)
+			} else {
+				s.bus.Publish(eventbus.SubtitleDeleted, eventbus.SubtitlePayload{
+					SubtitleID:  sub.ID,
+					MediaItemID: sub.MediaItemID,
+					Language:    sub.Language,
+					Provider:    sub.Provider,
+					FileName:    sub.FileName,
+				})
+			}
+		}
+	}
+
 	// Remove the release folder if only companion files remain.
 	if importer.OnlyCompanionsLeft(releaseDir) {
 		if err := os.RemoveAll(releaseDir); err != nil {

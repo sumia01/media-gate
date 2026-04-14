@@ -564,6 +564,9 @@ func scanMediaFolder(folderPath string) []scannedFile {
 
 	for _, e := range entries {
 		if e.IsDir() {
+			if fileparse.IsSampleFile(e.Name()) {
+				continue
+			}
 			subPath := filepath.Join(folderPath, e.Name())
 			// Check if it's a season subfolder
 			if sn := fileparse.ParseSeasonFromDir(e.Name()); sn != nil {
@@ -579,7 +582,7 @@ func scanMediaFolder(folderPath string) []scannedFile {
 		}
 
 		name := e.Name()
-		if !fileparse.IsVideoFile(name) {
+		if !fileparse.IsVideoFile(name) || fileparse.IsSampleFile(name) {
 			continue
 		}
 
@@ -619,14 +622,14 @@ func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) []scannedFi
 	var files []scannedFile
 	for _, e := range entries {
 		if e.IsDir() {
-			if recurse {
+			if recurse && !fileparse.IsSampleFile(e.Name()) {
 				subFiles := scanVideoDir(filepath.Join(dirPath, e.Name()), fallbackSeason, false)
 				files = append(files, subFiles...)
 			}
 			continue
 		}
 		name := e.Name()
-		if !fileparse.IsVideoFile(name) {
+		if !fileparse.IsVideoFile(name) || fileparse.IsSampleFile(name) {
 			continue
 		}
 

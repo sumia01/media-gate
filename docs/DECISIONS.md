@@ -1482,3 +1482,17 @@ Changes:
 6. **Frontend**: `SubtitleSearchModal` (follows `IndexerSearchModal` pattern), `SubtitleList` for movies with SSE-driven refresh, EpisodeGrid subtitle search buttons at season/episode level, auto-subtitle toggle in download settings bar, Settings UI for credentials and preferences.
 
 **Rationale**: Provider interface mirrors the indexer pattern — new subtitle sources slot in without touching the service layer. Scoring is simpler than Bazarr's (no ML, no fuzzy FPS matching) but covers the key signals (hash match, release name, language priority). File hash computation follows the OpenSubtitles spec exactly, enabling hash-based matching when media files exist on disk. Auto-search on import completion is the same event-driven pattern used by Discord notifications. The `DownloadOpts` pattern eliminates the double-create issue where `HandleImportCompleted` was calling both `Download()` (which creates a DB record) and then `CreateSubtitle()` again.
+
+## ADR-101: Sample file filtering and subtitle placement improvements
+**Date**: 2026-04-14
+**Status**: Accepted
+
+**Context**: Torrent releases often contain "sample" video files (short preview clips in `Sample/` directories or with `sample` in the filename). These were being imported as regular `MediaFile` records, causing subtitle auto-download to place subtitles next to the sample file instead of the main video. Additionally, `findMatchingMediaFile` returned the first DB match (non-deterministic ordering) rather than the largest file, and deleting a download did not clean up associated subtitle DB records.
+
+**Decision**: Three-layer fix:
+
+1. **Sample detection** (`fileparse.IsSampleFile`): Regex-based detection matching "sample" as a discrete word-boundary token in file paths and names (`(?i)(?:^|[._\-/\\ ])sample(?:$|[._\-/\\ ])`). Applied in importer (skip sample files entirely — no hardlink, no MediaFile record), and sync scanner (skip sample directories and files in `scanMediaFolder` and `scanVideoDir`).
+2. **Subtitle placement** (`subtitle.findMatchingMediaFile`): Changed from "return first match" to "return largest match by Size". When multiple MediaFiles match the same season/episode, the largest file (the actual content, not the sample) is always preferred for subtitle placement and file hash computation.
+3. **Subtitle cleanup on download delete** (`media.CleanupImportedFiles`): After deleting MediaFile records, now also deletes Subtitle DB records whose `FilePath` falls under the release folder, and publishes `SubtitleDeleted` events so the frontend updates via SSE without manual refresh.
+
+**Rationale**: Root cause fix (don't import samples) prevents the issue system-wide. The largest-file preference is a defensive layer for edge cases where samples exist on disk (e.g. user-added files). The subtitle cleanup fix addresses a pre-existing gap where `CleanupImportedFiles` removed files and MediaFile records but left orphaned Subtitle DB rows — the FK `OnDelete:SET NULL` on `MediaFileID` kept subtitle rows alive even after their associated MediaFile was deleted.
