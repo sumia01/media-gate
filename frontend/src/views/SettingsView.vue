@@ -2,7 +2,17 @@
 import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
-import FolderBrowser from '@/components/FolderBrowser.vue'
+import SettingsMediaDb from '@/components/settings/SettingsMediaDb.vue'
+import SettingsDownloads from '@/components/settings/SettingsDownloads.vue'
+import SettingsGeneral from '@/components/settings/SettingsGeneral.vue'
+
+const activeTab = ref<'media-db' | 'downloads' | 'general'>('media-db')
+
+const tabs = [
+  { key: 'media-db' as const, label: 'Media DB' },
+  { key: 'downloads' as const, label: 'Downloads' },
+  { key: 'general' as const, label: 'General' },
+]
 
 const tmdbKey = ref('')
 const tvdbKey = ref('')
@@ -57,7 +67,6 @@ const discordUrlDirty = ref(false)
 const showDiscordUrl = ref(false)
 const discordTest = ref<{ success: boolean; message: string } | null>(null)
 const discordTesting = ref(false)
-const discordConnected = computed(() => discordUrl.value !== '')
 
 const seasonPackPref = ref('prefer_packs')
 const seasonPackPrefDirty = ref(false)
@@ -91,6 +100,39 @@ const downloadIntervalDirty = ref(false)
 const importerIntervalDirty = ref(false)
 const metadataRefreshIntervalDirty = ref(false)
 
+const dirtyMap: Record<string, { ref: { value: boolean } }> = {
+  tmdb: { ref: tmdbDirty },
+  tvdb: { ref: tvdbDirty },
+  primarySource: { ref: primarySourceDirty },
+  tmdbRateLimit: { ref: tmdbRateLimitDirty },
+  tvdbRateLimit: { ref: tvdbRateLimitDirty },
+  qbUrl: { ref: qbUrlDirty },
+  qbUsername: { ref: qbUsernameDirty },
+  qbPassword: { ref: qbPasswordDirty },
+  qbDownloadPath: { ref: qbDownloadPathDirty },
+  qbSavePath: { ref: qbSavePathDirty },
+  qbCategory: { ref: qbCategoryDirty },
+  fsUrl: { ref: fsUrlDirty },
+  discord: { ref: discordUrlDirty },
+  seasonPackPref: { ref: seasonPackPrefDirty },
+  watchedListMode: { ref: watchedListModeDirty },
+  osApiKey: { ref: osApiKeyDirty },
+  osUsername: { ref: osUsernameDirty },
+  osPassword: { ref: osPasswordDirty },
+  osRateLimit: { ref: osRateLimitDirty },
+  subtitleLanguages: { ref: subtitleLanguagesDirty },
+  subtitleAutoSearch: { ref: subtitleAutoSearchDirty },
+  monitorInterval: { ref: monitorIntervalDirty },
+  downloadInterval: { ref: downloadIntervalDirty },
+  importerInterval: { ref: importerIntervalDirty },
+  metadataRefreshInterval: { ref: metadataRefreshIntervalDirty },
+}
+
+function markDirty(field: string) {
+  const entry = dirtyMap[field]
+  if (entry) entry.ref.value = true
+}
+
 const anyDirty = computed(() =>
   tmdbDirty.value || tvdbDirty.value ||
   primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
@@ -105,6 +147,43 @@ const anyDirty = computed(() =>
   metadataRefreshIntervalDirty.value
 )
 
+function resetAllDirty() {
+  for (const entry of Object.values(dirtyMap)) {
+    entry.ref.value = false
+  }
+}
+
+function applySettings(s: Record<string, unknown>) {
+  tmdbKey.value = (s.tmdbApiKey as string) ?? ''
+  tvdbKey.value = (s.tvdbApiKey as string) ?? ''
+  tmdbFromEnv.value = (s.tmdbApiKeyFromEnv as boolean) ?? false
+  tvdbFromEnv.value = (s.tvdbApiKeyFromEnv as boolean) ?? false
+  primarySource.value = (s.metadataPrimarySource as string) ?? 'tmdb'
+  tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
+  tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
+  qbUrl.value = (s.qbitUrl as string) ?? ''
+  qbUsername.value = (s.qbitUsername as string) ?? ''
+  qbPassword.value = (s.qbitPassword as string) ?? ''
+  qbDownloadPath.value = (s.qbitDownloadPath as string) ?? ''
+  qbSavePath.value = (s.qbitSavePath as string) ?? ''
+  qbCategory.value = (s.qbitCategory as string) ?? ''
+  fsUrl.value = (s.flaresolverrUrl as string) ?? ''
+  discordUrl.value = (s.discordWebhookUrl as string) ?? ''
+  seasonPackPref.value = (s.monitorSeasonPackPreference as string) ?? 'prefer_packs'
+  watchedListMode.value = (s.watchedListMode as string) ?? 'global'
+  osApiKey.value = (s.opensubtitlesApiKey as string) ?? ''
+  osUsername.value = (s.opensubtitlesUsername as string) ?? ''
+  osPassword.value = (s.opensubtitlesPassword as string) ?? ''
+  osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
+  subtitleLanguages.value = ((s.subtitleLanguages as string[]) ?? []).join(', ')
+  subtitleAutoSearch.value = (s.subtitleAutoSearch as boolean) ?? false
+  monitorInterval.value = String(s.workerMonitorInterval ?? 900)
+  downloadInterval.value = String(s.workerDownloadInterval ?? 5)
+  importerInterval.value = String(s.workerImporterInterval ?? 10)
+  metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
+  resetAllDirty()
+}
+
 async function fetchSettings() {
   loading.value = true
   error.value = ''
@@ -114,61 +193,7 @@ async function fetchSettings() {
     error.value = 'Failed to load settings'
     return
   }
-  const s = data?.settings
-  if (s) {
-    tmdbKey.value = s.tmdbApiKey ?? ''
-    tvdbKey.value = s.tvdbApiKey ?? ''
-    tmdbFromEnv.value = s.tmdbApiKeyFromEnv ?? false
-    tvdbFromEnv.value = s.tvdbApiKeyFromEnv ?? false
-    primarySource.value = s.metadataPrimarySource ?? 'tmdb'
-    tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
-    tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
-    qbUrl.value = s.qbitUrl ?? ''
-    qbUsername.value = s.qbitUsername ?? ''
-    qbPassword.value = s.qbitPassword ?? ''
-    qbDownloadPath.value = s.qbitDownloadPath ?? ''
-    qbSavePath.value = s.qbitSavePath ?? ''
-    qbCategory.value = s.qbitCategory ?? ''
-    fsUrl.value = s.flaresolverrUrl ?? ''
-    discordUrl.value = s.discordWebhookUrl ?? ''
-    seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
-    watchedListMode.value = s.watchedListMode ?? 'global'
-    osApiKey.value = s.opensubtitlesApiKey ?? ''
-    osUsername.value = s.opensubtitlesUsername ?? ''
-    osPassword.value = s.opensubtitlesPassword ?? ''
-    osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
-    subtitleLanguages.value = (s.subtitleLanguages ?? []).join(', ')
-    subtitleAutoSearch.value = s.subtitleAutoSearch ?? false
-    monitorInterval.value = String(s.workerMonitorInterval ?? 900)
-    downloadInterval.value = String(s.workerDownloadInterval ?? 5)
-    importerInterval.value = String(s.workerImporterInterval ?? 10)
-    metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
-  }
-  tmdbDirty.value = false
-  tvdbDirty.value = false
-  primarySourceDirty.value = false
-  tmdbRateLimitDirty.value = false
-  tvdbRateLimitDirty.value = false
-  qbUrlDirty.value = false
-  qbUsernameDirty.value = false
-  qbPasswordDirty.value = false
-  qbDownloadPathDirty.value = false
-  qbSavePathDirty.value = false
-  qbCategoryDirty.value = false
-  fsUrlDirty.value = false
-  discordUrlDirty.value = false
-  seasonPackPrefDirty.value = false
-  watchedListModeDirty.value = false
-  osApiKeyDirty.value = false
-  osUsernameDirty.value = false
-  osPasswordDirty.value = false
-  osRateLimitDirty.value = false
-  subtitleLanguagesDirty.value = false
-  subtitleAutoSearchDirty.value = false
-  monitorIntervalDirty.value = false
-  downloadIntervalDirty.value = false
-  importerIntervalDirty.value = false
-  metadataRefreshIntervalDirty.value = false
+  if (data?.settings) applySettings(data.settings as unknown as Record<string, unknown>)
 }
 
 function isMasked(value: string) {
@@ -222,61 +247,7 @@ async function saveSettings() {
   saveSuccess.value = true
   setTimeout(() => { saveSuccess.value = false }, 3000)
 
-  const s = data?.settings
-  if (s) {
-    tmdbKey.value = s.tmdbApiKey ?? ''
-    tvdbKey.value = s.tvdbApiKey ?? ''
-    tmdbFromEnv.value = s.tmdbApiKeyFromEnv ?? false
-    tvdbFromEnv.value = s.tvdbApiKeyFromEnv ?? false
-    primarySource.value = s.metadataPrimarySource ?? 'tmdb'
-    tmdbRateLimit.value = String(s.tmdbRateLimit ?? 4)
-    tvdbRateLimit.value = String(s.tvdbRateLimit ?? 4)
-    qbUrl.value = s.qbitUrl ?? ''
-    qbUsername.value = s.qbitUsername ?? ''
-    qbPassword.value = s.qbitPassword ?? ''
-    qbDownloadPath.value = s.qbitDownloadPath ?? ''
-    qbSavePath.value = s.qbitSavePath ?? ''
-    qbCategory.value = s.qbitCategory ?? ''
-    fsUrl.value = s.flaresolverrUrl ?? ''
-    discordUrl.value = s.discordWebhookUrl ?? ''
-    seasonPackPref.value = s.monitorSeasonPackPreference ?? 'prefer_packs'
-    watchedListMode.value = s.watchedListMode ?? 'global'
-    osApiKey.value = s.opensubtitlesApiKey ?? ''
-    osUsername.value = s.opensubtitlesUsername ?? ''
-    osPassword.value = s.opensubtitlesPassword ?? ''
-    osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
-    subtitleLanguages.value = (s.subtitleLanguages ?? []).join(', ')
-    subtitleAutoSearch.value = s.subtitleAutoSearch ?? false
-    monitorInterval.value = String(s.workerMonitorInterval ?? 900)
-    downloadInterval.value = String(s.workerDownloadInterval ?? 5)
-    importerInterval.value = String(s.workerImporterInterval ?? 10)
-    metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
-  }
-  tmdbDirty.value = false
-  tvdbDirty.value = false
-  primarySourceDirty.value = false
-  tmdbRateLimitDirty.value = false
-  tvdbRateLimitDirty.value = false
-  qbUrlDirty.value = false
-  qbUsernameDirty.value = false
-  qbPasswordDirty.value = false
-  qbDownloadPathDirty.value = false
-  qbSavePathDirty.value = false
-  qbCategoryDirty.value = false
-  fsUrlDirty.value = false
-  discordUrlDirty.value = false
-  seasonPackPrefDirty.value = false
-  watchedListModeDirty.value = false
-  osApiKeyDirty.value = false
-  osUsernameDirty.value = false
-  osPasswordDirty.value = false
-  osRateLimitDirty.value = false
-  subtitleLanguagesDirty.value = false
-  subtitleAutoSearchDirty.value = false
-  monitorIntervalDirty.value = false
-  downloadIntervalDirty.value = false
-  importerIntervalDirty.value = false
-  metadataRefreshIntervalDirty.value = false
+  if (data?.settings) applySettings(data.settings as unknown as Record<string, unknown>)
 }
 
 async function testTmdb() {
@@ -394,654 +365,91 @@ onMounted(fetchSettings)
     <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>
 
     <template v-else>
-      <!-- Integrations section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4">Integrations</h2>
-
-      <div class="space-y-4">
-        <!-- TMDB -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">TMDB</span>
-            <span class="text-[10px] text-gray-500">The Movie Database</span>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
-              <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <input
-                    v-model="tmdbKey"
-                    :type="showTmdbKey ? 'text' : 'password'"
-                    placeholder="Enter TMDB API key"
-                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                    @input="tmdbDirty = true"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                    @click="showTmdbKey = !showTmdbKey"
-                  >
-                    {{ showTmdbKey ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-                <button
-                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                  :disabled="tmdbTesting"
-                  @click="testTmdb"
-                >
-                  {{ tmdbTesting ? 'Testing...' : 'Test Connection' }}
-                </button>
-              </div>
-              <p v-if="tmdbFromEnv" class="text-[10px] text-gray-500 mt-1.5">Configured via environment variable<template v-if="!tmdbKey"> (active)</template></p>
-            </div>
-
-            <!-- TMDB test result -->
-            <div v-if="tmdbTest" class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="tmdbTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ tmdbTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ tmdbTest.message }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- TVDB -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">TVDB</span>
-            <span class="text-[10px] text-gray-500">TheTVDB</span>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
-              <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <input
-                    v-model="tvdbKey"
-                    :type="showTvdbKey ? 'text' : 'password'"
-                    placeholder="Enter TVDB API key"
-                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                    @input="tvdbDirty = true"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                    @click="showTvdbKey = !showTvdbKey"
-                  >
-                    {{ showTvdbKey ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-                <button
-                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                  :disabled="tvdbTesting"
-                  @click="testTvdb"
-                >
-                  {{ tvdbTesting ? 'Testing...' : 'Test Connection' }}
-                </button>
-              </div>
-              <p v-if="tvdbFromEnv" class="text-[10px] text-gray-500 mt-1.5">Configured via environment variable<template v-if="!tvdbKey"> (active)</template></p>
-            </div>
-
-            <!-- TVDB test result -->
-            <div v-if="tvdbTest" class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="tvdbTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ tvdbTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ tvdbTest.message }}
-              </span>
-            </div>
-          </div>
-        </div>
+      <!-- Tab bar -->
+      <div class="flex gap-1 border-b border-violet-900/30 mb-6">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          class="px-4 py-2.5 text-sm font-medium transition-colors duration-200 border-b-2 -mb-px"
+          :class="activeTab === tab.key
+            ? 'text-violet-400 border-violet-500'
+            : 'text-gray-500 border-transparent hover:text-gray-300 hover:border-violet-800/50'"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+        </button>
       </div>
 
-      <!-- Download Client section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Download Client</h2>
+      <!-- Media DB tab -->
+      <SettingsMediaDb
+        v-if="activeTab === 'media-db'"
+        v-model:tmdb-key="tmdbKey"
+        v-model:tvdb-key="tvdbKey"
+        v-model:show-tmdb-key="showTmdbKey"
+        v-model:show-tvdb-key="showTvdbKey"
+        v-model:primary-source="primarySource"
+        v-model:tmdb-rate-limit="tmdbRateLimit"
+        v-model:tvdb-rate-limit="tvdbRateLimit"
+        :tmdb-from-env="tmdbFromEnv"
+        :tvdb-from-env="tvdbFromEnv"
+        :tmdb-testing="tmdbTesting"
+        :tvdb-testing="tvdbTesting"
+        :tmdb-test="tmdbTest"
+        :tvdb-test="tvdbTest"
+        @dirty="markDirty"
+        @test-tmdb="testTmdb"
+        @test-tvdb="testTvdb"
+      />
 
-      <div class="space-y-4">
-        <!-- qBittorrent -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">qBittorrent</span>
-            <span class="text-[10px] text-gray-500">Torrent Client</span>
-          </div>
+      <!-- Downloads tab -->
+      <SettingsDownloads
+        v-if="activeTab === 'downloads'"
+        v-model:qb-url="qbUrl"
+        v-model:qb-username="qbUsername"
+        v-model:qb-password="qbPassword"
+        v-model:show-qb-password="showQbPassword"
+        v-model:qb-download-path="qbDownloadPath"
+        v-model:qb-save-path="qbSavePath"
+        v-model:qb-category="qbCategory"
+        v-model:os-api-key="osApiKey"
+        v-model:show-os-api-key="showOsApiKey"
+        v-model:os-username="osUsername"
+        v-model:os-password="osPassword"
+        v-model:show-os-password="showOsPassword"
+        v-model:os-rate-limit="osRateLimit"
+        v-model:subtitle-languages="subtitleLanguages"
+        v-model:subtitle-auto-search="subtitleAutoSearch"
+        v-model:fs-url="fsUrl"
+        :qb-testing="qbTesting"
+        :qb-test="qbTest"
+        :os-testing="osTesting"
+        :os-test="osTest"
+        :fs-testing="fsTesting"
+        :fs-test="fsTest"
+        @dirty="markDirty"
+        @test-qbittorrent="testQbittorrent"
+        @test-open-subtitles="testOpenSubtitles"
+        @test-flaresolverr="testFlaresolverr"
+      />
 
-          <div class="space-y-3">
-            <!-- URL -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
-              <input
-                v-model="qbUrl"
-                type="text"
-                placeholder="http://localhost:8080"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                @input="qbUrlDirty = true"
-              />
-            </div>
-
-            <!-- Username & Password -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
-                <input
-                  v-model="qbUsername"
-                  type="text"
-                  placeholder="admin"
-                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                  @input="qbUsernameDirty = true"
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
-                <div class="relative">
-                  <input
-                    v-model="qbPassword"
-                    :type="showQbPassword ? 'text' : 'password'"
-                    placeholder="Enter password"
-                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                    @input="qbPasswordDirty = true"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                    @click="showQbPassword = !showQbPassword"
-                  >
-                    {{ showQbPassword ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Test Connection -->
-            <div class="flex items-center gap-3">
-              <button
-                class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                :disabled="qbTesting"
-                @click="testQbittorrent"
-              >
-                {{ qbTesting ? 'Testing...' : 'Test Connection' }}
-              </button>
-              <span
-                v-if="qbTest"
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="qbTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ qbTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ qbTest.message }}
-              </span>
-            </div>
-
-            <!-- Download Path -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Path</label>
-              <p class="text-[10px] text-gray-500 mb-2">Folder where qBittorrent saves downloaded files. Must be within the base path and cannot be a library folder.</p>
-              <FolderBrowser v-model="qbDownloadPath" @update:model-value="qbDownloadPathDirty = true" />
-            </div>
-
-            <!-- qBittorrent Save Path (optional) -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">qBittorrent Save Path <span class="text-gray-600 font-normal">(Optional)</span></label>
-              <p class="text-[10px] text-gray-500 mb-2">If your qBittorrent client's NAS mount is at a different path than MediaGate's, enter the absolute path on the qBittorrent host that corresponds to the download path above.</p>
-              <input
-                v-model="qbSavePath"
-                type="text"
-                placeholder="/mnt/nas/downloads"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="qbSavePathDirty = true"
-              />
-            </div>
-
-            <!-- Category -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Category</label>
-              <p class="text-[10px] text-gray-500 mb-2">qBittorrent category for downloads. Defaults to media-gate-dl if empty.</p>
-              <input
-                v-model="qbCategory"
-                type="text"
-                placeholder="media-gate-dl"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="qbCategoryDirty = true"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Metadata section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Proxy</h2>
-
-      <div class="space-y-4">
-        <!-- FlareSolverr -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">FlareSolverr</span>
-            <span class="text-[10px] text-gray-500">Cloudflare Bypass Proxy</span>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
-              <p class="text-[10px] text-gray-500 mb-2">Required for indexers behind Cloudflare protection (e.g. 1337x). Run FlareSolverr as a Docker sidecar.</p>
-              <div class="flex gap-2">
-                <input
-                  v-model="fsUrl"
-                  type="text"
-                  placeholder="http://localhost:8191"
-                  class="flex-1 px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                  @input="fsUrlDirty = true"
-                />
-                <button
-                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                  :disabled="fsTesting"
-                  @click="testFlaresolverr"
-                >
-                  {{ fsTesting ? 'Testing...' : 'Test Connection' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- FlareSolverr test result -->
-            <div v-if="fsTest" class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="fsTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ fsTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ fsTest.message }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Notifications section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Notifications</h2>
-
-      <div class="space-y-4">
-        <!-- Discord -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">Discord</span>
-            <span class="text-[10px] text-gray-500">Webhook Notifications</span>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Webhook URL</label>
-              <p class="text-[10px] text-gray-500 mb-2">Receive notifications when downloads are imported. Create a webhook in Discord channel settings.</p>
-              <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <input
-                    v-model="discordUrl"
-                    :type="showDiscordUrl ? 'text' : 'password'"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                    @input="discordUrlDirty = true"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                    @click="showDiscordUrl = !showDiscordUrl"
-                  >
-                    {{ showDiscordUrl ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-                <button
-                  class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                  :disabled="discordTesting"
-                  @click="testDiscord"
-                >
-                  {{ discordTesting ? 'Testing...' : 'Test Webhook' }}
-                </button>
-                <button
-                  v-if="discordConnected"
-                  class="px-3 py-2 rounded-lg border border-red-800/30 text-sm text-red-400 hover:text-red-300 hover:border-red-500/50 transition-colors duration-200 whitespace-nowrap"
-                  :disabled="saving"
-                  @click="disconnectDiscord"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-
-            <!-- Discord test result -->
-            <div v-if="discordTest" class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="discordTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ discordTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ discordTest.message }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Subtitles section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Subtitles</h2>
-
-      <div class="space-y-4">
-        <!-- OpenSubtitles -->
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="text-sm font-semibold text-gray-200">OpenSubtitles</span>
-            <span class="text-[10px] text-gray-500">opensubtitles.com</span>
-          </div>
-
-          <div class="space-y-3">
-            <!-- API Key -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
-              <p class="text-[10px] text-gray-500 mb-2">Register your app at opensubtitles.com/consumers to get an API key.</p>
-              <div class="relative">
-                <input
-                  v-model="osApiKey"
-                  :type="showOsApiKey ? 'text' : 'password'"
-                  placeholder="Enter API key"
-                  class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                  @input="osApiKeyDirty = true"
-                />
-                <button
-                  type="button"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                  @click="showOsApiKey = !showOsApiKey"
-                >
-                  {{ showOsApiKey ? 'Hide' : 'Show' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Username & Password -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
-                <input
-                  v-model="osUsername"
-                  type="text"
-                  placeholder="Enter username"
-                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                  @input="osUsernameDirty = true"
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
-                <div class="relative">
-                  <input
-                    v-model="osPassword"
-                    :type="showOsPassword ? 'text' : 'password'"
-                    placeholder="Enter password"
-                    class="w-full px-3 py-2 pr-10 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
-                    @input="osPasswordDirty = true"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs transition-colors duration-200"
-                    @click="showOsPassword = !showOsPassword"
-                  >
-                    {{ showOsPassword ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Test button -->
-            <div class="flex items-center gap-3">
-              <button
-                class="px-3 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap"
-                :disabled="osTesting"
-                @click="testOpenSubtitles"
-              >
-                {{ osTesting ? 'Testing...' : 'Test Connection' }}
-              </button>
-            </div>
-
-            <!-- Test result -->
-            <div v-if="osTest" class="flex items-center gap-2">
-              <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                :class="osTest.success
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/30'"
-              >
-                <span>{{ osTest.success ? '\u2713' : '\u2717' }}</span>
-                {{ osTest.message }}
-              </span>
-            </div>
-
-            <!-- Languages & rate limit -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Preferred Languages</label>
-                <input
-                  v-model="subtitleLanguages"
-                  type="text"
-                  placeholder="hu, en"
-                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                  @input="subtitleLanguagesDirty = true"
-                />
-                <p class="text-[10px] text-gray-500 mt-1">ISO 639-1 codes, comma-separated. First language gets highest priority.</p>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-400 mb-1.5">Rate Limit (req/sec)</label>
-                <input
-                  v-model="osRateLimit"
-                  type="number"
-                  min="1"
-                  max="20"
-                  class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                  @input="osRateLimitDirty = true"
-                />
-              </div>
-            </div>
-
-            <!-- Auto-search toggle -->
-            <div class="flex items-center gap-3 mt-2">
-              <button
-                class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
-                :class="subtitleAutoSearch
-                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
-                  : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
-                @click="subtitleAutoSearch = !subtitleAutoSearch; subtitleAutoSearchDirty = true"
-              >
-                <span
-                  class="relative w-7 h-4 rounded-full transition-colors duration-200 flex-shrink-0"
-                  :class="subtitleAutoSearch ? 'bg-emerald-600' : 'bg-gray-600'"
-                >
-                  <span
-                    class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
-                    :class="subtitleAutoSearch ? 'translate-x-3' : ''"
-                  />
-                </span>
-                <span>Auto-search after import</span>
-              </button>
-              <p class="text-[10px] text-gray-500">Automatically search and download subtitles when a new media file is imported.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Metadata section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Metadata</h2>
-
-      <div class="space-y-4">
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <!-- Primary source -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Primary Source</label>
-              <select
-                v-model="primarySource"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @change="primarySourceDirty = true"
-              >
-                <option value="tmdb">TMDB</option>
-                <option value="tvdb">TVDB</option>
-              </select>
-            </div>
-
-            <!-- TMDB rate limit -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">TMDB Rate Limit (req/sec)</label>
-              <input
-                v-model="tmdbRateLimit"
-                type="number"
-                min="1"
-                max="40"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="tmdbRateLimitDirty = true"
-              />
-            </div>
-
-            <!-- TVDB rate limit -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">TVDB Rate Limit (req/sec)</label>
-              <input
-                v-model="tvdbRateLimit"
-                type="number"
-                min="1"
-                max="40"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="tvdbRateLimitDirty = true"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Monitor section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Monitor</h2>
-
-      <div class="space-y-4">
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">Season Pack Preference</label>
-            <select
-              v-model="seasonPackPref"
-              class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-              @change="seasonPackPrefDirty = true"
-            >
-              <option value="prefer_packs">Prefer season packs</option>
-              <option value="prefer_episodes">Prefer episodes</option>
-              <option value="packs_only">Season packs only</option>
-            </select>
-            <p class="text-[10px] text-gray-500 mt-2">
-              <template v-if="seasonPackPref === 'prefer_packs'">Downloads full season packs when 70% or more episodes are missing. Falls back to individual episodes otherwise.</template>
-              <template v-else-if="seasonPackPref === 'prefer_episodes'">Always downloads individual episodes. Falls back to season packs only when no episode match is found.</template>
-              <template v-else>Only downloads full season packs. Never downloads individual episodes.</template>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Watched section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Watched</h2>
-
-      <div class="space-y-4">
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">Watched List Mode</label>
-            <select
-              v-model="watchedListMode"
-              class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-              @change="watchedListModeDirty = true"
-            >
-              <option value="global">Global</option>
-              <option value="per_user">Per User</option>
-            </select>
-            <p class="text-[10px] text-gray-500 mt-2">
-              <template v-if="watchedListMode === 'global'">All users share a single watched list. When anyone marks media as watched, it appears watched for everyone.</template>
-              <template v-else>Each user has their own watched list. Marking media as watched is private to the current user.</template>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Workers section -->
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Workers</h2>
-
-      <div class="space-y-4">
-        <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
-          <p class="text-[10px] text-gray-500 mb-4">Poll intervals for background workers. Changes take effect immediately without restart.</p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Monitor interval -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Monitor Interval (seconds)</label>
-              <input
-                v-model="monitorInterval"
-                type="number"
-                min="60"
-                max="86400"
-                placeholder="900"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="monitorIntervalDirty = true"
-              />
-              <p class="text-[10px] text-gray-500 mt-1">How often to scan for new releases. Default: 900 (15 min)</p>
-            </div>
-
-            <!-- Download interval -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Download Interval (seconds)</label>
-              <input
-                v-model="downloadInterval"
-                type="number"
-                min="1"
-                max="3600"
-                placeholder="5"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="downloadIntervalDirty = true"
-              />
-              <p class="text-[10px] text-gray-500 mt-1">How often to check download progress. Default: 5</p>
-            </div>
-
-            <!-- Importer interval -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Importer Interval (seconds)</label>
-              <input
-                v-model="importerInterval"
-                type="number"
-                min="1"
-                max="3600"
-                placeholder="10"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="importerIntervalDirty = true"
-              />
-              <p class="text-[10px] text-gray-500 mt-1">How often to import completed downloads. Default: 10</p>
-            </div>
-
-            <!-- Metadata Refresh interval -->
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1.5">Metadata Refresh (seconds)</label>
-              <input
-                v-model="metadataRefreshInterval"
-                type="number"
-                min="3600"
-                max="604800"
-                placeholder="21600"
-                class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
-                @input="metadataRefreshIntervalDirty = true"
-              />
-              <p class="text-[10px] text-gray-500 mt-1">How often to check for new seasons. Default: 21600 (6 hours)</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- General tab -->
+      <SettingsGeneral
+        v-if="activeTab === 'general'"
+        v-model:watched-list-mode="watchedListMode"
+        v-model:discord-url="discordUrl"
+        v-model:show-discord-url="showDiscordUrl"
+        v-model:season-pack-pref="seasonPackPref"
+        v-model:monitor-interval="monitorInterval"
+        v-model:download-interval="downloadInterval"
+        v-model:importer-interval="importerInterval"
+        v-model:metadata-refresh-interval="metadataRefreshInterval"
+        :discord-testing="discordTesting"
+        :discord-test="discordTest"
+        :saving="saving"
+        @dirty="markDirty"
+        @test-discord="testDiscord"
+        @disconnect-discord="disconnectDiscord"
+      />
 
       <!-- Save button -->
       <div class="flex items-center gap-3 mt-6">

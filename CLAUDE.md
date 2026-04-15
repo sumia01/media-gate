@@ -65,7 +65,8 @@ media-gate/
 │       ├── composables/ # Shared reactive state (useJobQueue, useEventStream, useGlobalSearch, useSidebarLibraries, useAuth)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
-│       │   └── media/   # Media-related components + shared types
+│       │   ├── media/   # Media-related components + shared types
+│       │   └── settings/ # Settings tab components (MediaDb, Downloads, General)
 │       ├── views/       # Route-level page components
 │       │   └── setup/   # Setup wizard step components
 │       └── router/      # Vue Router config
