@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/sumia01/media-gate/internal/store/sqlite"
 	"github.com/sumia01/media-gate/internal/subtitle"
 	"github.com/sumia01/media-gate/internal/sync"
+	"github.com/sumia01/media-gate/internal/updater"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -144,7 +146,18 @@ func main() {
 	downloadSvc.Start()
 	defer downloadSvc.Stop()
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, version)
+	// Self-update service (Linux only, non-dev builds with GitHub credentials).
+	var updaterSvc *updater.Service
+	if runtime.GOOS == "linux" && version != "dev" && cfg.GitHub.Token != "" && cfg.GitHub.Repo != "" {
+		updaterSvc = updater.NewService(version, cfg.GitHub.Token, cfg.GitHub.Repo, settingsSvc, bus)
+		if updaterSvc != nil {
+			updaterSvc.Start()
+			defer updaterSvc.Stop()
+			slog.Info("self-update enabled", "repo", cfg.GitHub.Repo)
+		}
+	}
+
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, version)
 
 	// Invalidate cached clients when connection settings change.
 	go func() {

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useUpdateCheck } from '@/composables/useUpdateCheck'
+
+const { updateEnabled, updateAvailable, latestVersion, releaseNotes, currentVersion, checking, applying, checkNow, applyUpdate } = useUpdateCheck()
 
 const props = defineProps<{
   watchedListMode: string
@@ -13,6 +16,7 @@ const props = defineProps<{
   downloadInterval: string
   importerInterval: string
   metadataRefreshInterval: string
+  updateCheckInterval: string
 }>()
 
 defineEmits<{
@@ -24,6 +28,7 @@ defineEmits<{
   'update:downloadInterval': [value: string]
   'update:importerInterval': [value: string]
   'update:metadataRefreshInterval': [value: string]
+  'update:updateCheckInterval': [value: string]
   'dirty': [field: string]
   'testDiscord': []
   'disconnectDiscord': []
@@ -208,6 +213,70 @@ const discordConnected = computed(() => props.discordUrl !== '')
           <p class="text-[10px] text-gray-500 mt-1">How often to check for new seasons. Default: 21600 (6 hours)</p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Updates section -->
+  <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Updates</h2>
+
+  <div class="space-y-4">
+    <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+      <template v-if="updateEnabled">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <span class="text-sm font-semibold text-gray-200">Current Version</span>
+            <span class="ml-2 text-sm font-mono text-gray-400">{{ currentVersion }}</span>
+          </div>
+          <button
+            class="px-3 py-1.5 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200"
+            :disabled="checking"
+            @click="checkNow"
+          >
+            {{ checking ? 'Checking...' : 'Check Now' }}
+          </button>
+        </div>
+
+        <div v-if="updateAvailable" class="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-emerald-400 font-medium">
+                Update available: <span class="font-mono">{{ latestVersion }}</span>
+              </p>
+              <p v-if="releaseNotes" class="text-xs text-gray-400 mt-1 line-clamp-2">{{ releaseNotes }}</p>
+            </div>
+            <button
+              class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ml-4"
+              :disabled="applying"
+              @click="applyUpdate"
+            >
+              {{ applying ? 'Updating...' : 'Apply Update' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-else-if="!checking" class="text-xs text-gray-500 mt-1">
+          You're running the latest version.
+        </div>
+
+        <div class="mt-4">
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Update Check Interval (seconds)</label>
+          <input
+            :value="updateCheckInterval"
+            type="number"
+            min="3600"
+            max="604800"
+            placeholder="21600"
+            class="w-full max-w-xs px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            @input="$emit('update:updateCheckInterval', ($event.target as HTMLInputElement).value); $emit('dirty', 'updateCheckInterval')"
+          />
+          <p class="text-[10px] text-gray-500 mt-1">How often to check for new releases. Default: 21600 (6 hours)</p>
+        </div>
+      </template>
+
+      <template v-else>
+        <p class="text-sm text-gray-400">Self-update is not available.</p>
+        <p class="text-[10px] text-gray-500 mt-1">Requires Linux, a non-dev build, and GitHub credentials (MEDIAGATE_GITHUB_TOKEN / MEDIAGATE_GITHUB_REPO).</p>
+      </template>
     </div>
   </div>
 </template>

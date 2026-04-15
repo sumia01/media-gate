@@ -250,7 +250,8 @@ lxc_exec "
         '${ASSET_URL}' \
         -o /opt/media-gate/media-gate \
     && chmod +x /opt/media-gate/media-gate \
-    && echo '${RELEASE_TAG}' > /opt/media-gate/VERSION
+    && echo '${RELEASE_TAG}' > /opt/media-gate/VERSION \
+    && chown -R mediagate:mediagate /opt/media-gate
 " || die "Failed to download binary."
 ok "Binary installed."
 
@@ -275,11 +276,13 @@ ENVEOF
 chmod 600 /etc/default/media-gate
 "
 
-# Save GitHub config for the update script
+# Save GitHub config for the update script and app self-update
 lxc_exec "
 cat > /etc/media-gate/github.conf <<'GHEOF'
 GH_REPO=${GH_REPO}
 GH_TOKEN=${GH_TOKEN}
+MEDIAGATE_GITHUB_REPO=${GH_REPO}
+MEDIAGATE_GITHUB_TOKEN=${GH_TOKEN}
 GHEOF
 chmod 600 /etc/media-gate/github.conf
 "
@@ -290,11 +293,11 @@ ok "Configuration written."
 info "Installing systemd service..."
 
 AFTER_TARGETS="network-online.target"
-RW_PATHS="/var/lib/media-gate"
+RW_PATHS="/var/lib/media-gate /opt/media-gate"
 
 if [[ "$SETUP_CIFS" == true ]]; then
     AFTER_TARGETS="network-online.target remote-fs.target"
-    RW_PATHS="/var/lib/media-gate ${NAS_MOUNT}"
+    RW_PATHS="/var/lib/media-gate /opt/media-gate ${NAS_MOUNT}"
 fi
 
 # Ports below 1024 require CAP_NET_BIND_SERVICE (and NoNewPrivileges must be off)
@@ -319,6 +322,7 @@ User=mediagate
 Group=mediagate
 WorkingDirectory=/var/lib/media-gate
 EnvironmentFile=/etc/default/media-gate
+EnvironmentFile=-/etc/media-gate/github.conf
 ExecStart=/opt/media-gate/media-gate
 Restart=on-failure
 RestartSec=5

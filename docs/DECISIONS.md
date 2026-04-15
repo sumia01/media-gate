@@ -1496,3 +1496,22 @@ Changes:
 3. **Subtitle cleanup on download delete** (`media.CleanupImportedFiles`): After deleting MediaFile records, now also deletes Subtitle DB records whose `FilePath` falls under the release folder, and publishes `SubtitleDeleted` events so the frontend updates via SSE without manual refresh.
 
 **Rationale**: Root cause fix (don't import samples) prevents the issue system-wide. The largest-file preference is a defensive layer for edge cases where samples exist on disk (e.g. user-added files). The subtitle cleanup fix addresses a pre-existing gap where `CleanupImportedFiles` removed files and MediaFile records but left orphaned Subtitle DB rows — the FK `OnDelete:SET NULL` on `MediaFileID` kept subtitle rows alive even after their associated MediaFile was deleted.
+
+---
+
+## ADR-102: In-process self-update via GitHub Releases
+**Date**: 2026-04-15
+**Status**: Accepted
+
+**Context**: Media Gate runs as a single binary on a private GitHub repo. Updates were previously manual via a shell script (`media-gate-update`). Users want one-click updates from the UI without SSH access.
+
+**Decision**: Linux-only in-process self-update gated by four preconditions: `runtime.GOOS == "linux"`, non-dev build (`version != "dev"`), and both `MEDIAGATE_GITHUB_TOKEN` and `MEDIAGATE_GITHUB_REPO` env vars present. When all conditions are met:
+
+1. **Periodic check** via `worker.Loop` (default 6h interval, configurable via `worker_update_check_interval` setting) polls `GET /repos/{owner}/{repo}/releases/latest` on the GitHub API.
+2. **SSE notification** — when a newer version is found (semver comparison), publishes `app.update_available` event so the frontend can show an update indicator in the top bar.
+3. **Apply** — downloads the release asset (`media-gate-linux-amd64`), writes to a temp file, `chmod 0755`, backs up the current binary (`.bak` suffix), `os.Rename` replaces the running binary, then `syscall.Exec` re-execs the process in-place (PID preserved — systemd sees no restart).
+4. **Frontend restart detection** — after triggering apply, the frontend polls `/api/v1/health` every 2s until the server comes back, then reloads the page.
+
+Token source: systemd `EnvironmentFile=-/etc/media-gate/github.conf` loads `MEDIAGATE_GITHUB_TOKEN` and `MEDIAGATE_GITHUB_REPO` into the process environment. The deploy script writes both `GH_*` (for the legacy shell update script) and `MEDIAGATE_*` prefixed vars.
+
+**Rationale**: In-process `syscall.Exec` is the simplest approach for a single-binary app on Linux — no external update agent, no systemd interaction, no privilege escalation. The binary can be replaced while running on Linux (inode semantics). Graceful degradation: when preconditions aren't met, the updater is nil, handlers return `enabled: false`, and the frontend shows "not available". No token in UI — GitHub credentials are infrastructure config, not user settings.

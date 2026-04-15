@@ -435,6 +435,19 @@
 - [x] State management stays centralized in parent `SettingsView.vue` — tab components are pure template via props/emits
 - [x] Save button persists across tabs, saves all dirty fields from any tab
 
+## Phase 8.4: Self-update ✅
+→ See ADR-102
+- [x] `updater.Service` — GitHub Releases API client with periodic check via `worker.Loop` (configurable interval, default 6h)
+- [x] In-process binary replacement — download asset → temp file → backup `.bak` → `os.Rename` → `syscall.Exec`
+- [x] Linux-only gating — disabled on non-Linux, dev builds, or missing GitHub credentials
+- [x] SSE notification — `app.update_available` event pushed to all connected frontends
+- [x] API endpoints — `GET /update/status`, `POST /update/check`, `POST /update/apply`
+- [x] TopBar update indicator — green badge with dropdown showing version + "Update Now" button
+- [x] Settings General "Updates" section — current version, check now, apply update, check interval setting
+- [x] Frontend restart detection — polls `/api/v1/health` after apply, reloads when server returns
+- [x] Config — `MEDIAGATE_GITHUB_TOKEN` / `MEDIAGATE_GITHUB_REPO` via systemd EnvironmentFile
+- [x] Deploy script — github.conf writes both `GH_*` and `MEDIAGATE_*` prefixed vars, systemd EnvironmentFile added
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

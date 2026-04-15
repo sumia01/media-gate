@@ -54,6 +54,8 @@ const (
 	KeySubtitleLanguages      = "subtitle_languages"
 	KeySubtitleAutoSearch     = "subtitle_auto_search"
 
+	KeyWorkerUpdateCheckInterval = "worker_update_check_interval"
+
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
 	KeyOnboardingCompleted = "onboarding_completed"
