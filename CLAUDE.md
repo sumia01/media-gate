@@ -51,6 +51,7 @@ media-gate/
 │   │   │   └── opensubtitles/ # OpenSubtitles.com REST API client (JWT auth, search, download, file hash)
 │   │   ├── subtitle/    # Subtitle service (search, download, scoring, auto-search, provider interface)
 │   │   ├── notification/    # Notification service (eventbus subscriber, Discord dispatch)
+│   │   ├── updater/     # Self-update service (GitHub Releases check, binary download+replace, Linux-only)
 │   │   └── logging/     # slog setup
 │   ├── frontend/        # embed.go — embeds compiled SPA into Go binary
 │   ├── go.mod
@@ -62,7 +63,7 @@ media-gate/
 │       ├── api/         # Generated TypeScript API client
 │       ├── types/       # Shared API type re-exports from schema
 │       ├── utils/       # Shared utility functions (parseGenres, posterUrl, formatSize, formatBytes)
-│       ├── composables/ # Shared reactive state (useJobQueue, useEventStream, useGlobalSearch, useSidebarLibraries, useAuth)
+│       ├── composables/ # Shared reactive state (useJobQueue, useEventStream, useGlobalSearch, useSidebarLibraries, useAuth, useUpdateCheck)
 │       ├── components/
 │       │   ├── layout/  # App shell: sidebar, topbar, page layout
 │       │   ├── media/   # Media-related components + shared types
@@ -126,6 +127,8 @@ Configuration loads from `backend/.env` file and/or `MEDIAGATE_`-prefixed enviro
 | `DEFAULTUSER_EMAIL` | `MEDIAGATE_DEFAULTUSER_EMAIL` | `DefaultUser.Email` | _(empty)_ | Bootstrap user email (optional — setup wizard is primary; used only when no users in DB) |
 | `DEFAULTUSER_PASSWORD` | `MEDIAGATE_DEFAULTUSER_PASSWORD` | `DefaultUser.Password` | _(empty)_ | Bootstrap user password (optional — setup wizard is primary; used only when no users in DB) |
 | `COOKIE_SECURE` | `MEDIAGATE_COOKIE_SECURE` | `Cookie.Secure` | `false` | Force Secure flag on cookies (set `true` behind TLS-terminating reverse proxy) |
+| `GITHUB_TOKEN` | `MEDIAGATE_GITHUB_TOKEN` | `GitHub.Token` | _(empty)_ | GitHub personal access token for self-update (private repo releases access) |
+| `GITHUB_REPO` | `MEDIAGATE_GITHUB_REPO` | `GitHub.Repo` | _(empty)_ | GitHub repo (`owner/repo`) for self-update release checks |
 
 ## Key Architecture Rules
 

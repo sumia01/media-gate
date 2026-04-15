@@ -20,6 +20,7 @@ type Config struct {
 	Secret      SecretConfig      `koanf:"secret"`
 	DefaultUser DefaultUserConfig `koanf:"defaultuser"`
 	Cookie      CookieConfig      `koanf:"cookie"`
+	GitHub      GitHubConfig      `koanf:"github"`
 }
 
 type TMDBConfig struct {
@@ -45,6 +46,11 @@ type LibraryConfig struct {
 
 type CookieConfig struct {
 	Secure bool `koanf:"secure"`
+}
+
+type GitHubConfig struct {
+	Token string `koanf:"token"`
+	Repo  string `koanf:"repo"`
 }
 
 type APIConfig struct {

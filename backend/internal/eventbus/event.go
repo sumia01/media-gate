@@ -47,6 +47,12 @@ const (
 	SubtitleAutoSearchCompleted EventType = "subtitle.auto_search_completed"
 )
 
+// App update events.
+const (
+	UpdateAvailable EventType = "app.update_available"
+	UpdateApplying  EventType = "app.update_applying"
+)
+
 // Event is a single occurrence published on the bus.
 type Event struct {
 	Type      EventType `json:"type"`
@@ -118,4 +124,12 @@ type SubtitlePayload struct {
 	Language    string `json:"language"`
 	Provider    string `json:"provider"`
 	FileName    string `json:"fileName"`
+}
+
+// UpdatePayload carries app update event data.
+type UpdatePayload struct {
+	CurrentVersion string `json:"currentVersion"`
+	NewVersion     string `json:"newVersion"`
+	ReleaseNotes   string `json:"releaseNotes,omitempty"`
+	PublishedAt    string `json:"publishedAt,omitempty"`
 }

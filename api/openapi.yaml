@@ -2013,6 +2013,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /update/status:
+    get:
+      operationId: getUpdateStatus
+      summary: Get current update availability status
+      responses:
+        "200":
+          description: Update status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStatusResponse"
+
+  /update/check:
+    post:
+      operationId: checkForUpdate
+      summary: Check for available updates
+      responses:
+        "200":
+          description: Update check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateCheckResponse"
+
+  /update/apply:
+    post:
+      operationId: applyUpdate
+      summary: Download and apply the available update
+      responses:
+        "200":
+          description: Update apply result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateApplyResponse"
+
   /settings/test-opensubtitles:
     post:
       operationId: testOpenSubtitlesConnection
@@ -2808,6 +2844,8 @@ components:
           type: integer
         workerMetadataRefreshInterval:
           type: integer
+        workerUpdateCheckInterval:
+          type: integer
         libraryBasePath:
           type: string
           description: Base path for library directories
@@ -3538,4 +3576,55 @@ components:
         username:
           type: string
         password:
+          type: string
+
+    UpdateStatusResponse:
+      type: object
+      required:
+        - enabled
+        - currentVersion
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the update feature is available (Linux, token present, non-dev build)
+        currentVersion:
+          type: string
+        updateAvailable:
+          type: boolean
+        latestVersion:
+          type: string
+        releaseNotes:
+          type: string
+        publishedAt:
+          type: string
+
+    UpdateCheckResponse:
+      type: object
+      required:
+        - enabled
+        - available
+        - currentVersion
+      properties:
+        enabled:
+          type: boolean
+        available:
+          type: boolean
+        currentVersion:
+          type: string
+        latestVersion:
+          type: string
+        releaseNotes:
+          type: string
+        publishedAt:
+          type: string
+
+    UpdateApplyResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
           type: string

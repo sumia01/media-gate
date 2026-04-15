@@ -95,10 +95,12 @@ const monitorInterval = ref('900')
 const downloadInterval = ref('5')
 const importerInterval = ref('10')
 const metadataRefreshInterval = ref('21600')
+const updateCheckInterval = ref('21600')
 const monitorIntervalDirty = ref(false)
 const downloadIntervalDirty = ref(false)
 const importerIntervalDirty = ref(false)
 const metadataRefreshIntervalDirty = ref(false)
+const updateCheckIntervalDirty = ref(false)
 
 const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   tmdb: { ref: tmdbDirty },
@@ -126,6 +128,7 @@ const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   downloadInterval: { ref: downloadIntervalDirty },
   importerInterval: { ref: importerIntervalDirty },
   metadataRefreshInterval: { ref: metadataRefreshIntervalDirty },
+  updateCheckInterval: { ref: updateCheckIntervalDirty },
 }
 
 function markDirty(field: string) {
@@ -144,7 +147,7 @@ const anyDirty = computed(() =>
   osApiKeyDirty.value || osUsernameDirty.value || osPasswordDirty.value || osRateLimitDirty.value ||
   subtitleLanguagesDirty.value || subtitleAutoSearchDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
-  metadataRefreshIntervalDirty.value
+  metadataRefreshIntervalDirty.value || updateCheckIntervalDirty.value
 )
 
 function resetAllDirty() {
@@ -181,6 +184,7 @@ function applySettings(s: Record<string, unknown>) {
   downloadInterval.value = String(s.workerDownloadInterval ?? 5)
   importerInterval.value = String(s.workerImporterInterval ?? 10)
   metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
+  updateCheckInterval.value = String(s.workerUpdateCheckInterval ?? 21600)
   resetAllDirty()
 }
 
@@ -231,6 +235,7 @@ async function saveSettings() {
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
   if (metadataRefreshIntervalDirty.value) body.workerMetadataRefreshInterval = Number(metadataRefreshInterval.value)
+  if (updateCheckIntervalDirty.value) body.workerUpdateCheckInterval = Number(updateCheckInterval.value)
 
   if (Object.keys(body).length === 0) {
     saving.value = false
@@ -443,6 +448,7 @@ onMounted(fetchSettings)
         v-model:download-interval="downloadInterval"
         v-model:importer-interval="importerInterval"
         v-model:metadata-refresh-interval="metadataRefreshInterval"
+        v-model:update-check-interval="updateCheckInterval"
         :discord-testing="discordTesting"
         :discord-test="discordTest"
         :saving="saving"

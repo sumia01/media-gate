@@ -5,13 +5,16 @@ import { useRouter } from 'vue-router'
 import { useJobQueue } from '@/composables/useJobQueue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useAuth } from '@/composables/useAuth'
+import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
 const router = useRouter()
 const { jobs, hasActiveJob } = useJobQueue()
 const { openSearch } = useGlobalSearch()
 const { currentUser, logout } = useAuth()
+const { updateAvailable, latestVersion, applying, applyUpdate } = useUpdateCheck()
 const showPanel = ref(false)
 const showUserMenu = ref(false)
+const showUpdatePanel = ref(false)
 
 const isMobile = inject<Ref<boolean>>('isMobile')
 const toggleSidebar = inject<() => void>('toggleSidebar')
@@ -129,6 +132,48 @@ function statusIcon(status: string) {
               <p v-if="job.progress?.message" class="text-xs text-gray-500 mt-1">{{ job.progress.message }}</p>
               <p v-if="job.error" class="text-xs text-red-400 mt-1">{{ job.error }}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Update indicator -->
+      <div v-if="updateAvailable" class="relative">
+        <button
+          class="relative p-2 rounded-lg text-emerald-400 hover:text-emerald-300 transition-colors duration-200"
+          @click="showUpdatePanel = !showUpdatePanel"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        </button>
+
+        <Teleport to="body">
+          <div
+            v-if="showUpdatePanel"
+            class="fixed inset-0 z-40"
+            @click="showUpdatePanel = false"
+          />
+        </Teleport>
+        <div
+          v-if="showUpdatePanel"
+          class="absolute right-0 top-full mt-2 w-72 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
+        >
+          <div class="px-4 py-3 border-b border-violet-900/20">
+            <p class="text-sm font-semibold text-gray-200">Update Available</p>
+          </div>
+          <div class="px-4 py-3 space-y-3">
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-gray-400">New version:</span>
+              <span class="text-emerald-400 font-mono font-medium">{{ latestVersion }}</span>
+            </div>
+            <button
+              class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="applying"
+              @click="showUpdatePanel = false; applyUpdate()"
+            >
+              {{ applying ? 'Updating...' : 'Update Now' }}
+            </button>
           </div>
         </div>
       </div>
