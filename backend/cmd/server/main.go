@@ -231,7 +231,6 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.API.Port)
 	slog.Info("starting server", "addr", addr, "version", version)
-	slog.Info("================github", "repo", cfg.GitHub.Repo)
 
 	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
 	if err := http.ListenAndServe(addr, mux); err != nil {

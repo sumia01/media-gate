@@ -6,12 +6,12 @@ import SettingsMediaDb from '@/components/settings/SettingsMediaDb.vue'
 import SettingsDownloads from '@/components/settings/SettingsDownloads.vue'
 import SettingsGeneral from '@/components/settings/SettingsGeneral.vue'
 
-const activeTab = ref<'media-db' | 'downloads' | 'general'>('media-db')
+const activeTab = ref<'media-db' | 'downloads' | 'general'>('general')
 
 const tabs = [
+  { key: 'general' as const, label: 'General' },
   { key: 'media-db' as const, label: 'Media DB' },
   { key: 'downloads' as const, label: 'Downloads' },
-  { key: 'general' as const, label: 'General' },
 ]
 
 const tmdbKey = ref('')
