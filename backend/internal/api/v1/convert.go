@@ -246,6 +246,10 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			if n, err := strconv.Atoi(v); err == nil {
 				s.WorkerMetadataRefreshInterval = &n
 			}
+		case settings.KeyWorkerUpdateCheckInterval:
+			if n, err := strconv.Atoi(v); err == nil {
+				s.WorkerUpdateCheckInterval = &n
+			}
 		case settings.KeyLibraryBasePath:
 			s.LibraryBasePath = &v
 		case settings.KeyOnboardingStep:
@@ -354,6 +358,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.WorkerMetadataRefreshInterval != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerMetadataRefreshInterval, Value: strconv.Itoa(*s.WorkerMetadataRefreshInterval)})
+	}
+	if s.WorkerUpdateCheckInterval != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyWorkerUpdateCheckInterval, Value: strconv.Itoa(*s.WorkerUpdateCheckInterval)})
 	}
 	if s.LibraryBasePath != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyLibraryBasePath, Value: *s.LibraryBasePath})
