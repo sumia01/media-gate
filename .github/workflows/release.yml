@@ -52,8 +52,8 @@ jobs:
 
           VERSION="${{ github.ref_name }}"
           CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-X main.version=$VERSION" -o ../dist/media-gate-linux-amd64       ./cmd/server/
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-X main.version=$VERSION" -o ../dist/media-gate-darwin-arm64       ./cmd/server/
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-X main.version=$VERSION" -o ../dist/media-gate-windows-amd64.exe ./cmd/server/
+          # CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-X main.version=$VERSION" -o ../dist/media-gate-darwin-arm64       ./cmd/server/
+          # CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-X main.version=$VERSION" -o ../dist/media-gate-windows-amd64.exe ./cmd/server/
 
       # ── GitHub Release ────────────────────────────────────────
       - name: Create release
@@ -62,8 +62,8 @@ jobs:
           generate_release_notes: true
           files: |
             dist/media-gate-linux-amd64
-            dist/media-gate-darwin-arm64
-            dist/media-gate-windows-amd64.exe
+            # dist/media-gate-darwin-arm64
+            # dist/media-gate-windows-amd64.exe
 
       # ── Sync deploy script to public Gist ─────────────────────
       - name: Update deploy script gist
