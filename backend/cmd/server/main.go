@@ -20,7 +20,6 @@ import (
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
-	"github.com/sumia01/media-gate/internal/monitor"
 	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
@@ -29,6 +28,7 @@ import (
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/metarefresh"
+	"github.com/sumia01/media-gate/internal/monitor"
 	"github.com/sumia01/media-gate/internal/notification"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
@@ -230,7 +230,9 @@ func main() {
 	mux.Handle("/", spa)
 
 	addr := fmt.Sprintf(":%d", cfg.API.Port)
-	slog.Info("starting server", "addr", addr)
+	slog.Info("starting server", "addr", addr, "version", version)
+	slog.Info("================github", "repo", cfg.GitHub.Repo)
+
 	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server stopped", "error", err)

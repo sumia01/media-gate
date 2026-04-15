@@ -270,7 +270,14 @@ func (s *Service) downloadAsset(assetURL string) (string, error) {
 		return "", fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
 
-	tmpFile, err := os.CreateTemp("", "media-gate-update-*")
+	// Create temp file in the same directory as the running binary so that
+	// os.Rename is same-device (avoids EXDEV with PrivateTmp=true / tmpfs).
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolving executable: %w", err)
+	}
+	exeDir := filepath.Dir(exe)
+	tmpFile, err := os.CreateTemp(exeDir, ".media-gate-update-*")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
