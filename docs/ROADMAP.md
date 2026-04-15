@@ -426,6 +426,15 @@
 - [x] Subtitle `MediaFileID` association — subtitle DB records linked to matched video file
 - [x] Subtitle cleanup on download delete — `CleanupImportedFiles` removes subtitle DB records under release folder + publishes `SubtitleDeleted` SSE events
 
+## Phase 8.3: Settings page tab refactor ✅
+- [x] Split monolithic `SettingsView.vue` (1065 lines) into 3 tab components
+- [x] Horizontal tab bar (Media DB / Downloads / General) with underline-style active indicator
+- [x] `SettingsMediaDb.vue` — TMDB, TVDB integrations + Metadata (primary source, rate limits)
+- [x] `SettingsDownloads.vue` — qBittorrent, OpenSubtitles, FlareSolverr
+- [x] `SettingsGeneral.vue` — Watched list mode, Discord notifications, Monitor (season pack pref), Workers
+- [x] State management stays centralized in parent `SettingsView.vue` — tab components are pure template via props/emits
+- [x] Save button persists across tabs, saves all dirty fields from any tab
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
