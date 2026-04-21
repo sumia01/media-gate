@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
-	"time"
 )
 
 const defaultBaseURL = "https://api.themoviedb.org/3"
@@ -19,13 +18,11 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(apiKey string) *Client {
+func NewClient(apiKey string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL: defaultBaseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		baseURL:    defaultBaseURL,
+		apiKey:     apiKey,
+		httpClient: httpClient,
 	}
 }
 

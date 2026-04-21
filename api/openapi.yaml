@@ -2893,6 +2893,15 @@ components:
         subtitleAutoSearch:
           type: boolean
           description: Automatically search and download subtitles after media import
+        otelEnabled:
+          type: boolean
+          description: Enable OpenTelemetry tracing
+        otelEndpoint:
+          type: string
+          description: OTLP HTTP endpoint (e.g. http://signoz:4318)
+        otelService:
+          type: string
+          description: OpenTelemetry service name
 
     ConnectionTestRequest:
       type: object

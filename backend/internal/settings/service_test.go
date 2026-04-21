@@ -170,7 +170,7 @@ func (s *settingsStubStore) DeleteSubtitle(uint) error                          
 func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath, nil, "")
+	svc := NewService(st, basePath, nil, "", nil)
 
 	tests := []struct {
 		name string
@@ -209,7 +209,7 @@ func TestValidateDownloadPath_RejectsTraversal(t *testing.T) {
 func TestValidateDownloadPath_AcceptsValidPaths(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath, nil, "")
+	svc := NewService(st, basePath, nil, "", nil)
 
 	tests := []struct {
 		name string
@@ -236,7 +236,7 @@ func TestValidateDownloadPath_RejectsConflictWithLibrary(t *testing.T) {
 	st.libraries = []store.Library{
 		{ID: 1, Name: "Movies", Path: basePath + "/movies", MediaType: "movie"},
 	}
-	svc := NewService(st, basePath, nil, "")
+	svc := NewService(st, basePath, nil, "", nil)
 
 	err := svc.validateDownloadPath(basePath + "/movies")
 	if err != ErrDownloadPathConflict {
@@ -247,7 +247,7 @@ func TestValidateDownloadPath_RejectsConflictWithLibrary(t *testing.T) {
 func TestUpdate_RejectsDownloadPathOutsideBase(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath, nil, "")
+	svc := NewService(st, basePath, nil, "", nil)
 
 	attacks := []struct {
 		name string
@@ -271,7 +271,7 @@ func TestUpdate_RejectsDownloadPathOutsideBase(t *testing.T) {
 func TestUpdate_AcceptsDownloadPathInsideBase(t *testing.T) {
 	basePath := t.TempDir()
 	st := newSettingsStubStore()
-	svc := NewService(st, basePath, nil, "")
+	svc := NewService(st, basePath, nil, "", nil)
 
 	err := svc.Update([]KeyValue{{Key: KeyQBitDownloadPath, Value: basePath + "/downloads"}})
 	if err != nil {
@@ -283,7 +283,7 @@ func TestUpdate_AcceptsDownloadPathInsideBase(t *testing.T) {
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
 	st := newSettingsStubStore()
-	svc := NewService(st, "/mnt", nil, "test-secret-key")
+	svc := NewService(st, "/mnt", nil, "test-secret-key", nil)
 
 	err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: "my-tmdb-key-1234"}})
 	if err != nil {
@@ -314,7 +314,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 
 func TestPlaintextModeWhenNoKey(t *testing.T) {
 	st := newSettingsStubStore()
-	svc := NewService(st, "/mnt", nil, "")
+	svc := NewService(st, "/mnt", nil, "", nil)
 
 	err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: "plain-key"}})
 	if err != nil {
@@ -342,7 +342,7 @@ func TestMigrateEncryption(t *testing.T) {
 	st.settings[KeyQBitPassword] = &store.Setting{Key: KeyQBitPassword, Value: "plain-pass", Sensitive: true}
 	st.settings["qbit_url"] = &store.Setting{Key: "qbit_url", Value: "http://localhost", Sensitive: false}
 
-	svc := NewService(st, "/mnt", nil, "migrate-key")
+	svc := NewService(st, "/mnt", nil, "migrate-key", nil)
 
 	err := svc.MigrateEncryption()
 	if err != nil {
@@ -373,7 +373,7 @@ func TestMigrateEncryption(t *testing.T) {
 
 func TestIndexerSecretRoundTrip(t *testing.T) {
 	st := newSettingsStubStore()
-	svc := NewService(st, "/mnt", nil, "test-key")
+	svc := NewService(st, "/mnt", nil, "test-key", nil)
 
 	err := svc.SetIndexerSecret(5, "password", "s3cret")
 	if err != nil {
@@ -391,7 +391,7 @@ func TestIndexerSecretRoundTrip(t *testing.T) {
 
 func TestDeleteIndexerSecrets(t *testing.T) {
 	st := newSettingsStubStore()
-	svc := NewService(st, "/mnt", nil, "test-key")
+	svc := NewService(st, "/mnt", nil, "test-key", nil)
 
 	_ = svc.SetIndexerSecret(5, "password", "s3cret")
 	_ = svc.SetIndexerSecret(5, "2facode", "123456")
@@ -412,7 +412,7 @@ func TestDeleteIndexerSecrets(t *testing.T) {
 
 func TestListExcludesIndexerSecrets(t *testing.T) {
 	st := newSettingsStubStore()
-	svc := NewService(st, "/mnt", nil, "test-key")
+	svc := NewService(st, "/mnt", nil, "test-key", nil)
 
 	// Store a regular setting and an indexer secret
 	_ = svc.Update([]KeyValue{{Key: KeyQBitURL, Value: "http://localhost:8080"}})

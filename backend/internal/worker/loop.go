@@ -1,8 +1,11 @@
 package worker
 
 import (
+	"context"
 	"log/slog"
 	"time"
+
+	"go.opentelemetry.io/otel"
 )
 
 // SettingsSubscriber provides settings subscription and interval reading.
@@ -46,6 +49,14 @@ func (l *Loop) Stop() {
 	close(l.stopCh)
 }
 
+// process runs the work function wrapped in an OTel span.
+// When the global TracerProvider is noop, this adds zero overhead.
+func (l *Loop) process() {
+	_, span := otel.Tracer("worker").Start(context.Background(), "worker/"+l.cfg.Name)
+	defer span.End()
+	l.cfg.Process()
+}
+
 func (l *Loop) run() {
 	settingsCh := l.cfg.Settings.Subscribe()
 	interval := l.cfg.Settings.GetDurationWithDefault(l.cfg.IntervalKey, l.cfg.DefaultInterval)
@@ -59,7 +70,7 @@ func (l *Loop) run() {
 		case <-l.stopCh:
 			return
 		case <-time.After(l.cfg.StartupDelay):
-			l.cfg.Process()
+			l.process()
 		}
 	}
 
@@ -68,7 +79,7 @@ func (l *Loop) run() {
 		case <-l.stopCh:
 			return
 		case <-ticker.C:
-			l.cfg.Process()
+			l.process()
 		case key := <-settingsCh:
 			if key == l.cfg.IntervalKey {
 				newInterval := l.cfg.Settings.GetDurationWithDefault(l.cfg.IntervalKey, l.cfg.DefaultInterval)

@@ -205,10 +205,12 @@
 - [ ] GitHub repo: first `git tag v1.0.0 && git push --tags` to test pipeline
 
 ## Phase 5.4: Observability & Polish ⬜
+- [x] OpenTelemetry tracing — always-on instrumentation (HTTP, GORM, workers) with noop/real TracerProvider hot-swap
+- [x] Runtime-configurable OTel via Settings UI (enable/disable, OTLP endpoint, service name) — changes take effect immediately without restart
+- [x] Shared instrumented HTTP client across all integrations (TMDB, TVDB, qBit, OpenSubtitles, Discord, FlareSolverr)
 - [ ] Structured log export (file, Loki, etc.)
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
-- [ ] Notification system (TBD)
 
 ## Phase 5.3: Branding ✅
 - [x] Custom logo image (`small_logo.png`) replacing text "MG" placeholder on login, setup wizard, and sidebar

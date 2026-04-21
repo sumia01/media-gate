@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const defaultBaseURL = "https://api.opensubtitles.com/api/v1"
@@ -30,15 +29,13 @@ type Client struct {
 }
 
 // NewClient creates an OpenSubtitles client.
-func NewClient(apiKey, username, password string) *Client {
+func NewClient(apiKey, username, password string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL:  defaultBaseURL,
-		apiKey:   apiKey,
-		username: username,
-		password: password,
-		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
-		},
+		baseURL:    defaultBaseURL,
+		apiKey:     apiKey,
+		username:   username,
+		password:   password,
+		httpClient: httpClient,
 	}
 }
 

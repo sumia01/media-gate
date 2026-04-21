@@ -3,6 +3,7 @@ package notification
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -16,14 +17,15 @@ const colorGreen = 0x2ECC71
 
 // Service subscribes to eventbus events and dispatches notifications.
 type Service struct {
-	store    store.Store
-	settings *settings.Service
+	store      store.Store
+	settings   *settings.Service
+	httpClient *http.Client
 }
 
 // NewService creates a notification service and subscribes to events on the bus.
 // Must be called before bus.Start().
-func NewService(db store.Store, settingsSvc *settings.Service, bus *eventbus.Bus) *Service {
-	s := &Service{store: db, settings: settingsSvc}
+func NewService(db store.Store, settingsSvc *settings.Service, bus *eventbus.Bus, httpClient *http.Client) *Service {
+	s := &Service{store: db, settings: settingsSvc, httpClient: httpClient}
 	bus.Subscribe(eventbus.ImportCompleted, s.handleImportCompleted)
 	return s
 }
@@ -55,7 +57,7 @@ func (s *Service) handleImportCompleted(e eventbus.Event) {
 
 	embed := s.buildImportEmbed(dl, item, meta, lib, p.FilesCount)
 
-	client := discord.NewClient(webhookURL)
+	client := discord.NewClient(webhookURL, s.httpClient)
 	if err := client.Send(embed); err != nil {
 		slog.Warn("discord notification failed", "error", err, "downloadId", p.DownloadID)
 	}

@@ -6,20 +6,18 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // TestConnection verifies that a FlareSolverr instance at baseURL is reachable
 // and responding. Returns (ok, message, error).
-func TestConnection(baseURL string) (bool, string, error) {
+func TestConnection(baseURL string, httpClient *http.Client) (bool, string, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"cmd":        "request.get",
 		"url":        "http://www.google.com",
 		"maxTimeout": 15000,
 	})
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(
+	resp, err := httpClient.Post(
 		strings.TrimRight(baseURL, "/")+"/v1",
 		"application/json",
 		bytes.NewReader(payload),
