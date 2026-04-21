@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -35,7 +36,10 @@ import (
 	"github.com/sumia01/media-gate/internal/store/sqlite"
 	"github.com/sumia01/media-gate/internal/subtitle"
 	"github.com/sumia01/media-gate/internal/sync"
+	"github.com/sumia01/media-gate/internal/telemetry"
 	"github.com/sumia01/media-gate/internal/updater"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -49,6 +53,17 @@ func main() {
 	}
 
 	logging.Setup(cfg.Log.Format, cfg.Log.Level)
+
+	// OpenTelemetry tracing — always wired up; Manager controls whether
+	// the global TracerProvider is real or noop.
+	otelMgr := telemetry.NewManager(version)
+	defer otelMgr.Shutdown(context.Background())
+
+	// Shared HTTP client for all external integrations.
+	httpClient := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
 
 	db, err := sqlite.New(cfg.DB.Path)
 	if err != nil {
@@ -68,10 +83,20 @@ func main() {
 		settings.KeyTMDBApiKey:      cfg.TMDB.ApiKey,
 		settings.KeyTVDBApiKey:      cfg.TVDB.ApiKey,
 		settings.KeyLibraryBasePath: cfg.Library.BasePath,
-	}, cfg.Secret.Key)
+	}, cfg.Secret.Key, httpClient)
 	if err := settingsSvc.MigrateEncryption(); err != nil {
 		slog.Error("failed to migrate encryption", "error", err)
 		os.Exit(1)
+	}
+
+	// Configure OTel from DB settings.
+	{
+		enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"
+		endpoint := settingsSvc.GetWithDefault(settings.KeyOTelEndpoint, "")
+		service := settingsSvc.GetWithDefault(settings.KeyOTelService, "media-gate")
+		if err := otelMgr.Reconfigure(enabled, endpoint, service); err != nil {
+			slog.Error("failed to configure OTel", "error", err)
+		}
 	}
 
 	// Auth service.
@@ -89,7 +114,7 @@ func main() {
 	}
 
 	syncSvc := sync.NewService(db)
-	matchSvc := matching.NewService(db, settingsSvc, posterDir)
+	matchSvc := matching.NewService(db, settingsSvc, posterDir, httpClient)
 	matchSvc.SetStatusRecalculator(syncSvc)
 
 	// Event bus + SSE broker.
@@ -106,12 +131,12 @@ func main() {
 	})
 
 	// Subtitle service.
-	osProvider := opensubtitles.NewProvider(settingsSvc)
+	osProvider := opensubtitles.NewProvider(settingsSvc, httpClient)
 	osAdapter := subtitle.NewOpenSubtitlesProvider(osProvider)
 	subtitleSvc := subtitle.NewService(db, settingsSvc, bus, []subtitle.Provider{osAdapter})
 
 	// Notification service (must subscribe before bus.Start).
-	notification.NewService(db, settingsSvc, bus)
+	notification.NewService(db, settingsSvc, bus, httpClient)
 
 	// Auto-subtitle search on import (must subscribe before bus.Start).
 	bus.Subscribe(eventbus.ImportCompleted, subtitleSvc.HandleImportCompleted)
@@ -138,7 +163,7 @@ func main() {
 	defer defRefresher.Stop()
 
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
-	qbitProvider := qbittorrent.NewProvider(settingsSvc, settings.KeyQBitURL, settings.KeyQBitUsername, settings.KeyQBitPassword)
+	qbitProvider := qbittorrent.NewProvider(settingsSvc, settings.KeyQBitURL, settings.KeyQBitUsername, settings.KeyQBitPassword, httpClient)
 	mediaSvc := media.NewService(db, syncSvc, bus, qbitProvider, posterDir)
 
 	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus, qbitProvider)
@@ -168,6 +193,14 @@ func main() {
 			}
 			if key == settings.KeyOpenSubtitlesApiKey || key == settings.KeyOpenSubtitlesUsername || key == settings.KeyOpenSubtitlesPassword {
 				osProvider.Invalidate()
+			}
+			if key == settings.KeyOTelEnabled || key == settings.KeyOTelEndpoint || key == settings.KeyOTelService {
+				enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"
+				endpoint := settingsSvc.GetWithDefault(settings.KeyOTelEndpoint, "")
+				service := settingsSvc.GetWithDefault(settings.KeyOTelService, "media-gate")
+				if err := otelMgr.Reconfigure(enabled, endpoint, service); err != nil {
+					slog.Error("failed to reconfigure OTel", "error", err)
+				}
 			}
 		}
 	}()
@@ -232,8 +265,11 @@ func main() {
 	addr := fmt.Sprintf(":%d", cfg.API.Port)
 	slog.Info("starting server", "addr", addr, "version", version)
 
+	// OTel HTTP middleware — always registered; noop provider = zero cost when disabled.
+	var handler http.Handler = otelhttp.NewHandler(mux, "media-gate")
+
 	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

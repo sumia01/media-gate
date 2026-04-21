@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -59,6 +60,10 @@ const (
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
 	KeyOnboardingCompleted = "onboarding_completed"
+
+	KeyOTelEnabled  = "otel_enabled"
+	KeyOTelEndpoint = "otel_endpoint"
+	KeyOTelService  = "otel_service"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -92,18 +97,19 @@ type Service struct {
 	basePath     string
 	envFallbacks map[string]string
 	cipher       *crypto.Cipher
+	httpClient   *http.Client
 	subscribers  []chan string
 	mu           sync.Mutex
 }
 
-func NewService(s store.Store, basePath string, envFallbacks map[string]string, secretKey string) *Service {
+func NewService(s store.Store, basePath string, envFallbacks map[string]string, secretKey string, httpClient *http.Client) *Service {
 	fb := make(map[string]string, len(envFallbacks))
 	for k, v := range envFallbacks {
 		if v != "" {
 			fb[k] = v
 		}
 	}
-	svc := &Service{store: s, basePath: filepath.Clean(basePath), envFallbacks: fb}
+	svc := &Service{store: s, basePath: filepath.Clean(basePath), envFallbacks: fb, httpClient: httpClient}
 
 	if secretKey != "" {
 		key := crypto.DeriveKey(secretKey)
@@ -265,7 +271,7 @@ func (s *Service) TestTMDB(apiKey *string) (bool, string, error) {
 	if err != nil {
 		return false, "TMDB API key not configured", nil
 	}
-	client := tmdb.NewClient(key)
+	client := tmdb.NewClient(key, s.httpClient)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
@@ -277,7 +283,7 @@ func (s *Service) TestTVDB(apiKey *string) (bool, string, error) {
 	if err != nil {
 		return false, "TVDB API key not configured", nil
 	}
-	client := tvdb.NewClient(key)
+	client := tvdb.NewClient(key, s.httpClient)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
@@ -297,7 +303,7 @@ func (s *Service) TestQBit(urlVal, username, password *string) (bool, string, er
 	if err != nil {
 		return false, "qBittorrent password not configured", nil
 	}
-	client := qbittorrent.NewClient(u, user, pass)
+	client := qbittorrent.NewClient(u, user, pass, s.httpClient)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
@@ -310,7 +316,7 @@ func (s *Service) TestFlareSolverr(urlVal *string) (bool, string, error) {
 		return false, "FlareSolverr URL not configured", nil
 	}
 
-	return flaresolverr.TestConnection(u)
+	return flaresolverr.TestConnection(u, s.httpClient)
 }
 
 func (s *Service) TestDiscord(urlVal *string) (bool, string, error) {
@@ -319,7 +325,7 @@ func (s *Service) TestDiscord(urlVal *string) (bool, string, error) {
 		return false, "Discord webhook URL not configured", nil
 	}
 
-	return discord.TestConnection(u)
+	return discord.TestConnection(u, s.httpClient)
 }
 
 func (s *Service) TestOpenSubtitles(apiKey, username, password *string) (bool, string, error) {
@@ -335,7 +341,7 @@ func (s *Service) TestOpenSubtitles(apiKey, username, password *string) (bool, s
 	if err != nil {
 		return false, "OpenSubtitles password not configured", nil
 	}
-	client := opensubtitles.NewClient(key, user, pass)
+	client := opensubtitles.NewClient(key, user, pass, s.httpClient)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}

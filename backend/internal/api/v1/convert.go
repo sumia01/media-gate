@@ -289,6 +289,13 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 		case settings.KeySubtitleAutoSearch:
 			b := v == "true"
 			s.SubtitleAutoSearch = &b
+		case settings.KeyOTelEnabled:
+			b := v == "true"
+			s.OtelEnabled = &b
+		case settings.KeyOTelEndpoint:
+			s.OtelEndpoint = &v
+		case settings.KeyOTelService:
+			s.OtelService = &v
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -408,6 +415,19 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 			val = "true"
 		}
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeySubtitleAutoSearch, Value: val})
+	}
+	if s.OtelEnabled != nil {
+		val := "false"
+		if *s.OtelEnabled {
+			val = "true"
+		}
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelEnabled, Value: val})
+	}
+	if s.OtelEndpoint != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelEndpoint, Value: *s.OtelEndpoint})
+	}
+	if s.OtelService != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelService, Value: *s.OtelService})
 	}
 	return kvs
 }

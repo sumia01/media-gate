@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 )
 
 var (
@@ -28,14 +27,12 @@ type Client struct {
 	mu         sync.Mutex
 }
 
-func NewClient(rawURL, username, password string) *Client {
+func NewClient(rawURL, username, password string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL:  strings.TrimRight(rawURL, "/"),
-		username: username,
-		password: password,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		baseURL:    strings.TrimRight(rawURL, "/"),
+		username:   username,
+		password:   password,
+		httpClient: httpClient,
 	}
 }
 

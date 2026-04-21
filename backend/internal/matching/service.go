@@ -63,12 +63,12 @@ type Service struct {
 	tvdbCached *tvdb.Client
 }
 
-func NewService(s store.Store, set *settings.Service, posterDir string) *Service {
+func NewService(s store.Store, set *settings.Service, posterDir string, httpClient *http.Client) *Service {
 	return &Service{
 		store:      s,
 		settings:   set,
 		posterDir:  posterDir,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: httpClient,
 	}
 }
 
@@ -993,7 +993,7 @@ func (s *Service) cachedTMDB(apiKey string) *tmdb.Client {
 	defer s.tmdbMu.Unlock()
 	if s.tmdbCached == nil || s.tmdbKey != apiKey {
 		s.tmdbKey = apiKey
-		s.tmdbCached = tmdb.NewClient(apiKey)
+		s.tmdbCached = tmdb.NewClient(apiKey, s.httpClient)
 	}
 	return s.tmdbCached
 }
@@ -1004,7 +1004,7 @@ func (s *Service) cachedTVDB(apiKey string) *tvdb.Client {
 	defer s.tvdbMu.Unlock()
 	if s.tvdbCached == nil || s.tvdbKey != apiKey {
 		s.tvdbKey = apiKey
-		s.tvdbCached = tvdb.NewClient(apiKey)
+		s.tvdbCached = tvdb.NewClient(apiKey, s.httpClient)
 	}
 	return s.tvdbCached
 }

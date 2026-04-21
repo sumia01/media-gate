@@ -1,6 +1,9 @@
 package opensubtitles
 
-import "sync"
+import (
+	"net/http"
+	"sync"
+)
 
 // SettingsGetter retrieves a setting value by key. Avoids circular import
 // with the settings package.
@@ -17,14 +20,15 @@ const (
 // Provider creates and caches an OpenSubtitles Client from settings.
 // Call Invalidate when OpenSubtitles settings change to force re-creation on next access.
 type Provider struct {
-	settings SettingsGetter
-	client   *Client
-	mu       sync.Mutex
+	settings   SettingsGetter
+	httpClient *http.Client
+	client     *Client
+	mu         sync.Mutex
 }
 
 // NewProvider creates a Provider that reads OpenSubtitles credentials from settings.
-func NewProvider(sg SettingsGetter) *Provider {
-	return &Provider{settings: sg}
+func NewProvider(sg SettingsGetter, httpClient *http.Client) *Provider {
+	return &Provider{settings: sg, httpClient: httpClient}
 }
 
 // Client returns a cached client, creating one from settings on first call.
@@ -49,7 +53,7 @@ func (p *Provider) Client() (*Client, error) {
 		return nil, err
 	}
 
-	p.client = NewClient(apiKey, username, password)
+	p.client = NewClient(apiKey, username, password, p.httpClient)
 	return p.client, nil
 }
 

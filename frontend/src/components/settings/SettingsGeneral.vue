@@ -17,6 +17,9 @@ const props = defineProps<{
   importerInterval: string
   metadataRefreshInterval: string
   updateCheckInterval: string
+  otelEnabled: boolean
+  otelEndpoint: string
+  otelService: string
 }>()
 
 defineEmits<{
@@ -29,6 +32,9 @@ defineEmits<{
   'update:importerInterval': [value: string]
   'update:metadataRefreshInterval': [value: string]
   'update:updateCheckInterval': [value: string]
+  'update:otelEnabled': [value: boolean]
+  'update:otelEndpoint': [value: string]
+  'update:otelService': [value: string]
   'dirty': [field: string]
   'testDiscord': []
   'disconnectDiscord': []
@@ -277,6 +283,50 @@ const discordConnected = computed(() => props.discordUrl !== '')
         <p class="text-sm text-gray-400">Self-update is not available.</p>
         <p class="text-[10px] text-gray-500 mt-1">Requires Linux, a non-dev build, and GitHub credentials (MEDIAGATE_GITHUB_TOKEN / MEDIAGATE_GITHUB_REPO).</p>
       </template>
+    </div>
+  </div>
+
+  <!-- Observability section -->
+  <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Observability</h2>
+
+  <div class="space-y-4">
+    <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+      <div class="flex items-center gap-3 mb-4">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            :checked="otelEnabled"
+            class="sr-only peer"
+            @change="$emit('update:otelEnabled', ($event.target as HTMLInputElement).checked); $emit('dirty', 'otelEnabled')"
+          />
+          <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
+        </label>
+        <span class="text-sm font-semibold text-gray-200">OpenTelemetry Tracing</span>
+      </div>
+      <p class="text-[10px] text-gray-500 mb-4">Send traces to an OTLP-compatible backend (e.g. SigNoz, Jaeger, Grafana Tempo). Changes take effect immediately.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">OTLP Endpoint</label>
+          <input
+            :value="otelEndpoint"
+            type="text"
+            placeholder="http://signoz:4318"
+            class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200 font-mono"
+            @input="$emit('update:otelEndpoint', ($event.target as HTMLInputElement).value); $emit('dirty', 'otelEndpoint')"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Service Name</label>
+          <input
+            :value="otelService"
+            type="text"
+            placeholder="media-gate"
+            class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            @input="$emit('update:otelService', ($event.target as HTMLInputElement).value); $emit('dirty', 'otelService')"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>

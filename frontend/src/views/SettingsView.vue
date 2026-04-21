@@ -96,11 +96,17 @@ const downloadInterval = ref('5')
 const importerInterval = ref('10')
 const metadataRefreshInterval = ref('21600')
 const updateCheckInterval = ref('21600')
+const otelEnabled = ref(false)
+const otelEndpoint = ref('')
+const otelService = ref('')
 const monitorIntervalDirty = ref(false)
 const downloadIntervalDirty = ref(false)
 const importerIntervalDirty = ref(false)
 const metadataRefreshIntervalDirty = ref(false)
 const updateCheckIntervalDirty = ref(false)
+const otelEnabledDirty = ref(false)
+const otelEndpointDirty = ref(false)
+const otelServiceDirty = ref(false)
 
 const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   tmdb: { ref: tmdbDirty },
@@ -129,6 +135,9 @@ const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   importerInterval: { ref: importerIntervalDirty },
   metadataRefreshInterval: { ref: metadataRefreshIntervalDirty },
   updateCheckInterval: { ref: updateCheckIntervalDirty },
+  otelEnabled: { ref: otelEnabledDirty },
+  otelEndpoint: { ref: otelEndpointDirty },
+  otelService: { ref: otelServiceDirty },
 }
 
 function markDirty(field: string) {
@@ -147,7 +156,8 @@ const anyDirty = computed(() =>
   osApiKeyDirty.value || osUsernameDirty.value || osPasswordDirty.value || osRateLimitDirty.value ||
   subtitleLanguagesDirty.value || subtitleAutoSearchDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
-  metadataRefreshIntervalDirty.value || updateCheckIntervalDirty.value
+  metadataRefreshIntervalDirty.value || updateCheckIntervalDirty.value ||
+  otelEnabledDirty.value || otelEndpointDirty.value || otelServiceDirty.value
 )
 
 function resetAllDirty() {
@@ -185,6 +195,9 @@ function applySettings(s: Record<string, unknown>) {
   importerInterval.value = String(s.workerImporterInterval ?? 10)
   metadataRefreshInterval.value = String(s.workerMetadataRefreshInterval ?? 21600)
   updateCheckInterval.value = String(s.workerUpdateCheckInterval ?? 21600)
+  otelEnabled.value = (s.otelEnabled as boolean) ?? false
+  otelEndpoint.value = (s.otelEndpoint as string) ?? ''
+  otelService.value = (s.otelService as string) ?? ''
   resetAllDirty()
 }
 
@@ -236,6 +249,9 @@ async function saveSettings() {
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
   if (metadataRefreshIntervalDirty.value) body.workerMetadataRefreshInterval = Number(metadataRefreshInterval.value)
   if (updateCheckIntervalDirty.value) body.workerUpdateCheckInterval = Number(updateCheckInterval.value)
+  if (otelEnabledDirty.value) body.otelEnabled = otelEnabled.value
+  if (otelEndpointDirty.value) body.otelEndpoint = otelEndpoint.value
+  if (otelServiceDirty.value) body.otelService = otelService.value
 
   if (Object.keys(body).length === 0) {
     saving.value = false
@@ -449,6 +465,9 @@ onMounted(fetchSettings)
         v-model:importer-interval="importerInterval"
         v-model:metadata-refresh-interval="metadataRefreshInterval"
         v-model:update-check-interval="updateCheckInterval"
+        v-model:otel-enabled="otelEnabled"
+        v-model:otel-endpoint="otelEndpoint"
+        v-model:otel-service="otelService"
         :discord-testing="discordTesting"
         :discord-test="discordTest"
         :saving="saving"

@@ -15,10 +15,10 @@ type Client struct {
 }
 
 // NewClient creates a Discord webhook client.
-func NewClient(webhookURL string) *Client {
+func NewClient(webhookURL string, httpClient *http.Client) *Client {
 	return &Client{
 		webhookURL: webhookURL,
-		http:       &http.Client{Timeout: 10 * time.Second},
+		http:       httpClient,
 	}
 }
 
@@ -135,8 +135,8 @@ func (c *Client) Send(embeds ...*Embed) error {
 }
 
 // TestConnection sends a test embed to verify the webhook is working.
-func TestConnection(webhookURL string) (bool, string, error) {
-	client := NewClient(webhookURL)
+func TestConnection(webhookURL string, httpClient *http.Client) (bool, string, error) {
+	client := NewClient(webhookURL, httpClient)
 	e := NewEmbed().
 		Author("MediaGate").
 		Description("Webhook connection test successful!").

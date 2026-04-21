@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
-	"time"
 )
 
 const defaultBaseURL = "https://api4.thetvdb.com/v4"
@@ -22,13 +21,11 @@ type Client struct {
 	mu         sync.Mutex
 }
 
-func NewClient(apiKey string) *Client {
+func NewClient(apiKey string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL: defaultBaseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		baseURL:    defaultBaseURL,
+		apiKey:     apiKey,
+		httpClient: httpClient,
 	}
 }
 

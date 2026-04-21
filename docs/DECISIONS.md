@@ -1515,3 +1515,19 @@ Changes:
 Token source: systemd `EnvironmentFile=-/etc/media-gate/github.conf` loads `MEDIAGATE_GITHUB_TOKEN` and `MEDIAGATE_GITHUB_REPO` into the process environment. The deploy script writes both `GH_*` (for the legacy shell update script) and `MEDIAGATE_*` prefixed vars.
 
 **Rationale**: In-process `syscall.Exec` is the simplest approach for a single-binary app on Linux — no external update agent, no systemd interaction, no privilege escalation. The binary can be replaced while running on Linux (inode semantics). Graceful degradation: when preconditions aren't met, the updater is nil, handlers return `enabled: false`, and the frontend shows "not available". No token in UI — GitHub credentials are infrastructure config, not user settings.
+
+---
+
+## ADR-103: Always-on OTel instrumentation with noop/real TracerProvider hot-swap
+**Date**: 2026-04-21
+**Status**: Accepted
+
+**Context**: Want OpenTelemetry tracing configurable from the Settings UI at runtime (enable/disable, change endpoint) without restarting the app. Previously OTel was env-var only and required a restart.
+
+**Decision**: All instrumentation is registered unconditionally at startup — `otelhttp.NewTransport` on the shared HTTP client, `otelhttp.NewHandler` on the server mux, GORM tracing plugin, and OTel spans in worker loops. A `telemetry.Manager` controls whether the global `TracerProvider` is a real OTLP exporter or `noop.NewTracerProvider()`. When OTel is disabled, the noop provider makes all instrumentation zero-cost. `Manager.Reconfigure()` hot-swaps the provider by shutting down the old one and calling `otel.SetTracerProvider()` — all existing instrumentation follows automatically.
+
+Configuration is stored in the settings DB (`otel_enabled`, `otel_endpoint`, `otel_service`). The settings change subscriber in main.go calls `Reconfigure()` when any OTel key changes. Env-var fallback was intentionally removed — OTel is purely UI-driven.
+
+A single shared `*http.Client` with `otelhttp.NewTransport` is injected into all integration clients (TMDB, TVDB, qBit, OpenSubtitles, Discord, FlareSolverr) replacing per-client HTTP client creation.
+
+**Rationale**: The noop provider pattern eliminates all conditional `if otelEnabled` logic — instrumentation is always wired up, the provider determines whether spans actually go anywhere. This is the idiomatic OTel Go approach and means zero code paths differ between enabled/disabled states. Shared HTTP client ensures consistent timeouts and tracing across all external calls.

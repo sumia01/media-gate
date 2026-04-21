@@ -8,6 +8,7 @@ import (
 	"github.com/sumia01/media-gate/internal/store"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 var _ store.Store = (*SQLiteStore)(nil)
@@ -23,6 +24,10 @@ func New(dbPath string) (*SQLiteStore, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
+	}
+
+	if err := db.Use(tracing.NewPlugin(tracing.WithoutMetrics())); err != nil {
+		return nil, fmt.Errorf("registering gorm opentelemetry plugin: %w", err)
 	}
 
 	sqlDB, _ := db.DB()

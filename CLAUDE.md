@@ -155,6 +155,8 @@ These are conventions and rules that cannot be derived from reading the code. Fo
   - `worker.Loop` — embed for background workers (download, importer, monitor, metarefresh)
   - `indexer.FilterByMediaProfile` — single source for profile-based torrent filtering
   - `matching.Service` caches TMDB/TVDB clients keyed by API key (re-creates on change)
+  - Shared `*http.Client` with `otelhttp.NewTransport` — created once in main.go, injected into all integration clients
+  - `telemetry.Manager` — hot-swaps global TracerProvider; all instrumentation is always registered (noop provider = zero cost when disabled)
 
 ### Security
 
