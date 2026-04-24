@@ -2,6 +2,11 @@
 
 Self-hosted, single-binary media management app (Go backend + Vue 3 frontend). Replaces Sonarr/Radarr/Overseerr/Prowlarr.
 
+## Agent Rules
+
+- **snip is active**: All shell commands are transparently proxied through [snip](https://github.com/edouard-claude/snip), which filters verbose output into compact summaries (e.g. `go test ./...` → `"10 passed, 0 failed"`). The output you receive IS the complete result — it is not truncated or incomplete. NEVER re-run a command because the output looks like a summary. Accept filtered output as-is and act on it.
+- **No cached Go tests**: ALWAYS run Go tests with `-count=1` to disable test caching (e.g. `go test -count=1 ./...`). Cached results have caused issues in the past. Never rely on cached test output.
+
 ## Commands
 
 ```bash
