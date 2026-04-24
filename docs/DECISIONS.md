@@ -1531,3 +1531,15 @@ Configuration is stored in the settings DB (`otel_enabled`, `otel_endpoint`, `ot
 A single shared `*http.Client` with `otelhttp.NewTransport` is injected into all integration clients (TMDB, TVDB, qBit, OpenSubtitles, Discord, FlareSolverr) replacing per-client HTTP client creation.
 
 **Rationale**: The noop provider pattern eliminates all conditional `if otelEnabled` logic — instrumentation is always wired up, the provider determines whether spans actually go anywhere. This is the idiomatic OTel Go approach and means zero code paths differ between enabled/disabled states. Shared HTTP client ensures consistent timeouts and tracing across all external calls.
+
+---
+
+## ADR-104: Indexer definition refresh worker migrated to worker.Loop
+**Date**: 2026-04-24
+**Status**: Accepted
+
+**Context**: The indexer definition refresh worker was the only periodic background worker not using the shared `worker.Loop` abstraction. It had a hand-rolled `time.NewTicker` goroutine with a hardcoded 24h interval, duplicating logic that `worker.Loop` already provides (startup delay, ticker, graceful stop). Unlike all other workers, its interval was not configurable via settings.
+
+**Decision**: Replaced the custom `RefreshWorker` implementation with `worker.Loop` composition. Added `KeyWorkerIndexerDefRefreshInterval` setting key (`worker_indexer_def_refresh_interval`) so the interval is configurable from the DB/UI like all other workers. `NewRefreshWorker` now accepts `*settings.Service` in addition to the existing parameters.
+
+**Rationale**: Consistency — all 6 periodic workers now use the same `worker.Loop` pattern. The migration gains OTel tracing on every tick, dynamic interval hot-reload on settings change, and eliminates ~30 lines of duplicated goroutine management code. The 24h default interval and 60s startup delay are preserved.

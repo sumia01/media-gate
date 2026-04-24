@@ -29,14 +29,14 @@ const (
 	KeyTMDBRateLimit         = "tmdb_rate_limit"
 	KeyTVDBRateLimit         = "tvdb_rate_limit"
 	KeyQBitURL               = "qbit_url"
-	KeyQBitUsername           = "qbit_username"
-	KeyQBitPassword           = "qbit_password"
-	KeyQBitDownloadPath       = "qbit_download_path"
-	KeyQBitSavePath           = "qbit_save_path"
-	KeyQBitCategory           = "qbit_category"
-	KeyMonitorSeasonPackPref  = "monitor_season_pack_preference"
+	KeyQBitUsername          = "qbit_username"
+	KeyQBitPassword          = "qbit_password"
+	KeyQBitDownloadPath      = "qbit_download_path"
+	KeyQBitSavePath          = "qbit_save_path"
+	KeyQBitCategory          = "qbit_category"
+	KeyMonitorSeasonPackPref = "monitor_season_pack_preference"
 
-	KeyFlareSolverrURL     = "flaresolverr_url"
+	KeyFlareSolverrURL   = "flaresolverr_url"
 	KeyDiscordWebhookURL = "discord_webhook_url"
 
 	KeyWorkerMonitorInterval         = "worker_monitor_interval"
@@ -55,7 +55,8 @@ const (
 	KeySubtitleLanguages      = "subtitle_languages"
 	KeySubtitleAutoSearch     = "subtitle_auto_search"
 
-	KeyWorkerUpdateCheckInterval = "worker_update_check_interval"
+	KeyWorkerUpdateCheckInterval       = "worker_update_check_interval"
+	KeyWorkerIndexerDefRefreshInterval = "worker_indexer_def_refresh_interval"
 
 	KeyLibraryBasePath     = "library_basepath"
 	KeyOnboardingStep      = "onboarding_step"
@@ -70,9 +71,9 @@ var sensitiveKeys = map[string]bool{
 	KeyTMDBApiKey:            true,
 	KeyTVDBApiKey:            true,
 	KeyQBitPassword:          true,
-	KeyDiscordWebhookURL:      true,
-	KeyOpenSubtitlesApiKey:    true,
-	KeyOpenSubtitlesPassword:  true,
+	KeyDiscordWebhookURL:     true,
+	KeyOpenSubtitlesApiKey:   true,
+	KeyOpenSubtitlesPassword: true,
 }
 
 func isSensitiveKey(key string) bool {
