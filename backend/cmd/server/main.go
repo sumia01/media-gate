@@ -158,7 +158,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	defRefresher := indexer.NewRefreshWorker(indexerSvc, defCacheDir)
+	defRefresher := indexer.NewRefreshWorker(indexerSvc, defCacheDir, settingsSvc)
 	defRefresher.Start()
 	defer defRefresher.Stop()
 

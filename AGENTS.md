@@ -148,7 +148,7 @@ These are conventions and rules that cannot be derived from reading the code. Fo
 - **Event bus + SSE**: `eventbus` dispatches typed events via Go channels. `sse` broker streams to frontends. To avoid circular imports, some event publishers are injected via setter methods on services.
 - **Shared singletons — don't duplicate**:
   - `qbittorrent.Provider` — single source for qBit client creation (lazy-cached, settings-invalidated)
-  - `worker.Loop` — embed for background workers (download, importer, monitor, metarefresh)
+  - `worker.Loop` — embed for background workers (download, importer, monitor, metarefresh, indexer def refresh, updater)
   - `indexer.FilterByMediaProfile` — single source for profile-based torrent filtering
   - `matching.Service` caches TMDB/TVDB clients keyed by API key (re-creates on change)
   - Shared `*http.Client` with `otelhttp.NewTransport` — created once in main.go, injected into all integration clients

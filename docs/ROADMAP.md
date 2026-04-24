@@ -239,6 +239,7 @@
 - [x] Shared `qbittorrent.Provider` replacing 4 duplicate `getClient()` implementations, with settings invalidation
 - [x] Generic `worker.Loop` replacing 3 identical Start/Stop/run patterns in download/importer/monitor
 - [x] `indexer.FilterByMediaProfile` replacing 2 duplicate unmarshal+filter callsites
+- [x] Indexer definition refresh worker migrated from hand-rolled ticker to `worker.Loop` (now all 6 periodic workers use the same pattern)
 - [x] Unified discover handlers (`fetchDiscover` helper + `toDiscoverItem` converter) replacing 3+3 duplicates
 - [x] Shared `dateutil.ParseYear` replacing 2 divergent implementations
 - [x] Cached TMDB/TVDB clients in matching.Service replacing 6 inline `NewClient` calls
