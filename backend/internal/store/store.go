@@ -70,6 +70,7 @@ type Store interface {
 	// Episode CRUD
 	CreateEpisode(episode *Episode) error
 	ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, error)
+	GetEpisodeByNumber(mediaItemID uint, seasonNumber, episodeNumber int) (*Episode, error)
 	DeleteEpisodesByMediaItem(mediaItemID uint) error
 
 	GetSetting(key string) (*Setting, error)

@@ -14,6 +14,14 @@ func (s *SQLiteStore) ListEpisodesByMediaItem(mediaItemID uint) ([]store.Episode
 	return episodes, nil
 }
 
+func (s *SQLiteStore) GetEpisodeByNumber(mediaItemID uint, seasonNumber, episodeNumber int) (*store.Episode, error) {
+	var ep store.Episode
+	if err := s.db.Where("media_item_id = ? AND season_number = ? AND episode_number = ?", mediaItemID, seasonNumber, episodeNumber).First(&ep).Error; err != nil {
+		return nil, err
+	}
+	return &ep, nil
+}
+
 func (s *SQLiteStore) DeleteEpisodesByMediaItem(mediaItemID uint) error {
 	return s.db.Where("media_item_id = ?", mediaItemID).Delete(&store.Episode{}).Error
 }

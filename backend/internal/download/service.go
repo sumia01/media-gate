@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
+	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/settings"
@@ -281,6 +282,7 @@ func (s *Service) Create(dl *store.Download) error {
 	if err := validateURLScheme(dl.DownloadURL); err != nil {
 		return err
 	}
+	s.resolveEpisodeID(dl)
 	if err := s.store.CreateDownload(dl); err != nil {
 		return err
 	}
@@ -289,6 +291,28 @@ func (s *Service) Create(dl *store.Download) error {
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: dl.Status,
 	})
 	return nil
+}
+
+// resolveEpisodeID attempts to fill in EpisodeID when not provided by parsing the
+// download title. This prevents single-episode downloads from being misclassified
+// as season packs (which would block the entire season in the monitor).
+func (s *Service) resolveEpisodeID(dl *store.Download) {
+	if dl.EpisodeID != nil || dl.MediaItemID == 0 || dl.Title == "" {
+		return
+	}
+	parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+	if parsed.Season == nil || parsed.Episode == nil {
+		return // Can't determine episode, or it's actually a season pack
+	}
+	ep, err := s.store.GetEpisodeByNumber(dl.MediaItemID, *parsed.Season, *parsed.Episode)
+	if err != nil {
+		return // Episode not found in DB — best-effort, no error
+	}
+	dl.EpisodeID = &ep.ID
+	if dl.SeasonNumber == nil {
+		sn := *parsed.Season
+		dl.SeasonNumber = &sn
+	}
 }
 
 // UpdateStatus sets a download's status and resets retry state when going back to "pending".
