@@ -3,6 +3,7 @@ media-gate
 /server
 *.exe
 *.db
+*.db:*
 backend/tmp/
 dist/
 
@@ -24,6 +25,7 @@ frontend/src/api/schema.d.ts
 .plans/
 .claude/
 playground.md
+.opencode.json
 
 # Environment
 .env

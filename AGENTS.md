@@ -97,6 +97,7 @@ Add new migrations as `func(*sql.DB) error` in `store/sqlite/migrations.go`. Sch
 - **YAML escape sanitization**: Prowlarr YAML definitions have escapes (`\/`, `\d`) that `yaml.v3` rejects. `SanitizeYAML` preprocesses before parsing. `remote.go` uses regex fallback for ID extraction.
 - **Two download paths**: `qbit_download_path` = local mount (import/sync/hardlink). `qbit_save_path` = optional qBittorrent override when its NAS mount differs. When empty, falls back to `qbit_download_path`.
 - **Episode monitoring hierarchy**: `EpisodeMonitor` → `SeasonMonitor` → not monitored. Keyed by `(MediaItemID, SeasonNumber, EpisodeNumber)` — NOT by `Episode.ID` — survives re-match. Toggling a season deletes episode overrides. Disabling item monitoring clears all episode monitors.
+- **Download season pack detection**: `buildDownloadMap` in the monitor uses title parsing (not just `episode_id == nil`) to determine if a download is a season pack. UI-created downloads may have `season_number` set without `episode_id` even for single episodes — relying solely on NULL `episode_id` would block the entire season.
 
 ## Configuration
 

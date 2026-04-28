@@ -505,8 +505,13 @@ func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 			m[downloadKey{episodeID: *dl.EpisodeID}] = true
 		}
 		if dl.SeasonNumber != nil && dl.EpisodeID == nil {
-			// Season pack download
-			m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
+			// Only treat as season pack if the title actually parses as one.
+			// Downloads created via the UI may have season_number set without
+			// episode_id even for single-episode torrents.
+			parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+			if parsed.Season != nil && parsed.Episode == nil {
+				m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
+			}
 		}
 	}
 	return m
