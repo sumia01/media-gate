@@ -457,6 +457,7 @@
 - [x] Cardigann `urlencode` filter missing — text field filters (e.g. API key encoding in download URLs) silently skipped
 - [x] Cardigann `search.headers` not applied to download requests — indexers using header-based auth (e.g. Milkie `x-milkie-auth`) fail with 401 on torrent fetch
 - [x] Cardigann text field filters not applied after template rendering — filters on `.Text` fields with `.Result` references were never executed
+- [x] Monitor `buildDownloadMap` misclassifies single-episode downloads (missing `episode_id`) as season packs — blocks entire season from auto-download
 
 ---
 

@@ -1543,3 +1543,15 @@ A single shared `*http.Client` with `otelhttp.NewTransport` is injected into all
 **Decision**: Replaced the custom `RefreshWorker` implementation with `worker.Loop` composition. Added `KeyWorkerIndexerDefRefreshInterval` setting key (`worker_indexer_def_refresh_interval`) so the interval is configurable from the DB/UI like all other workers. `NewRefreshWorker` now accepts `*settings.Service` in addition to the existing parameters.
 
 **Rationale**: Consistency — all 6 periodic workers now use the same `worker.Loop` pattern. The migration gains OTel tracing on every tick, dynamic interval hot-reload on settings change, and eliminates ~30 lines of duplicated goroutine management code. The 24h default interval and 60s startup delay are preserved.
+
+---
+
+## ADR-105: Title-based season pack detection in monitor download map
+**Date**: 2026-04-28
+**Status**: Accepted
+
+**Context**: The monitor worker's `buildDownloadMap` treated any download with `season_number != nil && episode_id == nil` as a season pack, blocking all episodes in that season from auto-download. Downloads created via the UI (manual grab from IndexerSearchModal) set `season_number` but not `episode_id` even for single-episode torrents — the frontend passes the season context but doesn't resolve which episode the torrent maps to. This caused the monitor to permanently skip seasons that had a single completed episode download without an `episode_id` link.
+
+**Decision**: `buildDownloadMap` now parses the download title with `fileparse.ParseTorrentSeasonEpisode` before classifying a download as a season pack. Only downloads whose title has a season number but NO episode number (e.g., `Show.S04.1080p...`) are treated as blocking all episodes in that season. Single-episode downloads with missing `episode_id` (e.g., `Show.S04E01.1080p...`) are no longer misclassified as season packs.
+
+**Rationale**: The title-based check uses the same parsing logic already used elsewhere in the monitor (line 290) to decide between season pack and episode download creation. This makes the detection consistent across create and read paths. The performance cost of parsing titles in `buildDownloadMap` is negligible — downloads per media item are typically single-digit.
