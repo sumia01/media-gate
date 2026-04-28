@@ -82,7 +82,10 @@ func (s *settingsStubStore) DeleteEpisodeMonitorsByMediaItem(uint) error      { 
 
 func (s *settingsStubStore) CreateEpisode(*store.Episode) error                    { return nil }
 func (s *settingsStubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
-func (s *settingsStubStore) DeleteEpisodesByMediaItem(uint) error                  { return nil }
+func (s *settingsStubStore) GetEpisodeByNumber(uint, int, int) (*store.Episode, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) DeleteEpisodesByMediaItem(uint) error { return nil }
 
 func (s *settingsStubStore) GetSetting(key string) (*store.Setting, error) {
 	if v, ok := s.settings[key]; ok {

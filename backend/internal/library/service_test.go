@@ -66,7 +66,10 @@ func (s *stubStore) UpdateSeasonMonitor(*store.SeasonMonitor) error             
 
 func (s *stubStore) CreateEpisode(*store.Episode) error                    { return nil }
 func (s *stubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
-func (s *stubStore) DeleteEpisodesByMediaItem(uint) error                  { return nil }
+func (s *stubStore) GetEpisodeByNumber(uint, int, int) (*store.Episode, error) {
+	return nil, nil
+}
+func (s *stubStore) DeleteEpisodesByMediaItem(uint) error { return nil }
 
 func (s *stubStore) DeleteEpisodeMonitorsByMediaItem(uint) error                        { return nil }
 func (s *stubStore) DeleteEpisodeMonitorsBySeason(uint, int) error                      { return nil }
