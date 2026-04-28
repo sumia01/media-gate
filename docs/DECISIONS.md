@@ -1555,3 +1555,21 @@ A single shared `*http.Client` with `otelhttp.NewTransport` is injected into all
 **Decision**: `buildDownloadMap` now parses the download title with `fileparse.ParseTorrentSeasonEpisode` before classifying a download as a season pack. Only downloads whose title has a season number but NO episode number (e.g., `Show.S04.1080p...`) are treated as blocking all episodes in that season. Single-episode downloads with missing `episode_id` (e.g., `Show.S04E01.1080p...`) are no longer misclassified as season packs.
 
 **Rationale**: The title-based check uses the same parsing logic already used elsewhere in the monitor (line 290) to decide between season pack and episode download creation. This makes the detection consistent across create and read paths. The performance cost of parsing titles in `buildDownloadMap` is negligible — downloads per media item are typically single-digit.
+
+---
+
+## ADR-106: Auto-resolve episode_id on download creation
+**Date**: 2026-04-28
+**Status**: Accepted
+
+**Context**: Downloads created via the UI (IndexerSearchModal) pass `season_number` but not `episode_id` for single-episode torrents because the frontend doesn't resolve which episode the torrent maps to. This caused ADR-105's bug (season pack misclassification) and also incorrect episode download status display in the UI (a single-episode download without `episode_id` cascades status to all episodes in the season via ADR-037's resolution order).
+
+**Decision**: `download.Service.Create` now calls `resolveEpisodeID` before persisting. The method:
+1. Skips if `episode_id` is already set, or `media_item_id`/`title` are empty
+2. Parses the title with `fileparse.ParseTorrentSeasonEpisode`
+3. If both season and episode are detected (i.e., NOT a season pack), looks up the episode via new `Store.GetEpisodeByNumber(mediaItemID, season, episode)`
+4. If found, sets `episode_id` on the download record
+
+Added `GetEpisodeByNumber` to the `Store` interface — a single-row lookup by the `(media_item_id, season_number, episode_number)` unique index.
+
+**Rationale**: Prevention over correction. Fixing data at the creation point ensures all downstream consumers (monitor `buildDownloadMap`, episode status computation, UI display) work correctly without needing defensive title-parsing workarounds. The `buildDownloadMap` fix from ADR-105 remains as a safety net for any pre-existing records. The resolution is best-effort (silently skipped on parse failure or missing episode) — it never blocks download creation.
