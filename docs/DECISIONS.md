@@ -1573,3 +1573,15 @@ A single shared `*http.Client` with `otelhttp.NewTransport` is injected into all
 Added `GetEpisodeByNumber` to the `Store` interface — a single-row lookup by the `(media_item_id, season_number, episode_number)` unique index.
 
 **Rationale**: Prevention over correction. Fixing data at the creation point ensures all downstream consumers (monitor `buildDownloadMap`, episode status computation, UI display) work correctly without needing defensive title-parsing workarounds. The `buildDownloadMap` fix from ADR-105 remains as a safety net for any pre-existing records. The resolution is best-effort (silently skipped on parse failure or missing episode) — it never blocks download creation.
+
+---
+
+## ADR-107: Database export endpoint as manual handler
+**Date**: 2026-04-29
+**Status**: Accepted
+
+**Context**: Users need a way to download the SQLite database file for backup and debugging (e.g., letting an AI assistant inspect the live DB structure). The endpoint serves a binary file, not JSON.
+
+**Decision**: Add `GET /api/v1/settings/database/export` as a manual HTTP handler (not in OpenAPI spec) — same pattern as the poster and SSE endpoints. The handler opens the DB file by path, serves it via `http.ServeContent` with `Content-Disposition: attachment` and a date-stamped filename (`media-gate-YYYY-MM-DD.db`). The `dbPath` is passed to the `Handlers` struct at construction time from `cfg.DB.Path`. Frontend uses the shared `authFetch` wrapper (Bearer token + auto-refresh) to trigger the download.
+
+**Rationale**: Binary file responses don't fit the strict server interface (which expects typed JSON responses). The manual handler pattern is already established for poster serving. No OpenAPI codegen needed — keeps the change minimal. Standard auth is sufficient since the app is single-user; the DB file contains no secrets that aren't already accessible to the authenticated user. Serving the live file (vs. `VACUUM INTO`) is acceptable for debugging — SQLite WAL mode ensures concurrent read safety.

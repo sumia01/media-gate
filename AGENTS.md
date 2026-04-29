@@ -53,7 +53,7 @@ Vite dev server proxies `/api` to `http://localhost:8080` (the Go backend).
 
 ### Backend `internal/` packages
 
-Handlers in `api/v1/handlers_*.go` (auth, discover, download, indexer, library, media, profile, settings, subtitle, update, watched). Each is a thin HTTP adapter — business logic lives in its own service package.
+Handlers in `api/v1/handlers_*.go` (auth, database, discover, download, indexer, library, media, profile, settings, subtitle, update, watched). Each is a thin HTTP adapter — business logic lives in its own service package.
 
 Key service packages: `auth`, `library`, `sync`, `matching`, `indexer`, `download`, `importer`, `monitor`, `metarefresh`, `media`, `subtitle`, `notification`, `settings`, `updater`.
 

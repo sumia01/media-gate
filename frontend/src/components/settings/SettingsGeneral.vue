@@ -1,8 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+import { authFetch } from '@/api/client'
 
 const { updateEnabled, updateAvailable, latestVersion, releaseNotes, currentVersion, checking, applying, checkNow, applyUpdate } = useUpdateCheck()
+
+const downloading = ref(false)
+
+async function exportDatabase() {
+  downloading.value = true
+  try {
+    const res = await authFetch('/api/v1/settings/database/export')
+    if (!res.ok) throw new Error('Download failed')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] ?? 'media-gate.db'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } finally {
+    downloading.value = false
+  }
+}
 
 const props = defineProps<{
   watchedListMode: string
@@ -326,6 +348,27 @@ const discordConnected = computed(() => props.discordUrl !== '')
             @input="$emit('update:otelService', ($event.target as HTMLInputElement).value); $emit('dirty', 'otelService')"
           />
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Database section -->
+  <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Database</h2>
+
+  <div class="space-y-4">
+    <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-sm font-semibold text-gray-200">Export Database</span>
+          <p class="text-[10px] text-gray-500 mt-1">Download a copy of the SQLite database file for backup or debugging.</p>
+        </div>
+        <button
+          class="px-4 py-2 rounded-lg border border-violet-800/30 text-sm text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="downloading"
+          @click="exportDatabase"
+        >
+          {{ downloading ? 'Downloading...' : 'Download .db' }}
+        </button>
       </div>
     </div>
   </div>

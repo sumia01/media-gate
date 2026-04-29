@@ -54,4 +54,5 @@ const authFetch: typeof fetch = async (input, init) => {
 
 const client = createClient<paths>({ baseUrl: '/api/v1', fetch: authFetch })
 
+export { authFetch }
 export default client
