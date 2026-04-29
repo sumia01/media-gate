@@ -182,7 +182,7 @@ func main() {
 		}
 	}
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, version)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, version)
 
 	// Invalidate cached clients when connection settings change.
 	go func() {
@@ -227,6 +227,9 @@ func main() {
 
 	// Poster endpoint — raw binary, not part of generated strict server.
 	apiMux.HandleFunc("GET /api/v1/media/{id}/poster", handlers.PosterHandler())
+
+	// Database export — serves the SQLite file as download.
+	apiMux.HandleFunc("GET /api/v1/settings/database/export", handlers.DatabaseExportHandler())
 
 	// Rate-limited auth handlers (10 requests per minute per IP).
 	authRL := auth.RateLimitMiddleware(10, time.Minute)

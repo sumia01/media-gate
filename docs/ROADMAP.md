@@ -451,6 +451,12 @@
 - [x] Config — `MEDIAGATE_GITHUB_TOKEN` / `MEDIAGATE_GITHUB_REPO` via systemd EnvironmentFile
 - [x] Deploy script — github.conf writes both `GH_*` and `MEDIAGATE_*` prefixed vars, systemd EnvironmentFile added
 
+## Phase 8.5: Database export ✅
+→ See ADR-107
+- [x] `GET /api/v1/settings/database/export` manual handler — serves SQLite file as attachment with date-stamped filename
+- [x] `dbPath` field on Handlers struct, passed from `cfg.DB.Path` at startup
+- [x] Frontend: "Database" section in Settings General tab with "Download .db" button using `authFetch`
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
