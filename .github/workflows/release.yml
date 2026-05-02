@@ -41,7 +41,7 @@ jobs:
       - name: Go generate
         working-directory: backend
         run: |
-          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
           go generate ./...
 
       # ── Cross-compile ─────────────────────────────────────────

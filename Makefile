@@ -7,7 +7,7 @@ DIST_DIR := dist
 ## tools: Install required Go dev tools (air, oapi-codegen)
 tools:
 	cd backend && go install github.com/air-verse/air@latest
-	cd backend && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	cd backend && go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
 
 ## generate: Run oapi-codegen (Go) and openapi-typescript (frontend) code generation
 generate:
