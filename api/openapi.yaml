@@ -2067,6 +2067,118 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConnectionTestResult"
 
+  /settings/test-plex:
+    post:
+      operationId: testPlexConnection
+      summary: Test Plex Media Server connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlexTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  /plex/sections:
+    get:
+      operationId: listPlexSections
+      summary: List Plex library sections
+      responses:
+        "200":
+          description: Plex library sections
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - sections
+                properties:
+                  sections:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlexSection"
+        "502":
+          description: Plex server unreachable or misconfigured
+
+  /plex/mappings:
+    get:
+      operationId: listPlexMappings
+      summary: List library-to-Plex section mappings
+      responses:
+        "200":
+          description: Library mappings with auto-match info
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - mappings
+                properties:
+                  mappings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlexMapping"
+    put:
+      operationId: updatePlexMappings
+      summary: Save library-to-Plex section mappings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mappings
+              properties:
+                mappings:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - libraryId
+                      - plexSectionId
+                    properties:
+                      libraryId:
+                        type: integer
+                      plexSectionId:
+                        type: string
+      responses:
+        "200":
+          description: Mappings saved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - mappings
+                properties:
+                  mappings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlexMapping"
+
+  /plex/refresh/{sectionId}:
+    post:
+      operationId: refreshPlexSection
+      summary: Trigger a Plex library scan on a specific section
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Refresh triggered successfully
+        "502":
+          description: Plex server unreachable or misconfigured
+
 components:
   schemas:
     HealthResponse:
@@ -2902,6 +3014,12 @@ components:
         otelService:
           type: string
           description: OpenTelemetry service name
+        plexUrl:
+          type: string
+          description: Plex Media Server URL (e.g. http://192.168.1.10:32400)
+        plexToken:
+          type: string
+          description: Plex authentication token
 
     ConnectionTestRequest:
       type: object
@@ -3637,3 +3755,57 @@ components:
           type: boolean
         message:
           type: string
+
+    PlexTestRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        token:
+          type: string
+
+    PlexSection:
+      type: object
+      required:
+        - id
+        - title
+        - type
+        - locations
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [movie, show]
+        locations:
+          type: array
+          items:
+            type: string
+
+    PlexMapping:
+      type: object
+      required:
+        - libraryId
+        - libraryName
+        - libraryPath
+        - libraryType
+        - plexSectionId
+        - plexSectionTitle
+        - autoMatched
+      properties:
+        libraryId:
+          type: integer
+        libraryName:
+          type: string
+        libraryPath:
+          type: string
+        libraryType:
+          type: string
+        plexSectionId:
+          type: string
+        plexSectionTitle:
+          type: string
+        autoMatched:
+          type: boolean

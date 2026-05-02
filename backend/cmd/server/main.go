@@ -22,6 +22,7 @@ import (
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
+	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -31,6 +32,7 @@ import (
 	"github.com/sumia01/media-gate/internal/metarefresh"
 	"github.com/sumia01/media-gate/internal/monitor"
 	"github.com/sumia01/media-gate/internal/notification"
+	"github.com/sumia01/media-gate/internal/plexrefresh"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -135,11 +137,18 @@ func main() {
 	osAdapter := subtitle.NewOpenSubtitlesProvider(osProvider)
 	subtitleSvc := subtitle.NewService(db, settingsSvc, bus, []subtitle.Provider{osAdapter})
 
+	// Plex integration provider.
+	plexProvider := plex.NewProvider(settingsSvc, settings.KeyPlexURL, settings.KeyPlexToken, httpClient)
+
 	// Notification service (must subscribe before bus.Start).
 	notification.NewService(db, settingsSvc, bus, httpClient)
 
 	// Auto-subtitle search on import (must subscribe before bus.Start).
 	bus.Subscribe(eventbus.ImportCompleted, subtitleSvc.HandleImportCompleted)
+
+	// Plex library refresh on import (must subscribe before bus.Start).
+	plexRefreshSvc := plexrefresh.NewService(plexProvider, db, slog.Default())
+	bus.Subscribe(eventbus.ImportCompleted, plexRefreshSvc.HandleImportCompleted)
 
 	bus.Start()
 	defer bus.Stop()
@@ -182,7 +191,7 @@ func main() {
 		}
 	}
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, version)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, version)
 
 	// Invalidate cached clients when connection settings change.
 	go func() {
@@ -193,6 +202,9 @@ func main() {
 			}
 			if key == settings.KeyOpenSubtitlesApiKey || key == settings.KeyOpenSubtitlesUsername || key == settings.KeyOpenSubtitlesPassword {
 				osProvider.Invalidate()
+			}
+			if key == settings.KeyPlexURL || key == settings.KeyPlexToken {
+				plexProvider.Invalidate()
 			}
 			if key == settings.KeyOTelEnabled || key == settings.KeyOTelEndpoint || key == settings.KeyOTelService {
 				enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"

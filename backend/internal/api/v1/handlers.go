@@ -12,6 +12,7 @@ import (
 	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
 	"github.com/sumia01/media-gate/internal/matching"
@@ -39,6 +40,7 @@ type Handlers struct {
 	downloadSvc   *download.Service
 	subtitleSvc   *subtitle.Service
 	updaterSvc    *updater.Service
+	plexProvider  *plex.Provider
 	posterDir     string
 	dbPath        string
 	secureCookies bool
@@ -46,8 +48,8 @@ type Handlers struct {
 	version       string
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, version string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, version: version}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, plexProvider *plex.Provider, version string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, plexProvider: plexProvider, version: version}
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

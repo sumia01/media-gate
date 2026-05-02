@@ -296,6 +296,10 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			s.OtelEndpoint = &v
 		case settings.KeyOTelService:
 			s.OtelService = &v
+		case settings.KeyPlexURL:
+			s.PlexUrl = &v
+		case settings.KeyPlexToken:
+			s.PlexToken = &v
 		}
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
@@ -428,6 +432,12 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.OtelService != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelService, Value: *s.OtelService})
+	}
+	if s.PlexUrl != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyPlexURL, Value: *s.PlexUrl})
+	}
+	if s.PlexToken != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyPlexToken, Value: *s.PlexToken})
 	}
 	return kvs
 }

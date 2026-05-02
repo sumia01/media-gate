@@ -16,6 +16,7 @@ import (
 	"github.com/sumia01/media-gate/internal/integration/discord"
 	"github.com/sumia01/media-gate/internal/integration/flaresolverr"
 	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
+	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/integration/tvdb"
@@ -65,6 +66,9 @@ const (
 	KeyOTelEnabled  = "otel_enabled"
 	KeyOTelEndpoint = "otel_endpoint"
 	KeyOTelService  = "otel_service"
+
+	KeyPlexURL   = "plex_url"
+	KeyPlexToken = "plex_token"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -74,6 +78,7 @@ var sensitiveKeys = map[string]bool{
 	KeyDiscordWebhookURL:     true,
 	KeyOpenSubtitlesApiKey:   true,
 	KeyOpenSubtitlesPassword: true,
+	KeyPlexToken:             true,
 }
 
 func isSensitiveKey(key string) bool {
@@ -154,8 +159,8 @@ func (s *Service) List() ([]store.Setting, error) {
 	}
 	filtered := settings[:0]
 	for i := range settings {
-		// Indexer secrets are internal — not shown on the settings page.
-		if strings.HasPrefix(settings[i].Key, "indexer:") {
+		// Indexer secrets and plex mappings are internal — not shown on the settings page.
+		if strings.HasPrefix(settings[i].Key, "indexer:") || strings.HasPrefix(settings[i].Key, "plex:mapping:") {
 			continue
 		}
 		if settings[i].Sensitive && s.cipher != nil {
@@ -178,7 +183,7 @@ func (s *Service) Update(items []KeyValue) error {
 				return err
 			}
 		}
-		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL) && item.Value != "" {
+		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL || item.Key == KeyPlexURL) && item.Value != "" {
 			if err := validateURL(item.Value); err != nil {
 				return fmt.Errorf("invalid URL for %s: %w", item.Key, err)
 			}
@@ -343,6 +348,25 @@ func (s *Service) TestOpenSubtitles(apiKey, username, password *string) (bool, s
 		return false, "OpenSubtitles password not configured", nil
 	}
 	client := opensubtitles.NewClient(key, user, pass, s.httpClient)
+	if err := client.TestConnection(); err != nil {
+		return false, fmt.Sprintf("Connection failed: %v", err), nil
+	}
+	return true, "Connection successful", nil
+}
+
+func (s *Service) TestPlex(urlVal, token *string) (bool, string, error) {
+	u, err := s.resolveKey(urlVal, KeyPlexURL)
+	if err != nil || u == "" {
+		return false, "Plex URL not configured", nil
+	}
+	t, err := s.resolveKey(token, KeyPlexToken)
+	if err != nil || t == "" {
+		return false, "Plex token not configured", nil
+	}
+	if err := validateURL(u); err != nil {
+		return false, fmt.Sprintf("Invalid URL: %v", err), nil
+	}
+	client := plex.NewClient(u, t, s.httpClient)
 	if err := client.TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}

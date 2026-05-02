@@ -24,6 +24,11 @@ frontend/src/api/schema.d.ts
 # Plans
 .plans/
 .claude/
+.agents/
+.opencode/
+skills-lock.json
+CLAUDE.md
+AGENTS.md
 playground.md
 opencode.json
 
