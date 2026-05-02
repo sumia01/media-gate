@@ -12,19 +12,162 @@ Go backend, Vue 3 frontend, one executable. No containers required, no runtime d
 
 The *arr stack works, but running four separate services with their own databases, update cycles, and failure modes felt like overkill for a homelab. MediaGate consolidates all of that into a single process with a unified UI and one SQLite database.
 
-## What it does
+## Features
 
-- **Library management** — scan directories, organize media, browse folders with path-traversal protection
-- **Metadata matching** — TMDB & TVDB integration with auto-match and manual override
-- **Indexer engine** — Cardigann-compatible YAML definitions, remote Prowlarr/Indexers sync, multi-indexer parallel search
-- **Download orchestration** — qBittorrent integration, persistent download records, retry with exponential backoff, seeding rules
-- **Auto-import** — hardlink/copy to library, release folder isolation, companion file handling, post-import resync
-- **Monitor / auto-grab** — background worker watches for releases matching quality profiles, season pack preference
-- **Real-time UI** — event bus + Server-Sent Events replace polling for downloads, imports, job status
-- **Discover page** — trending/popular from TMDB, recently added from your libraries
-- **Watched/seen tracking** — mark media as watched, seen badges across the UI
-- **Setup wizard** — 6-step browser-based onboarding on first launch
-- **Security** — AES-256-GCM at-rest encryption, JWT + refresh tokens, rate limiting, SSE ticket auth
+### Library Management
+
+- Create movie and series libraries mapped to filesystem directories
+- Automatic directory scanning with video file detection (resolution, source type, season/episode parsing)
+- Series folder grouping ("Show Name Season N" folders merged under one title)
+- Media item status tracking: `new`, `requested`, `partial`, `available`, `missing`
+- Re-sync individual items or entire libraries as async jobs with progress tracking
+- Path traversal protection enforced at all filesystem access points
+
+### Metadata Matching
+
+- Automatic matching against TMDB and TVDB with confidence scoring
+- Manual search and override when auto-match is wrong
+- Full metadata: title, overview, genres, year, rating, runtime, release date, IMDB ID, trailer URL, cast/crew
+- Complete episode data: season/episode structure, air dates, runtimes
+- Poster downloading and local caching
+- Library-wide batch matching with progress tracking
+- Configurable primary metadata source (TMDB or TVDB)
+
+### Discover & Search
+
+- Global search across TMDB/TVDB by query and media type
+- Discovery feeds: trending, popular movies, popular series
+- Recently added feed from local libraries
+- Full external media preview before adding to a library
+- Duplicate detection: results indicate if media already exists locally
+
+### Indexer Engine
+
+- Cardigann-compatible YAML indexer definitions (700+ torrent sites via Prowlarr/Indexers)
+- Background worker refreshes definitions from GitHub every 24 hours
+- YAML sanitization for escape sequences that parsers reject
+- Multi-indexer parallel search with category and result limit filtering
+- Search modes: general, TV search (season/episode), movie search (IMDB ID)
+- Per-indexer priority, seed ratio/time requirements
+- FlareSolverr integration for Cloudflare-protected sites
+- Connection testing per indexer
+
+### Media Profiles (Quality Filtering)
+
+- Define preferred resolutions, languages, source types (BluRay, WEB-DL, etc.)
+- Exclude tags to filter unwanted releases (global + per-profile)
+- Season pack preference: `prefer_packs`, `prefer_episodes`, `packs_only`
+- Assignable per-library or per-media-item (item overrides library)
+- Profile test search: run live queries against indexers to preview filtering results
+
+### Download Management
+
+- Full torrent lifecycle: `pending` → `downloading` → `downloaded` → `importing` → `seeding` → `completed`
+- Background worker polls qBittorrent every 5 seconds (configurable)
+- Automatic retry with exponential backoff (30s → 2m → 10m → 30m → 1h, up to 5 retries)
+- qBittorrent health check: skips sending if unreachable to avoid burning retries
+- Real-time progress, speed, and ETA tracking
+- Inspect torrent file list per download
+- Dual path support: local mount path vs qBittorrent NAS mount override
+- qBittorrent category support
+
+### Auto-Import
+
+- Hardlinks completed downloads into organized library directories (preserves seeding)
+- Season pack and single-episode detection via title parsing
+- Post-import status recalculation
+- Seeding obligation tracking: per-indexer seed ratio and seed time requirements
+- Automatic torrent cleanup after seeding obligations are met
+- Companion file handling (NFO, SRT) and empty directory cleanup
+
+### Monitor (Automated Search & Grab)
+
+- Background worker searches indexers every 15 minutes (configurable) for monitored media
+- Episode-level monitoring hierarchy: episode monitor → season monitor → not monitored
+- Monitors keyed by `(MediaItemID, SeasonNumber, EpisodeNumber)` — survives re-matching
+- Toggle entire seasons (clears episode-level overrides)
+- Auto-monitor new seasons when they appear
+- Profile-based filtering of search results before grabbing
+
+### Metadata Refresh
+
+- Background worker checks every 6 hours (configurable) for new seasons/episodes
+- Targets monitored series that are not "Ended" or "Canceled"
+- Creates episode records and season monitors when new content is discovered
+- Recalculates media item status after updates
+
+### Subtitles
+
+- Search and download subtitles from OpenSubtitles.com
+- Multi-language support with priority ordering
+- Automatic subtitle search after media import (configurable)
+- Metadata: language, hearing impaired flag, foreign parts only, trust score, hash match
+- Per-item subtitle management (list, download, delete)
+
+### Watched Tracking
+
+- Mark/unmark media as watched with seen badges across the UI
+- Mode: global (shared) or per-user
+- Stores external IDs for cross-reference with metadata providers
+
+### Notifications
+
+- Discord webhook notifications on import events
+- Rich embeds with media title, year, type, and poster image
+- Connection testing from the UI
+
+### Self-Update
+
+- Background worker checks GitHub Releases every 6 hours (configurable)
+- In-process binary replacement (Linux)
+- UI shows current version, update availability, release notes, published date
+- Manual check and apply from settings
+
+### Real-Time UI (Event Bus + SSE)
+
+- Internal typed event bus with Server-Sent Events push to frontends
+- Covers full lifecycle: downloads, imports, library sync, matching, monitoring, subtitles, updates
+- SSE authentication via single-use 30-second tickets
+
+### Multi-User Auth & Security
+
+- Multi-user support with registration, login, profile management
+- JWT access tokens (15min) + refresh tokens (24h / 30d with "remember me")
+- HTTP-only cookies, optional secure flag for TLS reverse proxies
+- Password hashing (bcrypt), refresh token hashing (SHA-256)
+- AES-256-GCM at-rest encryption for sensitive settings
+- Path traversal protection at three enforcement points
+- 6-step browser-based onboarding wizard on first launch
+
+### Observability
+
+- Optional OpenTelemetry distributed tracing (OTLP HTTP export)
+- Hot-swappable TracerProvider (noop when disabled)
+- Automatic HTTP span propagation via shared instrumented client
+
+## Integrations
+
+| Service | Purpose |
+|---------|---------|
+| **TMDB** | Movie/series metadata, posters, trending/popular feeds |
+| **TVDB** | Series metadata, episode data |
+| **qBittorrent** | Torrent downloading, progress tracking, cleanup |
+| **Prowlarr/Indexers** | 700+ torrent indexer definitions (Cardigann YAML) |
+| **FlareSolverr** | Cloudflare challenge bypass for protected indexer sites |
+| **Discord** | Webhook notifications for import events |
+| **OpenSubtitles.com** | Subtitle search and download |
+| **GitHub Releases** | Self-update checking and binary replacement |
+
+## Background Workers
+
+| Worker | Default Interval | Purpose |
+|--------|-----------------|---------|
+| Monitor | 15 min | Auto-search and grab for monitored media |
+| Download | 5 sec | Send pending torrents, poll active downloads |
+| Importer | 10 sec | Hardlink completed downloads, cleanup after seeding |
+| Metadata Refresh | 6 hours | Check for new seasons/episodes |
+| Update Check | 6 hours | Check GitHub for new releases |
+| Indexer Definitions | 24 hours | Refresh Prowlarr definitions from GitHub |
 
 ## Tech stack
 
