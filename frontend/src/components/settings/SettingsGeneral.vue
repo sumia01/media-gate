@@ -42,6 +42,7 @@ const props = defineProps<{
   otelEnabled: boolean
   otelEndpoint: string
   otelService: string
+  otelLogLevel: string
 }>()
 
 defineEmits<{
@@ -57,6 +58,7 @@ defineEmits<{
   'update:otelEnabled': [value: boolean]
   'update:otelEndpoint': [value: string]
   'update:otelService': [value: string]
+  'update:otelLogLevel': [value: string]
   'dirty': [field: string]
   'testDiscord': []
   'disconnectDiscord': []
@@ -323,9 +325,9 @@ const discordConnected = computed(() => props.discordUrl !== '')
           />
           <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
         </label>
-        <span class="text-sm font-semibold text-gray-200">OpenTelemetry Tracing</span>
+        <span class="text-sm font-semibold text-gray-200">OpenTelemetry</span>
       </div>
-      <p class="text-[10px] text-gray-500 mb-4">Send traces to an OTLP-compatible backend (e.g. SigNoz, Jaeger, Grafana Tempo). Changes take effect immediately.</p>
+      <p class="text-[10px] text-gray-500 mb-4">Send traces and logs to an OTLP-compatible backend (e.g. SigNoz, Jaeger, Grafana Tempo). Changes take effect immediately.</p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -347,6 +349,20 @@ const discordConnected = computed(() => props.discordUrl !== '')
             class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
             @input="$emit('update:otelService', ($event.target as HTMLInputElement).value); $emit('dirty', 'otelService')"
           />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Log Level</label>
+          <select
+            :value="otelLogLevel"
+            class="w-full px-3 py-2 rounded-lg bg-[#0c0f1a] border border-violet-800/30 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none transition-colors duration-200"
+            @change="$emit('update:otelLogLevel', ($event.target as HTMLSelectElement).value); $emit('dirty', 'otelLogLevel')"
+          >
+            <option value="debug">Debug</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+          </select>
+          <p class="text-[10px] text-gray-500 mt-1">Minimum log severity exported to the OTLP backend</p>
         </div>
       </div>
     </div>

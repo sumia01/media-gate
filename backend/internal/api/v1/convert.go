@@ -296,6 +296,9 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			s.OtelEndpoint = &v
 		case settings.KeyOTelService:
 			s.OtelService = &v
+		case settings.KeyOTelLogLevel:
+			lvl := SettingsOtelLogLevel(v)
+			s.OtelLogLevel = &lvl
 		case settings.KeyPlexURL:
 			s.PlexUrl = &v
 		case settings.KeyPlexToken:
@@ -432,6 +435,9 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.OtelService != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelService, Value: *s.OtelService})
+	}
+	if s.OtelLogLevel != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOTelLogLevel, Value: string(*s.OtelLogLevel)})
 	}
 	if s.PlexUrl != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyPlexURL, Value: *s.PlexUrl})

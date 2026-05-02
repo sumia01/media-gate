@@ -1645,3 +1645,23 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 **Decision**: Always set `params.Query = item.Title` alongside `params.ImdbID` in the monitor's `searchIndexers` method (for both movies and series). Indexers with IMDB support use conditional templates like `{{ if .Query.IMDBID }}imdbid={{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}` — they ignore the Keywords field when IMDB is available. Indexers without IMDB support fall through to `{{ .Keywords }}` which now contains the title.
 
 **Rationale**: This is a safe change because IMDB-supporting indexers explicitly check `{{ if .Query.IMDBID }}` in their definition templates and ignore Keywords when IMDB is present. The title fallback ensures non-IMDB indexers always receive a meaningful search query. Verified with nCore (IMDB-conditional), Milkie (Keywords-only), and BitHU (IMDB-conditional) definitions.
+
+---
+
+## ADR-111: slog export to OpenTelemetry via otelslog bridge
+**Date**: 2026-05-03
+**Status**: Accepted
+
+**Context**: OpenTelemetry tracing was already in place (ADR in Phase 5.4), but application logs were only written to stdout. For centralized observability (e.g. SigNoz, Grafana), operators needed log ingestion alongside traces — ideally from the same OTLP endpoint with no additional log shippers.
+
+**Decision**: Export `slog` records to an OTLP backend using the `otelslog` bridge, with the following architecture:
+
+1. **`logging` package** — Refactored `Setup()` to store current format/level and `rebuild()` the global slog handler. New `SetOTelHandler(h, level)` installs a secondary handler via a `teeHandler` that fans every log record to both the primary (stdout) handler and the OTel handler. A `levelFilterHandler` wraps the OTel handler with an independent minimum severity — OTel log level is decoupled from stdout log level (e.g., stdout at debug, OTel at warn).
+
+2. **`telemetry.Manager`** — Extended to manage both `TracerProvider` and `LoggerProvider`. `Reconfigure()` accepts a `logLevel` parameter, creates an `otlploghttp` exporter (with explicit `/v1/logs` URL path), builds a `sdklog.LoggerProvider`, and wires it into the logging package via `SetOTelHandler`. On disable/error, both providers are cleanly shut down and the OTel handler is removed. A hardcoded `mediagate_ingestion_type=mediagate-log` attribute is added to every exported record for backend filtering.
+
+3. **Settings** — New `otel_log_level` key (enum: debug/info/warn/error, default: info). `Reconfigure()` is called on any OTel setting change (enabled, endpoint, service, log level). Frontend Settings UI has a "Log Level" dropdown in the Observability section.
+
+4. **`teeHandler`** — Implements `slog.Handler` by delegating `Enabled()` to the primary (OTel handler uses its own level filter), `Handle()` to both, and `WithAttrs()`/`WithGroup()` to both. This ensures all slog calls (including `slog.With()` loggers) propagate to both destinations.
+
+**Rationale**: The `otelslog` bridge is the official OpenTelemetry Go contrib package for slog integration — no custom log-to-span conversion needed. The tee pattern preserves stdout logging unchanged while adding OTLP export. Independent level control lets operators keep verbose stdout debugging while sending only warnings to the OTLP backend. The `levelFilterHandler` wrapper avoids modifying the `otelslog` handler's level logic. Using `otlploghttp` (not gRPC) is consistent with the existing trace exporter and simplifies deployment (single HTTP endpoint).

@@ -99,6 +99,7 @@ const updateCheckInterval = ref('21600')
 const otelEnabled = ref(false)
 const otelEndpoint = ref('')
 const otelService = ref('')
+const otelLogLevel = ref('info')
 const monitorIntervalDirty = ref(false)
 const downloadIntervalDirty = ref(false)
 const importerIntervalDirty = ref(false)
@@ -107,6 +108,7 @@ const updateCheckIntervalDirty = ref(false)
 const otelEnabledDirty = ref(false)
 const otelEndpointDirty = ref(false)
 const otelServiceDirty = ref(false)
+const otelLogLevelDirty = ref(false)
 
 const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   tmdb: { ref: tmdbDirty },
@@ -138,6 +140,7 @@ const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   otelEnabled: { ref: otelEnabledDirty },
   otelEndpoint: { ref: otelEndpointDirty },
   otelService: { ref: otelServiceDirty },
+  otelLogLevel: { ref: otelLogLevelDirty },
 }
 
 function markDirty(field: string) {
@@ -157,7 +160,8 @@ const anyDirty = computed(() =>
   subtitleLanguagesDirty.value || subtitleAutoSearchDirty.value ||
   monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
   metadataRefreshIntervalDirty.value || updateCheckIntervalDirty.value ||
-  otelEnabledDirty.value || otelEndpointDirty.value || otelServiceDirty.value
+  otelEnabledDirty.value || otelEndpointDirty.value || otelServiceDirty.value ||
+  otelLogLevelDirty.value
 )
 
 function resetAllDirty() {
@@ -198,6 +202,7 @@ function applySettings(s: Record<string, unknown>) {
   otelEnabled.value = (s.otelEnabled as boolean) ?? false
   otelEndpoint.value = (s.otelEndpoint as string) ?? ''
   otelService.value = (s.otelService as string) ?? ''
+  otelLogLevel.value = (s.otelLogLevel as string) ?? 'info'
   resetAllDirty()
 }
 
@@ -252,6 +257,7 @@ async function saveSettings() {
   if (otelEnabledDirty.value) body.otelEnabled = otelEnabled.value
   if (otelEndpointDirty.value) body.otelEndpoint = otelEndpoint.value
   if (otelServiceDirty.value) body.otelService = otelService.value
+  if (otelLogLevelDirty.value) body.otelLogLevel = otelLogLevel.value
 
   if (Object.keys(body).length === 0) {
     saving.value = false
@@ -468,6 +474,7 @@ onMounted(fetchSettings)
         v-model:otel-enabled="otelEnabled"
         v-model:otel-endpoint="otelEndpoint"
         v-model:otel-service="otelService"
+        v-model:otel-log-level="otelLogLevel"
         :discord-testing="discordTesting"
         :discord-test="discordTest"
         :saving="saving"

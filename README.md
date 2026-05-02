@@ -153,9 +153,11 @@ The *arr stack works, but running four separate services with their own database
 
 ### Observability
 
-- Optional OpenTelemetry distributed tracing (OTLP HTTP export)
-- Hot-swappable TracerProvider (noop when disabled)
+- Optional OpenTelemetry distributed tracing and log export (OTLP HTTP)
+- slog records tee'd to both stdout and OTLP backend with independent log level control
+- Hot-swappable TracerProvider and LoggerProvider (noop when disabled)
 - Automatic HTTP span propagation via shared instrumented client
+- Configurable from the UI: enable/disable, endpoint, service name, log level
 
 ## Integrations
 

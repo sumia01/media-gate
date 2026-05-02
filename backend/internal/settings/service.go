@@ -66,6 +66,7 @@ const (
 	KeyOTelEnabled  = "otel_enabled"
 	KeyOTelEndpoint = "otel_endpoint"
 	KeyOTelService  = "otel_service"
+	KeyOTelLogLevel = "otel_log_level"
 
 	KeyPlexURL   = "plex_url"
 	KeyPlexToken = "plex_token"

@@ -97,7 +97,8 @@ func main() {
 		enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"
 		endpoint := settingsSvc.GetWithDefault(settings.KeyOTelEndpoint, "")
 		service := settingsSvc.GetWithDefault(settings.KeyOTelService, "media-gate")
-		if err := otelMgr.Reconfigure(enabled, endpoint, service); err != nil {
+		logLevel := settingsSvc.GetWithDefault(settings.KeyOTelLogLevel, "info")
+		if err := otelMgr.Reconfigure(enabled, endpoint, service, logLevel); err != nil {
 			slog.Error("failed to configure OTel", "error", err)
 		}
 	}
@@ -215,11 +216,12 @@ func main() {
 			if key == settings.KeyPlexURL || key == settings.KeyPlexToken {
 				plexProvider.Invalidate()
 			}
-			if key == settings.KeyOTelEnabled || key == settings.KeyOTelEndpoint || key == settings.KeyOTelService {
+			if key == settings.KeyOTelEnabled || key == settings.KeyOTelEndpoint || key == settings.KeyOTelService || key == settings.KeyOTelLogLevel {
 				enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"
 				endpoint := settingsSvc.GetWithDefault(settings.KeyOTelEndpoint, "")
 				service := settingsSvc.GetWithDefault(settings.KeyOTelService, "media-gate")
-				if err := otelMgr.Reconfigure(enabled, endpoint, service); err != nil {
+				logLevel := settingsSvc.GetWithDefault(settings.KeyOTelLogLevel, "info")
+				if err := otelMgr.Reconfigure(enabled, endpoint, service, logLevel); err != nil {
 					slog.Error("failed to reconfigure OTel", "error", err)
 				}
 			}

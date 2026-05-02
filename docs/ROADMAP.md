@@ -208,7 +208,8 @@
 - [x] OpenTelemetry tracing — always-on instrumentation (HTTP, GORM, workers) with noop/real TracerProvider hot-swap
 - [x] Runtime-configurable OTel via Settings UI (enable/disable, OTLP endpoint, service name) — changes take effect immediately without restart
 - [x] Shared instrumented HTTP client across all integrations (TMDB, TVDB, qBit, OpenSubtitles, Discord, FlareSolverr)
-- [ ] Structured log export (file, Loki, etc.)
+- [x] Structured log export via OpenTelemetry — slog records tee'd to OTLP backend via `otelslog` bridge, configurable minimum log level (debug/info/warn/error), independent of stdout log level
+- [x] Log level setting in Settings UI — dropdown in Observability section
 - [ ] Dashboard / monitoring integration
 - [ ] Postgres driver implementation
 
