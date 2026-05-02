@@ -54,6 +54,9 @@ func (s *Service) Start() { s.loop.Start() }
 // Stop halts the periodic metadata refresh loop.
 func (s *Service) Stop() { s.loop.Stop() }
 
+// Loop returns the underlying worker loop for registry purposes.
+func (s *Service) Loop() *worker.Loop { return s.loop }
+
 func (s *Service) processOnce() {
 	items, err := s.store.ListMonitoredMediaItems()
 	if err != nil {

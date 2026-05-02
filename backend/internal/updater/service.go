@@ -69,6 +69,9 @@ func (s *Service) Start() { s.loop.Start() }
 // Stop halts the periodic update check loop.
 func (s *Service) Stop() { s.loop.Stop() }
 
+// Loop returns the underlying worker loop for registry purposes.
+func (s *Service) Loop() *worker.Loop { return s.loop }
+
 // Latest returns the cached latest release info, or nil if no update is available.
 func (s *Service) Latest() *ReleaseInfo {
 	s.mu.Lock()

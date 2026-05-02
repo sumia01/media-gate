@@ -53,6 +53,12 @@ const (
 	UpdateApplying  EventType = "app.update_applying"
 )
 
+// Worker lifecycle events.
+const (
+	WorkerStarted  EventType = "worker.started"
+	WorkerFinished EventType = "worker.finished"
+)
+
 // Event is a single occurrence published on the bus.
 type Event struct {
 	Type      EventType `json:"type"`
@@ -132,4 +138,11 @@ type UpdatePayload struct {
 	NewVersion     string `json:"newVersion"`
 	ReleaseNotes   string `json:"releaseNotes,omitempty"`
 	PublishedAt    string `json:"publishedAt,omitempty"`
+}
+
+// WorkerPayload carries worker lifecycle event data.
+type WorkerPayload struct {
+	Name      string `json:"name"`
+	LastRunAt string `json:"lastRunAt,omitempty"`
+	NextRunAt string `json:"nextRunAt,omitempty"`
 }

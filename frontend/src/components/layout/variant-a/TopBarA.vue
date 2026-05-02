@@ -2,13 +2,13 @@
 import { ref, computed, inject } from 'vue'
 import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useJobQueue } from '@/composables/useJobQueue'
+import { useWorkers } from '@/composables/useWorkers'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useAuth } from '@/composables/useAuth'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
 const router = useRouter()
-const { jobs, hasActiveJob } = useJobQueue()
+const { workers, runWorker, fetchWorkers } = useWorkers()
 const { openSearch } = useGlobalSearch()
 const { currentUser, logout } = useAuth()
 const { updateAvailable, latestVersion, applying, applyUpdate } = useUpdateCheck()
@@ -18,6 +18,8 @@ const showUpdatePanel = ref(false)
 
 const isMobile = inject<Ref<boolean>>('isMobile')
 const toggleSidebar = inject<() => void>('toggleSidebar')
+
+const hasRunningWorker = computed(() => workers.value.some(w => w.running))
 
 const userInitial = computed(() => {
   const u = currentUser.value
@@ -32,24 +34,36 @@ async function handleLogout() {
   router.push('/login')
 }
 
-function statusColor(status: string) {
-  switch (status) {
-    case 'running': return 'text-violet-400'
-    case 'pending': return 'text-yellow-400'
-    case 'completed': return 'text-emerald-400'
-    case 'failed': return 'text-red-400'
-    default: return 'text-gray-400'
-  }
+function openWorkersPanel() {
+  fetchWorkers()
+  showPanel.value = !showPanel.value
 }
 
-function statusIcon(status: string) {
-  switch (status) {
-    case 'running': return '\u21BB'
-    case 'pending': return '\u23F3'
-    case 'completed': return '\u2713'
-    case 'failed': return '\u2717'
-    default: return '\u2022'
-  }
+const workerLabels: Record<string, string> = {
+  'monitor': 'Monitor',
+  'metadata-refresh': 'Metadata Refresh',
+  'indexer-def-refresh': 'Indexer Definitions',
+  'update-check': 'Update Check',
+}
+
+function workerLabel(name: string) {
+  return workerLabels[name] || name
+}
+
+function formatTime(iso?: string) {
+  if (!iso) return '\u2014'
+  const d = new Date(iso)
+  return d.toLocaleString(undefined, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+async function handleRun(name: string) {
+  await runWorker(name)
 }
 </script>
 
@@ -78,62 +92,88 @@ function statusIcon(status: string) {
     </div>
 
     <div class="flex items-center gap-3 ml-auto">
-      <!-- Sync status -->
+      <!-- Workers panel -->
       <div class="relative">
         <button
-          class="relative p-2 rounded-lg text-gray-500 hover:text-violet-300 transition-colors duration-200"
-          @click="showPanel = !showPanel"
+          class="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-gray-500 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
+          title="Background Workers"
+          @click="openWorkersPanel"
         >
-          <span class="text-lg" :class="hasActiveJob ? 'animate-spin text-violet-400' : ''">&#x21bb;</span>
+          <!-- Cycle/recurring icon -->
+          <svg class="w-4 h-4" :class="hasRunningWorker ? 'animate-spin text-violet-400' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span class="text-xs hidden sm:inline">Workers</span>
           <span
-            v-if="hasActiveJob"
-            class="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-500 animate-pulse"
+            v-if="hasRunningWorker"
+            class="absolute top-0.5 left-0.5 w-2 h-2 rounded-full bg-violet-500 animate-pulse"
           />
         </button>
 
-        <!-- Jobs dropdown -->
+        <!-- Workers dropdown -->
         <Teleport to="body">
           <div
             v-if="showPanel"
             class="fixed inset-0 z-40"
             @click="showPanel = false"
           />
-        </Teleport>
-        <div
-          v-if="showPanel"
-          class="absolute right-0 top-full mt-2 w-80 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
-        >
+          <div
+            v-if="showPanel"
+            class="fixed right-4 top-16 w-[32rem] bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
+            @click.stop
+          >
           <div class="px-4 py-3 border-b border-violet-900/20">
-            <p class="text-sm font-semibold text-gray-200">Jobs</p>
+            <p class="text-sm font-semibold text-gray-200">Background Workers</p>
           </div>
-          <div class="max-h-64 overflow-y-auto scrollbar-none">
-            <div v-if="!jobs.length" class="px-4 py-6 text-center text-gray-500 text-sm">
-              No recent jobs
-            </div>
-            <div
-              v-for="job in jobs"
-              :key="job.id"
-              class="px-4 py-3 border-b border-violet-900/10 last:border-0"
-            >
-              <div class="flex items-center gap-2">
-                <span :class="statusColor(job.status)" class="text-sm font-mono">{{ statusIcon(job.status) }}</span>
-                <span class="text-sm text-gray-200 truncate flex-1">
-                  Sync {{ job.libraryName || 'Library' }}
-                </span>
-                <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full" :class="{
-                  'bg-violet-600/20 text-violet-300': job.status === 'running',
-                  'bg-yellow-600/20 text-yellow-300': job.status === 'pending',
-                  'bg-emerald-600/20 text-emerald-300': job.status === 'completed',
-                  'bg-red-600/20 text-red-300': job.status === 'failed',
-                }">
-                  {{ job.status }}
-                </span>
-              </div>
-              <p v-if="job.progress?.message" class="text-xs text-gray-500 mt-1">{{ job.progress.message }}</p>
-              <p v-if="job.error" class="text-xs text-red-400 mt-1">{{ job.error }}</p>
-            </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-gray-500 border-b border-violet-900/10">
+                  <th class="text-left px-4 py-2 font-medium">Worker</th>
+                  <th class="text-left px-3 py-2 font-medium">Last Run</th>
+                  <th class="text-left px-3 py-2 font-medium">Next Run</th>
+                  <th class="px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="w in workers"
+                  :key="w.name"
+                  class="border-b border-violet-900/10 last:border-0"
+                >
+                  <td class="px-4 py-2.5">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="w-2 h-2 rounded-full flex-shrink-0 transition-colors duration-300"
+                        :class="w.running ? 'bg-violet-400 animate-pulse shadow-[0_0_6px_rgba(167,139,250,0.6)]' : 'bg-gray-600'"
+                      />
+                      <span class="text-gray-200 whitespace-nowrap">{{ workerLabel(w.name) }}</span>
+                    </div>
+                  </td>
+                  <td class="px-3 py-2.5 text-gray-400 whitespace-nowrap">{{ formatTime(w.lastRunAt) }}</td>
+                  <td class="px-3 py-2.5 text-gray-400 whitespace-nowrap">{{ formatTime(w.nextRunAt) }}</td>
+                  <td class="px-3 py-2.5 text-right">
+                    <button
+                      v-if="w.running"
+                      class="px-2.5 py-1 text-[11px] font-medium rounded bg-violet-600/20 text-violet-400 cursor-not-allowed opacity-60"
+                      disabled
+                    >
+                      Running&hellip;
+                    </button>
+                    <button
+                      v-else
+                      class="px-2.5 py-1 text-[11px] font-medium rounded bg-violet-600/20 text-violet-300 hover:bg-violet-600/40 transition-colors"
+                      @click="handleRun(w.name)"
+                    >
+                      Run Now
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+          </div>
+        </Teleport>
       </div>
 
       <!-- Update indicator -->

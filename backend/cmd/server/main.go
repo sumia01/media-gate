@@ -40,6 +40,7 @@ import (
 	"github.com/sumia01/media-gate/internal/sync"
 	"github.com/sumia01/media-gate/internal/telemetry"
 	"github.com/sumia01/media-gate/internal/updater"
+	"github.com/sumia01/media-gate/internal/worker"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -171,6 +172,13 @@ func main() {
 	defRefresher.Start()
 	defer defRefresher.Stop()
 
+	// Worker registry for API exposure (only long-interval workers).
+	workerPublisher := worker.MakePublisher(func(evType string, payload any) {
+		bus.Publish(eventbus.EventType(evType), payload)
+	})
+	workerReg := worker.NewRegistry(workerPublisher)
+	workerReg.Register(defRefresher.Loop())
+
 	libSvc := library.NewService(db, settingsSvc, settingsSvc)
 	qbitProvider := qbittorrent.NewProvider(settingsSvc, settings.KeyQBitURL, settings.KeyQBitUsername, settings.KeyQBitPassword, httpClient)
 	mediaSvc := media.NewService(db, syncSvc, bus, qbitProvider, posterDir)
@@ -187,11 +195,12 @@ func main() {
 		if updaterSvc != nil {
 			updaterSvc.Start()
 			defer updaterSvc.Stop()
+			workerReg.Register(updaterSvc.Loop())
 			slog.Info("self-update enabled", "repo", cfg.GitHub.Repo)
 		}
 	}
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, version)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, workerReg, version)
 
 	// Invalidate cached clients when connection settings change.
 	go func() {
@@ -224,10 +233,12 @@ func main() {
 	monitorSvc := monitor.NewService(db, indexerSvc, settingsSvc, bus)
 	monitorSvc.Start()
 	defer monitorSvc.Stop()
+	workerReg.Register(monitorSvc.Loop())
 
 	metaRefreshSvc := metarefresh.NewService(db, matchSvc, syncSvc, settingsSvc, bus)
 	metaRefreshSvc.Start()
 	defer metaRefreshSvc.Stop()
+	workerReg.Register(metaRefreshSvc.Loop())
 
 	strictHandler := apiv1.NewStrictHandler(handlers, nil)
 

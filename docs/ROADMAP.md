@@ -471,6 +471,18 @@
 - [x] `LibrariesMediaServer.vue` — connection settings, test, auto-matched library↔section dropdowns, manual refresh per library
 - [ ] Jellyfin/Emby support (architecture ready — generic "Media Server" tab, provider pattern)
 
+## Phase 8.7: Background Workers Panel ✅
+→ See ADR-109
+- [x] `worker.Loop` status tracking — `lastRunAt`, `nextRunAt`, `running` fields (mutex-protected), `Status()` method, `RunNow()` channel trigger, `OnStateChange` callback
+- [x] `worker.Registry` — named worker registration, `All()` for status listing, `RunByName()` for manual trigger, `MakePublisher()` for eventbus bridge
+- [x] SSE events — `worker.started` / `worker.finished` with `WorkerPayload{Name, LastRunAt, NextRunAt}` via eventbus
+- [x] OpenAPI spec — `GET /workers` (list status), `POST /workers/{name}/run` (manual trigger), `Worker` schema
+- [x] API handlers (`handlers_workers.go`) — `ListWorkers` + `RunWorker` (thin adapters over registry)
+- [x] 4 workers registered: monitor, metadata-refresh, indexer-def-refresh, update-check
+- [x] Frontend `useWorkers.ts` composable — fetches worker list, subscribes to SSE worker events, auto-refetches on state change
+- [x] TopBar Workers panel — cycle-arrows icon + "Workers" label, table dropdown with last/next run times, running dot with glow animation, "Run Now" / "Running…" button states
+- [x] Panel teleported to `<body>` for z-index correctness, `w-[32rem]` width to prevent button wrapping
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

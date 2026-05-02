@@ -904,6 +904,45 @@ paths:
                     items:
                       $ref: "#/components/schemas/Job"
 
+  /workers:
+    get:
+      operationId: listWorkers
+      summary: List all background workers with status
+      responses:
+        "200":
+          description: Workers list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - workers
+                properties:
+                  workers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Worker"
+
+  /workers/{name}/run:
+    post:
+      operationId: runWorker
+      summary: Trigger an immediate run of a worker
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Worker triggered successfully
+        "404":
+          description: Worker not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /settings:
     get:
       operationId: listSettings
@@ -2908,6 +2947,31 @@ components:
         completedAt:
           type: string
           format: date-time
+
+    Worker:
+      type: object
+      required:
+        - name
+        - running
+        - interval
+      properties:
+        name:
+          type: string
+          description: Unique worker identifier
+        running:
+          type: boolean
+          description: Whether the worker is currently executing
+        lastRunAt:
+          type: string
+          format: date-time
+          description: Time of the last completed run
+        nextRunAt:
+          type: string
+          format: date-time
+          description: Estimated time of the next run
+        interval:
+          type: string
+          description: Current poll interval (e.g. "15m0s")
 
     Settings:
       type: object

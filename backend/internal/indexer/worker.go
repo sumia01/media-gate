@@ -49,3 +49,8 @@ func (w *RefreshWorker) Start() {
 func (w *RefreshWorker) Stop() {
 	w.loop.Stop()
 }
+
+// Loop returns the underlying worker loop for registry purposes.
+func (w *RefreshWorker) Loop() *worker.Loop {
+	return w.loop
+}

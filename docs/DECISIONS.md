@@ -1609,3 +1609,39 @@ Added `GetEpisodeByNumber` to the `Store` interface — a single-row lookup by t
 6. **Frontend** — Libraries page split into two tabs (Libraries / Media Server). The Media Server tab shows Plex connection settings, test button, and a per-library dropdown to select/override the Plex section mapping. A "Refresh" button per library allows manual section scan trigger.
 
 **Rationale**: The provider pattern (lazy-cached, settings-invalidated) is proven by `qbittorrent.Provider` and avoids creating new client instances on every refresh. Settings-based mapping (vs. a new DB model) avoids migrations and is consistent with how indexer credentials are stored. Auto-matching reduces setup friction — most users have 1:1 library↔section correspondence. The retry-with-backoff approach handles transient Plex unavailability without blocking imports. Section-level refresh (not path-level) is sufficient for v1 since Plex performs incremental scans anyway. The architecture is designed for future Jellyfin/Emby support — the "Media Server" tab and provider interface are generic.
+
+---
+
+## ADR-109: Background Workers Panel with SSE-driven status
+**Date**: 2026-05-02
+**Status**: Accepted
+
+**Context**: The top-bar "Jobs" popup showed a generic job queue (sync/match operations). Background cyclic workers (monitor, metadata-refresh, indexer-def-refresh, update-check) ran silently with no visibility into their state — users couldn't see when they last ran, when they'd run next, or manually trigger them.
+
+**Decision**: Replace the Jobs popup with a "Background Workers" panel exposing cyclic worker status and manual triggers:
+
+1. **`worker.Loop` status tracking** — Added `lastRunAt`, `nextRunAt`, `running` (mutex-protected), `Status() WorkerStatus` method, `RunNow()` channel trigger (non-blocking send to a buffered chan(1)), and `OnStateChange` callback fired on start/finish. The existing `process()` method wraps the user func with state transitions.
+
+2. **`worker.Registry`** — Central registry holding named workers. `Register(name, *Loop)` injects the `OnStateChange` callback. `All()` returns all worker statuses. `RunByName(name)` triggers `RunNow()`. `MakePublisher(eventbus.EventPublisher)` returns an `OnStateChange`-compatible func that publishes `WorkerStarted`/`WorkerFinished` events — this is set as the callback during registration, bridging the worker package to the eventbus without a direct import.
+
+3. **SSE events** — `worker.started` and `worker.finished` events carry `WorkerPayload{Name, LastRunAt, NextRunAt}`. The frontend subscribes to these events and auto-refetches the worker list for live reactivity. No optimistic updates — SSE is the single source of truth.
+
+4. **API** — `GET /workers` lists all registered workers with their status. `POST /workers/{name}/run` triggers `RunNow()` and returns 202 Accepted (the actual execution is async). Both endpoints are in the OpenAPI spec with a `Worker` schema.
+
+5. **Frontend** — `useWorkers.ts` composable handles fetching + SSE subscription. `TopBarA.vue` renders a cycle-arrows icon with "Workers" label, a table-style dropdown (teleported to `<body>` for z-index), running-state dot with CSS glow animation, and "Run Now" / "Running…" disabled button state.
+
+Only 4 workers are exposed — the download and importer workers run every 5-10s and manual trigger doesn't add value.
+
+**Rationale**: SSE-driven reactivity avoids polling and provides instant UI updates. The `EventPublisher` func type (not a direct eventbus import) prevents circular dependencies between the `worker` and `eventbus` packages. The registry pattern centralizes worker management and makes it trivial to add new workers in the future. `RunNow()` uses a buffered channel so triggers are non-blocking and coalesce (multiple rapid clicks don't queue multiple runs).
+
+---
+
+## ADR-110: Monitor query fallback for non-IMDB indexers
+**Date**: 2026-05-02
+**Status**: Accepted
+
+**Context**: The monitor worker searched indexers using `params.ImdbID` but left `params.Query` empty for movie searches. Indexers without IMDB support (e.g., Milkie) use `{{ .Keywords }}` in their Cardigann templates — with an empty query, this produced an empty search URL, causing either zero results or wrong results (indexer returns "latest" when no query is provided).
+
+**Decision**: Always set `params.Query = item.Title` alongside `params.ImdbID` in the monitor's `searchIndexers` method (for both movies and series). Indexers with IMDB support use conditional templates like `{{ if .Query.IMDBID }}imdbid={{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}` — they ignore the Keywords field when IMDB is available. Indexers without IMDB support fall through to `{{ .Keywords }}` which now contains the title.
+
+**Rationale**: This is a safe change because IMDB-supporting indexers explicitly check `{{ if .Query.IMDBID }}` in their definition templates and ignore Keywords when IMDB is present. The title fallback ensures non-IMDB indexers always receive a meaningful search query. Verified with nCore (IMDB-conditional), Milkie (Keywords-only), and BitHU (IMDB-conditional) definitions.
