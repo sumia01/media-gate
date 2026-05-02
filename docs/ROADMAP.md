@@ -457,6 +457,20 @@
 - [x] `dbPath` field on Handlers struct, passed from `cfg.DB.Path` at startup
 - [x] Frontend: "Database" section in Settings General tab with "Download .db" button using `authFetch`
 
+## Phase 8.6: Plex Library Refresh ✅
+→ See ADR-108
+- [x] Plex HTTP client (`backend/internal/integration/plex/client.go`) — XML section listing, section refresh trigger, `X-Plex-Token` auth
+- [x] Lazy-cached Plex provider (`backend/internal/integration/plex/provider.go`) — settings-invalidated singleton (same pattern as `qbittorrent.Provider`)
+- [x] Auto-matcher (`backend/internal/integration/plex/matcher.go`) — scores library↔section by type+basename+fullpath, `FindSection` picks best match
+- [x] `plex_url` (plain) + `plex_token` (sensitive) settings keys with `TestPlex()` connection test
+- [x] Plex refresh service (`backend/internal/plexrefresh/service.go`) — subscribes to `ImportCompleted` event, resolves matching Plex section, triggers refresh with 3x exponential backoff retry
+- [x] OpenAPI spec: `POST /settings/test-plex`, `GET /plex/sections`, `GET/PUT /plex/mappings`, `POST /plex/refresh/{sectionId}`
+- [x] Backend handlers (`handlers_plex.go`) — test connection, list sections, CRUD mappings, manual refresh
+- [x] Settings stored as `plex:mapping:{libraryID}` → `{plexSectionID}` (no new DB model, consistent with `indexer:*` pattern)
+- [x] Frontend: Libraries page split into tabs (Libraries / Media Server)
+- [x] `LibrariesMediaServer.vue` — connection settings, test, auto-matched library↔section dropdowns, manual refresh per library
+- [ ] Jellyfin/Emby support (architecture ready — generic "Media Server" tab, provider pattern)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

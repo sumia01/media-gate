@@ -1585,3 +1585,27 @@ Added `GetEpisodeByNumber` to the `Store` interface — a single-row lookup by t
 **Decision**: Add `GET /api/v1/settings/database/export` as a manual HTTP handler (not in OpenAPI spec) — same pattern as the poster and SSE endpoints. The handler opens the DB file by path, serves it via `http.ServeContent` with `Content-Disposition: attachment` and a date-stamped filename (`media-gate-YYYY-MM-DD.db`). The `dbPath` is passed to the `Handlers` struct at construction time from `cfg.DB.Path`. Frontend uses the shared `authFetch` wrapper (Bearer token + auto-refresh) to trigger the download.
 
 **Rationale**: Binary file responses don't fit the strict server interface (which expects typed JSON responses). The manual handler pattern is already established for poster serving. No OpenAPI codegen needed — keeps the change minimal. Standard auth is sufficient since the app is single-user; the DB file contains no secrets that aren't already accessible to the authenticated user. Serving the live file (vs. `VACUUM INTO`) is acceptable for debugging — SQLite WAL mode ensures concurrent read safety.
+
+---
+
+## ADR-108: Plex library refresh integration
+**Date**: 2026-05-02
+**Status**: Accepted
+
+**Context**: After Media Gate imports a download into a library, users must manually trigger a Plex library scan to see the new content. This adds friction and delays availability. Media Gate already knows which library a file was imported into and can map libraries to Plex sections.
+
+**Decision**: Added a Plex integration layer with three components:
+
+1. **Plex client** (`integration/plex/client.go`) — HTTP client for Plex Media Server. Authenticates via `X-Plex-Token` header. Exposes `GetSections()` (parses XML `/library/sections`) and `RefreshSection(id)` (triggers `GET /library/sections/{id}/refresh`). Uses the shared instrumented `*http.Client` for OTel tracing.
+
+2. **Lazy-cached provider** (`integration/plex/provider.go`) — Same singleton pattern as `qbittorrent.Provider`. Caches `*Client` instance, invalidated on `plex_url` or `plex_token` settings change. `GetClient()` returns cached or creates new. Provider also exposes `TestConnection()` that creates a fresh client from provided (potentially unsaved) credentials.
+
+3. **Auto-matcher** (`integration/plex/matcher.go`) — Scores each Plex section against a Media Gate library by: type match (movie↔movie, show↔show: +10 required minimum), basename match (+5), full path match (+20). `FindSection(library, sections)` returns the highest-scoring section above threshold, or nil. Used for default mappings; users can override via the API.
+
+4. **Refresh service** (`plexrefresh/service.go`) — Subscribes to `eventbus.ImportCompleted`. On event: resolves the library's mapped Plex section (explicit mapping from settings, or auto-match fallback), then calls `RefreshSection`. Retries 3x with exponential backoff (1s, 2s, 4s) on transient failures. Never blocks the import flow — runs in a goroutine spawned from the event handler.
+
+5. **Library↔Section mappings** stored as settings with key pattern `plex:mapping:{libraryID}` → value is the Plex section ID string. No new DB model needed — consistent with the `indexer:{id}:{field}` pattern. Mappings are CRUD-accessible via `GET/PUT /plex/mappings`.
+
+6. **Frontend** — Libraries page split into two tabs (Libraries / Media Server). The Media Server tab shows Plex connection settings, test button, and a per-library dropdown to select/override the Plex section mapping. A "Refresh" button per library allows manual section scan trigger.
+
+**Rationale**: The provider pattern (lazy-cached, settings-invalidated) is proven by `qbittorrent.Provider` and avoids creating new client instances on every refresh. Settings-based mapping (vs. a new DB model) avoids migrations and is consistent with how indexer credentials are stored. Auto-matching reduces setup friction — most users have 1:1 library↔section correspondence. The retry-with-backoff approach handles transient Plex unavailability without blocking imports. Section-level refresh (not path-level) is sufficient for v1 since Plex performs incremental scans anyway. The architecture is designed for future Jellyfin/Emby support — the "Media Server" tab and provider interface are generic.
