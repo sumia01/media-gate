@@ -170,6 +170,11 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-6">
+    <!-- Page summary -->
+    <p class="text-xs text-gray-500 leading-relaxed">
+      Connect your Plex Media Server to automatically refresh libraries after downloads are imported. Map each MediaGate library to a Plex section so new content appears in Plex without manual rescanning.
+    </p>
+
     <!-- Connection settings -->
     <div class="rounded-lg bg-[#161b2e] border border-violet-900/20 p-5">
       <div class="flex items-center justify-between mb-4">
