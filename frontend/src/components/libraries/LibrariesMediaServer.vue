@@ -92,9 +92,11 @@ async function disconnect() {
 async function testConnection() {
   testing.value = true
   testResult.value = null
-  const { data, error: err } = await client.POST('/settings/test-plex', {
-    body: { url: plexUrl.value || undefined, token: plexToken.value || undefined },
-  })
+  // Only send fields the user has changed; omitted fields trigger backend fallback to saved values.
+  const body: Record<string, string> = {}
+  if (plexUrl.value !== savedPlexUrl.value) body.url = plexUrl.value
+  if (plexToken.value !== savedPlexToken.value) body.token = plexToken.value
+  const { data, error: err } = await client.POST('/settings/test-plex', { body })
   testing.value = false
   if (err || !data) {
     testResult.value = { success: false, message: 'Request failed' }
