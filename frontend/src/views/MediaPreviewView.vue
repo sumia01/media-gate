@@ -376,7 +376,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
     <!-- Indexer Search Modal -->
     <Teleport to="body">
       <IndexerSearchModal
-        v-if="showIndexerSearch && detail && detail.imdbId"
+        v-if="showIndexerSearch && detail"
         :imdb-id="detail.imdbId"
         :media-type="detail.mediaType as 'movie' | 'series'"
         :title="detail.title"

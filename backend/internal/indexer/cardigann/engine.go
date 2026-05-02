@@ -600,6 +600,13 @@ func (e *Engine) parseRows(doc *goquery.Document, tmplCtx *TemplateContext) ([]S
 	return results, nil
 }
 
+// implicitOptionalFields are field names that are treated as optional even when
+// the definition does not mark them so.  These are metadata fields whose absence
+// must never cause an entire result row to be discarded.
+var implicitOptionalFields = map[string]bool{
+	"imdbid": true,
+}
+
 func (e *Engine) parseRow(row *goquery.Selection, tmplCtx *TemplateContext) (*SearchResult, error) {
 	fields := make(map[string]string)
 
@@ -607,7 +614,7 @@ func (e *Engine) parseRow(row *goquery.Selection, tmplCtx *TemplateContext) (*Se
 	for name, fieldDef := range e.def.Search.Fields {
 		val, err := e.extractField(row, fieldDef)
 		if err != nil {
-			if fieldDef.Optional {
+			if fieldDef.Optional || implicitOptionalFields[name] {
 				continue
 			}
 			return nil, fmt.Errorf("field %q: %w", name, err)
@@ -1027,7 +1034,7 @@ func (e *Engine) parseRowJSON(item map[string]any, parent map[string]any, tmplCt
 	for name, fieldDef := range e.def.Search.Fields {
 		val, err := e.extractFieldJSON(item, parent, fieldDef)
 		if err != nil {
-			if fieldDef.Optional {
+			if fieldDef.Optional || implicitOptionalFields[name] {
 				continue
 			}
 			return nil, fmt.Errorf("field %q: %w", name, err)

@@ -17,7 +17,7 @@ import {
 
 const props = defineProps<{
   mediaItemId?: number
-  imdbId: string
+  imdbId?: string
   mediaType: 'movie' | 'series'
   title: string
   seasonNumber?: number
@@ -136,13 +136,18 @@ async function search() {
   error.value = ''
   results.value = []
 
-  const searchType = props.mediaType === 'movie' ? 'movie-search' : 'tv-search'
+  const hasImdb = !!props.imdbId
+  const searchType = hasImdb
+    ? props.mediaType === 'movie'
+      ? 'movie-search'
+      : 'tv-search'
+    : 'search'
 
   const { data, error: err } = await client.GET('/indexers/search', {
     params: {
       query: {
         query: props.title,
-        imdbId: props.imdbId,
+        imdbId: props.imdbId || undefined,
         type: searchType,
         indexerIds: selectedIndexerId.value || undefined,
         season: season.value || undefined,

@@ -865,9 +865,9 @@ watch(() => route.params.id, loadAll)
 
     <!-- Indexer Search Modal -->
     <IndexerSearchModal
-      v-if="showIndexerSearch && item && metadata?.imdbId"
+      v-if="showIndexerSearch && item"
       :mediaItemId="item.id"
-      :imdbId="metadata.imdbId"
+      :imdbId="metadata?.imdbId"
       :mediaType="item.mediaType as 'movie' | 'series'"
       :title="item.title"
       :seasonNumber="indexerSearchSeason"
