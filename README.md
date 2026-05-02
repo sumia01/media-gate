@@ -147,6 +147,10 @@ The *arr stack works, but running four separate services with their own database
 - Path traversal protection at three enforcement points
 - 6-step browser-based onboarding wizard on first launch
 
+### Administration
+
+- Database export endpoint for backup and debugging (full SQLite dump via API)
+
 ### Observability
 
 - Optional OpenTelemetry distributed tracing (OTLP HTTP export)
@@ -177,6 +181,8 @@ The *arr stack works, but running four separate services with their own database
 | Metadata Refresh | 6 hours | Check for new seasons/episodes |
 | Update Check | 6 hours | Check GitHub for new releases |
 | Indexer Definitions | 24 hours | Refresh Prowlarr definitions from GitHub |
+
+The UI includes a dedicated **Workers panel** with real-time SSE-driven status for each worker (last run, next run, current state) and manual trigger buttons to run any worker on demand.
 
 ## Tech stack
 
