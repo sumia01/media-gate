@@ -59,6 +59,9 @@ func (s *Service) Start() { s.loop.Start() }
 
 func (s *Service) Stop() { s.loop.Stop() }
 
+// Loop returns the underlying worker loop for registry purposes.
+func (s *Service) Loop() *worker.Loop { return s.loop }
+
 func (s *Service) processOnce() {
 	items, err := s.store.ListMonitoredMediaItems()
 	if err != nil {
@@ -127,12 +130,12 @@ func (s *Service) processMovie(item *store.MediaItem, meta *store.MediaMetadata,
 	defer cancel()
 
 	params := indexer.SearchParams{
+		Query:  item.Title,
 		ImdbID: meta.ImdbID,
 		Type:   "movie-search",
 		Limit:  50,
 	}
 	if meta.ImdbID == "" {
-		params.Query = item.Title
 		params.Type = "search"
 	}
 
@@ -247,13 +250,13 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 		params := indexer.SearchParams{
+			Query:  item.Title,
 			ImdbID: meta.ImdbID,
 			Type:   "tv-search",
 			Season: strconv.Itoa(seasonNum),
 			Limit:  100,
 		}
 		if meta.ImdbID == "" {
-			params.Query = item.Title
 			params.Type = "search"
 		}
 
