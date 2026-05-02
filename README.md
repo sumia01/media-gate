@@ -116,6 +116,14 @@ The *arr stack works, but running four separate services with their own database
 - Rich embeds with media title, year, type, and poster image
 - Connection testing from the UI
 
+### Plex Integration
+
+- Automatic library refresh after download import
+- Auto-matches MediaGate libraries to Plex sections by type and path
+- Manual section mapping override per library
+- Retry with exponential backoff on transient Plex failures
+- Manual per-library refresh trigger from the UI
+
 ### Self-Update
 
 - Background worker checks GitHub Releases every 6 hours (configurable)
@@ -154,6 +162,7 @@ The *arr stack works, but running four separate services with their own database
 | **qBittorrent** | Torrent downloading, progress tracking, cleanup |
 | **Prowlarr/Indexers** | 700+ torrent indexer definitions (Cardigann YAML) |
 | **FlareSolverr** | Cloudflare challenge bypass for protected indexer sites |
+| **Plex** | Automatic library refresh after import (section-level scan trigger) |
 | **Discord** | Webhook notifications for import events |
 | **OpenSubtitles.com** | Subtitle search and download |
 | **GitHub Releases** | Self-update checking and binary replacement |
