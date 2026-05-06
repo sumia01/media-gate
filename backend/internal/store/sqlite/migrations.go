@@ -17,6 +17,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV3, // 2→3: explicit season monitoring — add monitor_new_seasons column + backfill SeasonMonitor rows
 	migrateV4, // 3→4: episode_monitors table (AutoMigrate handles creation, this is a no-op placeholder)
 	migrateV5, // 4→5: subtitles table (AutoMigrate handles creation, this is a no-op placeholder)
+	migrateV6, // 5→6: media_profiles.language_mode — backfill existing rows with 'or'
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -423,4 +424,12 @@ func cleanupOrphans(db *sql.DB) {
 			slog.Info("cleaned up orphan records", "table", oq.label, "deleted", n)
 		}
 	}
+}
+
+// migrateV6 backfills language_mode='or' for existing media profiles.
+// AutoMigrate adds the column with DEFAULT 'or', but we explicitly set
+// the value to ensure no NULLs remain.
+func migrateV6(db *sql.DB) error {
+	_, err := db.Exec(`UPDATE media_profiles SET language_mode = 'or' WHERE language_mode IS NULL OR language_mode = ''`)
+	return err
 }

@@ -53,14 +53,15 @@ type MediaMetadata struct {
 }
 
 type MediaProfile struct {
-	ID          uint   `gorm:"primarykey"`
-	Name        string `gorm:"not null;uniqueIndex"`
-	Resolutions string `gorm:"not null"` // JSON array: ["2160p","1080p"]
-	Languages   string `gorm:"not null"` // JSON array: ["hun","eng"]
-	Sources     string                    // JSON array: ["webdl","webrip"]
-	ExcludeTags string                    // JSON array: ["3d","cam"]
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           uint   `gorm:"primarykey"`
+	Name         string `gorm:"not null;uniqueIndex"`
+	Resolutions  string `gorm:"not null"`           // JSON array: ["2160p","1080p"]
+	Languages    string `gorm:"not null"`           // JSON array: ["hun","eng"]
+	LanguageMode string `gorm:"default:'or'"` // "and" or "or"
+	Sources      string                             // JSON array: ["webdl","webrip"]
+	ExcludeTags  string                             // JSON array: ["3d","cam"]
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type MediaFile struct {

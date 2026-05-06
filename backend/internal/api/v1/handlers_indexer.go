@@ -2,12 +2,14 @@ package apiv1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -192,9 +194,27 @@ func (h *Handlers) SearchIndexers(ctx context.Context, req SearchIndexersRequest
 		return nil, err
 	}
 
+	// Resolve profile for annotation if profileId is provided
+	var profile *store.MediaProfile
+	var globalTags []string
+	if req.Params.ProfileId != nil {
+		p, err := h.store.GetMediaProfile(uint(*req.Params.ProfileId))
+		if err != nil {
+			return SearchIndexers200JSONResponse{Results: make([]TorrentResult, 0)}, nil
+		}
+		profile = p
+		if raw, err := h.settings.Get(settings.KeyGlobalExcludeTags); err == nil && raw != "" {
+			_ = json.Unmarshal([]byte(raw), &globalTags)
+		}
+	}
+
 	apiResults := make([]TorrentResult, len(results))
 	for i, r := range results {
 		apiResults[i] = torrentResultToAPI(&r)
+		if profile != nil {
+			match := indexer.MatchesMediaProfile(&r, profile, globalTags...)
+			apiResults[i].ProfileMatch = &match
+		}
 	}
 
 	return SearchIndexers200JSONResponse{Results: apiResults}, nil

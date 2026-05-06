@@ -12,7 +12,7 @@ const error = ref('')
 
 const showForm = ref(false)
 const editing = ref<MediaProfile | null>(null)
-const form = ref<MediaProfileCreate>({ name: '', resolutions: [], languages: [] })
+const form = ref<MediaProfileCreate>({ name: '', resolutions: [], languages: [], languageMode: 'or' })
 const excludeTagsInput = ref('')
 const testingProfile = ref<MediaProfile | null>(null)
 
@@ -39,7 +39,7 @@ async function fetchProfiles() {
 
 function openAdd() {
   editing.value = null
-  form.value = { name: '', resolutions: [], languages: [] }
+  form.value = { name: '', resolutions: [], languages: [], languageMode: 'or' }
   excludeTagsInput.value = ''
   showForm.value = true
 }
@@ -50,6 +50,7 @@ function openEdit(profile: MediaProfile) {
     name: profile.name,
     resolutions: [...profile.resolutions],
     languages: [...profile.languages],
+    languageMode: profile.languageMode ?? 'or',
     sources: profile.sources ? [...profile.sources] : undefined,
     excludeTags: profile.excludeTags ? [...profile.excludeTags] : undefined,
   }
@@ -96,6 +97,14 @@ function languagePriority(lang: string): number {
   return form.value.languages.indexOf(lang) + 1
 }
 
+function resolutionPriority(res: string): number {
+  return form.value.resolutions.indexOf(res) + 1
+}
+
+function sourcePriority(src: string): number {
+  return (form.value.sources?.indexOf(src) ?? -1) + 1
+}
+
 async function submitForm() {
   error.value = ''
 
@@ -103,6 +112,7 @@ async function submitForm() {
     name: form.value.name,
     resolutions: form.value.resolutions,
     languages: form.value.languages,
+    languageMode: form.value.languageMode ?? 'or',
   }
   if (form.value.sources?.length) {
     body.sources = form.value.sources
@@ -236,23 +246,26 @@ onMounted(() => {
               :key="'lang-' + lang"
               class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300"
             >
-              {{ idx + 1 }}. {{ lang }}
+              <template v-if="profile.languageMode === 'or'">{{ idx + 1 }}. </template>{{ lang }}
+              <template v-if="idx < profile.languages.length - 1">
+                <span class="text-emerald-500/60 ml-0.5">{{ profile.languageMode === 'and' ? '+' : '/' }}</span>
+              </template>
             </span>
-            <!-- Resolution pills -->
+            <!-- Resolution pills (numbered, violet) -->
             <span
-              v-for="res in profile.resolutions"
+              v-for="(res, idx) in profile.resolutions"
               :key="res"
               class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
             >
-              {{ res }}
+              {{ idx + 1 }}. {{ res }}
             </span>
-            <!-- Source pills -->
+            <!-- Source pills (numbered, sky) -->
             <span
-              v-for="src in profile.sources ?? []"
+              v-for="(src, idx) in profile.sources ?? []"
               :key="src"
               class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-sky-600/20 text-sky-300"
             >
-              {{ src }}
+              {{ idx + 1 }}. {{ src }}
             </span>
             <!-- Exclude tag pills -->
             <span
@@ -326,7 +339,7 @@ onMounted(() => {
 
         <!-- Languages -->
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1.5">Languages <span class="text-gray-600">(click order = priority)</span></label>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Languages <span class="text-gray-600">(click order = priority in OR mode)</span></label>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="lang in languageOptions"
@@ -338,15 +351,42 @@ onMounted(() => {
                 : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
               @click="toggleLanguage(lang)"
             >
-              <span v-if="form.languages.includes(lang)" class="text-[10px] mr-1 opacity-70">{{ languagePriority(lang) }}.</span>
+              <span v-if="form.languages.includes(lang) && form.languageMode === 'or'" class="text-[10px] mr-1 opacity-70">{{ languagePriority(lang) }}.</span>
               {{ lang.toUpperCase() }}
             </button>
+          </div>
+          <!-- Language mode toggle -->
+          <div v-if="form.languages.length > 0" class="mt-2 flex items-center gap-2">
+            <span class="text-xs text-gray-500">Mode:</span>
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors duration-200"
+              :class="form.languageMode === 'or'
+                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+              @click="form.languageMode = 'or'"
+            >
+              OR
+            </button>
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors duration-200"
+              :class="form.languageMode === 'and'
+                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
+              @click="form.languageMode = 'and'"
+            >
+              AND
+            </button>
+            <span class="text-[10px] text-gray-600 ml-1">
+              {{ form.languageMode === 'and' ? 'Release must contain ALL selected languages' : 'Release must contain at least ONE (order = preference)' }}
+            </span>
           </div>
         </div>
 
         <!-- Resolutions -->
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1.5">Resolutions</label>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Resolutions <span class="text-gray-600">(click order = priority)</span></label>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="res in resolutionOptions"
@@ -358,6 +398,7 @@ onMounted(() => {
                 : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
               @click="toggleResolution(res)"
             >
+              <span v-if="form.resolutions.includes(res)" class="text-[10px] mr-1 opacity-70">{{ resolutionPriority(res) }}.</span>
               {{ res }}
             </button>
           </div>
@@ -365,7 +406,7 @@ onMounted(() => {
 
         <!-- Sources -->
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1.5">Sources <span class="text-gray-600">(optional)</span></label>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Sources <span class="text-gray-600">(optional, click order = priority)</span></label>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="src in sourceOptions"
@@ -377,6 +418,7 @@ onMounted(() => {
                 : 'bg-[#161b2e] border-violet-800/30 text-gray-500 hover:text-gray-300'"
               @click="toggleSource(src)"
             >
+              <span v-if="form.sources?.includes(src)" class="text-[10px] mr-1 opacity-70">{{ sourcePriority(src) }}.</span>
               {{ src }}
             </button>
           </div>

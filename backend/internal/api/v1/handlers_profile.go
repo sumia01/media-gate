@@ -27,7 +27,7 @@ func (h *Handlers) ListMediaProfiles(_ context.Context, _ ListMediaProfilesReque
 
 func (h *Handlers) CreateMediaProfile(_ context.Context, req CreateMediaProfileRequestObject) (CreateMediaProfileResponseObject, error) {
 	profile := &store.MediaProfile{}
-	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
+	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.LanguageMode, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.CreateMediaProfile(profile); err != nil {
 		return CreateMediaProfile400JSONResponse{
@@ -66,7 +66,7 @@ func (h *Handlers) UpdateMediaProfile(_ context.Context, req UpdateMediaProfileR
 		return nil, err
 	}
 
-	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.Sources, req.Body.ExcludeTags)
+	applyProfileFields(profile, req.Body.Name, req.Body.Resolutions, req.Body.Languages, req.Body.LanguageMode, req.Body.Sources, req.Body.ExcludeTags)
 
 	if err := h.store.UpdateMediaProfile(profile); err != nil {
 		return nil, err

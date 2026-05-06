@@ -873,7 +873,7 @@ watch(() => route.params.id, loadAll)
       :seasonNumber="indexerSearchSeason"
       :episodeNumber="indexerSearchEpisode"
       :episodeId="indexerSearchEpisodeId"
-      :mediaProfile="activeProfile"
+      :profileId="activeProfile?.id"
       @close="closeIndexerSearch"
     />
 

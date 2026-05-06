@@ -1682,6 +1682,13 @@ paths:
           schema:
             type: integer
           description: Maximum number of results
+        - name: profileId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Media profile ID for annotating results with profile match status
       responses:
         "200":
           description: Search results
@@ -2534,6 +2541,7 @@ components:
         - name
         - resolutions
         - languages
+        - languageMode
         - createdAt
         - updatedAt
       properties:
@@ -2550,6 +2558,10 @@ components:
           type: array
           items:
             type: string
+        languageMode:
+          type: string
+          enum: [and, or]
+          description: "Language matching logic: 'and' requires all languages present, 'or' requires at least one"
         sources:
           type: array
           items:
@@ -2582,6 +2594,10 @@ components:
           type: array
           items:
             type: string
+        languageMode:
+          type: string
+          enum: [and, or]
+          description: "Language matching logic: 'and' requires all languages present, 'or' requires at least one. Defaults to 'or'."
         sources:
           type: array
           items:
@@ -3292,6 +3308,9 @@ components:
           type: number
         uploadVolumeFactor:
           type: number
+        profileMatch:
+          type: boolean
+          description: Whether this result matches the specified media profile (only present when profileId query param is provided)
 
     Download:
       type: object

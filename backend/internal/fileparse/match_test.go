@@ -34,9 +34,104 @@ func TestMatchesProfile(t *testing.T) {
 	}
 }
 
+func TestMatchesLanguages(t *testing.T) {
+	tests := []struct {
+		name     string
+		detected []string
+		profile  []string
+		mode     string
+		want     bool
+	}{
+		// AND mode
+		{"and: all present", []string{"hun", "eng"}, []string{"hun", "eng"}, "and", true},
+		{"and: missing one", []string{"hun"}, []string{"hun", "eng"}, "and", false},
+		{"and: none present", []string{"ger"}, []string{"hun", "eng"}, "and", false},
+		{"and: superset detected", []string{"hun", "eng", "ger"}, []string{"hun", "eng"}, "and", true},
+		{"and: empty detected", nil, []string{"hun", "eng"}, "and", false},
+		{"and: multi satisfies all", []string{"multi"}, []string{"hun", "eng"}, "and", true},
+
+		// OR mode
+		{"or: one present", []string{"hun"}, []string{"hun", "eng"}, "or", true},
+		{"or: other present", []string{"eng"}, []string{"hun", "eng"}, "or", true},
+		{"or: none present", []string{"ger"}, []string{"hun", "eng"}, "or", false},
+		{"or: empty detected", nil, []string{"hun", "eng"}, "or", false},
+		{"or: multi satisfies", []string{"multi"}, []string{"hun", "eng"}, "or", true},
+
+		// No profile languages = no filter
+		{"no profile languages", []string{"hun"}, nil, "and", true},
+		{"no profile languages or mode", []string{"hun"}, nil, "or", true},
+		{"no profile no detected", nil, nil, "and", true},
+
+		// Empty mode defaults to OR
+		{"empty mode defaults to or", []string{"hun"}, []string{"hun", "eng"}, "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesLanguages(tt.detected, tt.profile, tt.mode)
+			if got != tt.want {
+				t.Errorf("MatchesLanguages(%v, %v, %q) = %v, want %v",
+					tt.detected, tt.profile, tt.mode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLanguageScore(t *testing.T) {
+	tests := []struct {
+		name     string
+		detected []string
+		profile  []string
+		want     int
+	}{
+		{"no profile languages", []string{"hun"}, nil, 0},
+		{"first priority match", []string{"hun", "eng"}, []string{"hun", "eng"}, 1},
+		{"second priority match", []string{"eng"}, []string{"hun", "eng"}, 2},
+		{"no match worst score", []string{"ger"}, []string{"hun", "eng"}, 3},
+		{"multi gets best score", []string{"multi"}, []string{"hun", "eng"}, 1},
+		{"empty detected worst score", nil, []string{"hun", "eng"}, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := LanguageScore(tt.detected, tt.profile)
+			if got != tt.want {
+				t.Errorf("LanguageScore(%v, %v) = %d, want %d",
+					tt.detected, tt.profile, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPriorityScore(t *testing.T) {
+	tests := []struct {
+		name       string
+		val        string
+		priorities []string
+		want       int
+	}{
+		{"empty priorities", "1080p", nil, 0},
+		{"first priority", "1080p", []string{"1080p", "720p"}, 1},
+		{"second priority", "720p", []string{"1080p", "720p"}, 2},
+		{"not in list", "480p", []string{"1080p", "720p"}, 3},
+		{"single item match", "bluray", []string{"bluray"}, 1},
+		{"single item no match", "webdl", []string{"bluray"}, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PriorityScore(tt.val, tt.priorities)
+			if got != tt.want {
+				t.Errorf("PriorityScore(%q, %v) = %d, want %d",
+					tt.val, tt.priorities, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestContainsExcludedTag(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		title string
 		tags  []string
 		want  bool

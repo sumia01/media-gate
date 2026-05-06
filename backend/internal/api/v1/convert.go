@@ -137,6 +137,13 @@ func mediaProfileToAPI(p *store.MediaProfile) MediaProfile {
 		UpdatedAt: p.UpdatedAt,
 	}
 
+	// Language mode
+	mode := MediaProfileLanguageMode(p.LanguageMode)
+	if mode == "" {
+		mode = MediaProfileLanguageModeOr
+	}
+	api.LanguageMode = mode
+
 	// Parse JSON arrays back to slices
 	var resolutions []string
 	if err := json.Unmarshal([]byte(p.Resolutions), &resolutions); err == nil {
@@ -538,10 +545,15 @@ func marshalJSON(v any) string {
 	return string(b)
 }
 
-func applyProfileFields(p *store.MediaProfile, name string, resolutions, languages []string, sources, excludeTags *[]string) {
+func applyProfileFields(p *store.MediaProfile, name string, resolutions, languages []string, languageMode *MediaProfileCreateLanguageMode, sources, excludeTags *[]string) {
 	p.Name = name
 	p.Resolutions = marshalJSON(resolutions)
 	p.Languages = marshalJSON(languages)
+	if languageMode != nil {
+		p.LanguageMode = string(*languageMode)
+	} else {
+		p.LanguageMode = "or"
+	}
 	if sources != nil {
 		p.Sources = marshalJSON(*sources)
 	} else {

@@ -1665,3 +1665,27 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 4. **`teeHandler`** — Implements `slog.Handler` by delegating `Enabled()` to the primary (OTel handler uses its own level filter), `Handle()` to both, and `WithAttrs()`/`WithGroup()` to both. This ensures all slog calls (including `slog.With()` loggers) propagate to both destinations.
 
 **Rationale**: The `otelslog` bridge is the official OpenTelemetry Go contrib package for slog integration — no custom log-to-span conversion needed. The tee pattern preserves stdout logging unchanged while adding OTLP export. Independent level control lets operators keep verbose stdout debugging while sending only warnings to the OTLP backend. The `levelFilterHandler` wrapper avoids modifying the `otelslog` handler's level logic. Using `otlploghttp` (not gRPC) is consistent with the existing trace exporter and simplifies deployment (single HTTP endpoint).
+
+---
+
+## ADR-112: Smart profile matching with language filtering and priority ranking
+**Date**: 2026-05-06
+**Status**: Accepted
+
+**Context**: Media profiles only matched resolution and source type, with no language filtering. Profile matching logic was duplicated between the frontend (`utils/torrent.ts`) and backend (`indexer/filter.go`), leading to divergence risk. There was no priority ranking — all matching results were treated equally regardless of whether the user preferred 1080p over 720p.
+
+**Decision**: Comprehensive profile matching overhaul with three key changes:
+
+1. **Language parser** (`fileparse/language.go`): Tokenizes release titles to extract languages from ~50 aliases (including multi-word names like "Brazilian Portuguese" and special tokens like "multi"/"dual"). Each alias maps to a normalized canonical name. The `multi` token satisfies any language requirement in both AND and OR modes.
+
+2. **Language mode on profiles**: `LanguageMode` field ("and"/"or", default "or") on `MediaProfile` model:
+   - **OR mode**: Result matches if ANY profile language is found in the title. Priority scoring based on selection order (first = highest priority).
+   - **AND mode**: Result matches only if ALL profile languages are found in the title. Selection order doesn't affect filtering (all must be present).
+
+3. **Priority-based ranking**: `RankResults()` applies multi-dimensional stable sort: resolution score (from profile order) > language score (from profile order, OR mode only) > source score (from profile order). `PriorityScore()` computes per-dimension scores from the user's selection order (first selected = highest score).
+
+4. **Backend-only matching**: `SearchIndexers` handler accepts optional `profileId` query param, loads the profile, calls `MatchesMediaProfile()` on each result, and annotates with a `profileMatch` boolean in the API response. Frontend reads this field directly — all duplicated matching logic (`matchesProfile`, `parseTorrentQuality`, `LANGUAGE_ALIASES`) removed from `utils/torrent.ts`.
+
+5. **Migration v6**: Backfills `language_mode='or'` on all existing profiles to preserve current behavior (no language filtering was equivalent to OR-with-empty-list).
+
+**Rationale**: Single source of truth eliminates frontend/backend divergence — the profile matching contract lives entirely in the backend. Language filtering fills a critical gap (users with multi-language libraries had no way to prefer their language). OR mode with priority ordering is the intuitive default (prefer English, accept French as fallback). AND mode covers the common request for "dual audio" releases requiring multiple languages. The `multi` token special-case handles a ubiquitous release naming convention.

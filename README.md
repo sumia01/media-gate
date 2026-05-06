@@ -55,10 +55,13 @@ The *arr stack works, but running four separate services with their own database
 ### Media Profiles (Quality Filtering)
 
 - Define preferred resolutions, languages, source types (BluRay, WEB-DL, etc.)
+- Language filtering with AND/OR mode: OR = any language matches (order = priority), AND = all languages required
+- Priority-based ranking: resolution > language > source, with user-defined preference order
 - Exclude tags to filter unwanted releases (global + per-profile)
 - Season pack preference: `prefer_packs`, `prefer_episodes`, `packs_only`
 - Assignable per-library or per-media-item (item overrides library)
 - Profile test search: run live queries against indexers to preview filtering results
+- Backend-driven profile matching: search results annotated with match status server-side (single source of truth)
 
 ### Download Management
 

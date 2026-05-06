@@ -484,6 +484,19 @@
 - [x] TopBar Workers panel — cycle-arrows icon + "Workers" label, table dropdown with last/next run times, running dot with glow animation, "Run Now" / "Running…" button states
 - [x] Panel teleported to `<body>` for z-index correctness, `w-[32rem]` width to prevent button wrapping
 
+## Phase 8.8: Smart Profile Matching ✅
+→ See ADR-112
+- [x] Language parser (`fileparse/language.go`) — tokenizes release titles, recognizes ~50 language aliases with normalization
+- [x] `LanguageMode` field on `MediaProfile` model — "and" (all required) or "or" (any match, order = priority)
+- [x] `MatchesLanguages()`, `LanguageScore()`, `PriorityScore()` functions in `fileparse/match.go`
+- [x] `FilterByProfile` extended with language filtering; `RankResults()` for multi-dimensional ranking (resolution > language > source)
+- [x] `MatchesMediaProfile()` single-result checker with global exclude tags support
+- [x] OpenAPI: `languageMode` on MediaProfile, `profileMatch` on TorrentResult, `profileId` query param on search endpoint
+- [x] Backend handler: `SearchIndexers` annotates results with `profileMatch` using server-side logic
+- [x] Frontend: removed duplicated matching logic from `utils/torrent.ts` — reads `profileMatch` from API response
+- [x] Frontend: AND/OR toggle UI on profiles page, priority numbers on resolution/source/language buttons
+- [x] DB migration v6: backfills `language_mode='or'` on existing profiles
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

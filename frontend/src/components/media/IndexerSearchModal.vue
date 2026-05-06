@@ -9,10 +9,7 @@ import {
   parseTitleSeasonEpisode,
   classifyMatch,
   matchLevelOrder,
-  parseTorrentQuality,
-  matchesProfile,
   type MatchLevel,
-  type ProfileMatchInput,
 } from '@/utils/torrent'
 
 const props = defineProps<{
@@ -23,7 +20,7 @@ const props = defineProps<{
   seasonNumber?: number
   episodeNumber?: number
   episodeId?: number
-  mediaProfile?: ProfileMatchInput
+  profileId?: number
   // For "Add & Download" flow (preview page — no mediaItemId yet)
   source?: 'tmdb' | 'tvdb'
   externalId?: number
@@ -57,14 +54,13 @@ const addingDownload = ref(false)
 const sortedResults = computed(() => {
   const userSeason = season.value ? parseInt(season.value, 10) : null
   const userEpisode = episode.value ? parseInt(episode.value, 10) : null
-  const profile = props.mediaProfile
 
   const classify = (r: TorrentResult, i: number) => ({
     result: r,
     matchLevel: (props.mediaType === 'series' && userSeason !== null)
       ? classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode)
       : 'none' as MatchLevel,
-    profileMatch: profile ? matchesProfile(parseTorrentQuality(r.title), profile) : false,
+    profileMatch: r.profileMatch ?? false,
     originalIndex: i,
   })
 
@@ -153,6 +149,7 @@ async function search() {
         season: season.value || undefined,
         episode: episode.value || undefined,
         limit: 100,
+        profileId: props.profileId || undefined,
       } as any,
     },
   })
@@ -364,7 +361,7 @@ function formatDate(unix: number): string {
       <table class="hidden md:table w-full text-sm">
         <thead class="sticky top-0 bg-[#0f1225]">
           <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
-            <th v-if="props.mediaProfile" class="w-8 px-0 py-2.5"></th>
+            <th v-if="props.profileId" class="w-8 px-0 py-2.5"></th>
             <th class="px-3 py-2.5">Title</th>
             <th class="px-3 py-2.5 whitespace-nowrap">Size</th>
             <th class="px-3 py-2.5 text-center whitespace-nowrap">S</th>
@@ -385,7 +382,7 @@ function formatDate(unix: number): string {
             ]"
           >
             <!-- Profile match star -->
-            <td v-if="props.mediaProfile" class="w-8 px-0 py-2.5 text-center">
+            <td v-if="props.profileId" class="w-8 px-0 py-2.5 text-center">
               <svg
                 v-if="item.profileMatch"
                 class="w-4 h-4 inline-block text-amber-400"
@@ -501,7 +498,7 @@ function formatDate(unix: number): string {
           <!-- Row 1: Title -->
           <div class="flex items-center gap-1.5 mb-1.5">
             <svg
-              v-if="props.mediaProfile && item.profileMatch"
+              v-if="props.profileId && item.profileMatch"
               class="w-3.5 h-3.5 flex-shrink-0 text-amber-400"
               viewBox="0 0 20 20"
               fill="currentColor"
