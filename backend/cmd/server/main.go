@@ -60,7 +60,11 @@ func main() {
 	// OpenTelemetry tracing — always wired up; Manager controls whether
 	// the global TracerProvider is real or noop.
 	otelMgr := telemetry.NewManager(version)
-	defer otelMgr.Shutdown(context.Background())
+	defer func() {
+		if err := otelMgr.Shutdown(context.Background()); err != nil {
+			slog.Warn("opentelemetry shutdown error", "error", err)
+		}
+	}()
 
 	// Shared HTTP client for all external integrations.
 	httpClient := &http.Client{

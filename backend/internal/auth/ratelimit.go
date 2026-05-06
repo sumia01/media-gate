@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -83,10 +84,12 @@ func RateLimitMiddleware(limit int, window time.Duration) func(http.Handler) htt
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "60")
 				w.WriteHeader(http.StatusTooManyRequests)
-				json.NewEncoder(w).Encode(map[string]any{
+				if err := json.NewEncoder(w).Encode(map[string]any{
 					"code":    429,
 					"message": "too many requests, please try again later",
-				})
+				}); err != nil {
+					slog.Debug("failed to write rate limit response", "error", err)
+				}
 				return
 			}
 			next.ServeHTTP(w, r)

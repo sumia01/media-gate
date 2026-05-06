@@ -3,7 +3,6 @@ package apiv1
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/settings"
@@ -149,7 +148,3 @@ func (h *Handlers) RefreshPlexSection(_ context.Context, request RefreshPlexSect
 	return RefreshPlexSection204Response{}, nil
 }
 
-// plexMappingKey returns the settings key for a library's Plex section mapping.
-func plexMappingKey(libraryID uint) string {
-	return "plex:mapping:" + strconv.FormatUint(uint64(libraryID), 10)
-}

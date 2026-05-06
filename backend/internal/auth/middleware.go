@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -81,5 +82,7 @@ func extractToken(r *http.Request) string {
 func writeUnauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	json.NewEncoder(w).Encode(map[string]any{"code": 401, "message": "unauthorized"})
+	if err := json.NewEncoder(w).Encode(map[string]any{"code": 401, "message": "unauthorized"}); err != nil {
+		slog.Debug("failed to write unauthorized response", "error", err)
+	}
 }

@@ -32,13 +32,13 @@ func New(dbPath string) (*SQLiteStore, error) {
 
 	sqlDB, _ := db.DB()
 
-	// Pre-migration renames for existing databases (ignore errors for fresh installs)
+	// Pre-migration renames for existing databases (ignore errors for fresh installs).
 	if sqlDB != nil {
-		sqlDB.Exec("ALTER TABLE quality_profiles RENAME TO media_profiles")
-		sqlDB.Exec("ALTER TABLE media_profiles ADD COLUMN languages TEXT DEFAULT ''")
-		sqlDB.Exec("ALTER TABLE libraries RENAME COLUMN quality_profile_id TO media_profile_id")
-		sqlDB.Exec("ALTER TABLE media_items RENAME COLUMN quality_profile_id TO media_profile_id")
-		sqlDB.Exec("UPDATE media_items SET status = 'available' WHERE status = 'matched'")
+		_, _ = sqlDB.Exec("ALTER TABLE quality_profiles RENAME TO media_profiles")
+		_, _ = sqlDB.Exec("ALTER TABLE media_profiles ADD COLUMN languages TEXT DEFAULT ''")
+		_, _ = sqlDB.Exec("ALTER TABLE libraries RENAME COLUMN quality_profile_id TO media_profile_id")
+		_, _ = sqlDB.Exec("ALTER TABLE media_items RENAME COLUMN quality_profile_id TO media_profile_id")
+		_, _ = sqlDB.Exec("UPDATE media_items SET status = 'available' WHERE status = 'matched'")
 	}
 
 	if err := db.AutoMigrate(

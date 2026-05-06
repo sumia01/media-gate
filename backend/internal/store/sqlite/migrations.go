@@ -343,7 +343,11 @@ func rebuildTable(db *sql.DB, table, newDDL, columns string) error {
 	if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
 		return fmt.Errorf("disable foreign_keys for %s: %w", table, err)
 	}
-	defer db.Exec("PRAGMA foreign_keys = ON")
+	defer func() {
+		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+			slog.Error("failed to re-enable foreign_keys", "table", table, "error", err)
+		}
+	}()
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -362,7 +366,7 @@ func rebuildTable(db *sql.DB, table, newDDL, columns string) error {
 
 	for _, stmt := range stmts {
 		if _, err := tx.Exec(stmt); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("rebuild %s: %w", table, err)
 		}
 	}

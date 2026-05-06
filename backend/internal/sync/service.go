@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -705,9 +706,9 @@ func parseFolderName(name string) (title string, year *int) {
 	clean := strings.ReplaceAll(name, ".", " ")
 
 	if m := yearRe.FindStringSubmatch(clean); m != nil {
-		var y int
-		fmt.Sscanf(m[1], "%d", &y)
-		if y >= 1900 && y <= 2099 {
+		if y, err := strconv.Atoi(m[1]); err != nil {
+			slog.Warn("unexpected year parse failure", "input", m[1], "error", err)
+		} else if y >= 1900 && y <= 2099 {
 			year = &y
 		}
 		clean = strings.TrimSpace(yearRe.ReplaceAllString(clean, ""))
