@@ -9,7 +9,11 @@ async function fetchSystemInfo() {
   if (data) {
     version.value = data.version
     disk.value = data.disk
-      ? { totalBytes: data.disk.totalBytes ?? 0, usedBytes: data.disk.usedBytes ?? 0, freeBytes: data.disk.freeBytes ?? 0 }
+      ? {
+          totalBytes: data.disk.totalBytes ?? 0,
+          usedBytes: data.disk.usedBytes ?? 0,
+          freeBytes: data.disk.freeBytes ?? 0,
+        }
       : null
   }
 }

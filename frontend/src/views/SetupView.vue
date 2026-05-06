@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth } from '@/composables/useAuth'
 import client from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import SetupAccount from './setup/SetupAccount.vue'
 import SetupBasePath from './setup/SetupBasePath.vue'
-import SetupTorrentClient from './setup/SetupTorrentClient.vue'
 import SetupIndexer from './setup/SetupIndexer.vue'
 import SetupTmdb from './setup/SetupTmdb.vue'
+import SetupTorrentClient from './setup/SetupTorrentClient.vue'
 import SetupTvdb from './setup/SetupTvdb.vue'
 
 const router = useRouter()

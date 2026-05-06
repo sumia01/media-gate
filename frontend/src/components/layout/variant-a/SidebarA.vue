@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
+import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import { useSystemInfo } from '@/composables/useSystemInfo'
 import { formatBytes } from '@/utils/media'
 
@@ -23,7 +23,7 @@ const userInitial = computed(() => {
 const userName = computed(() => {
   const u = currentUser.value
   const parts = [u?.firstName, u?.lastName].filter(Boolean)
-  return parts.length ? parts.join(' ') : u?.email ?? 'User'
+  return parts.length ? parts.join(' ') : (u?.email ?? 'User')
 })
 
 const staticTop = [
@@ -45,7 +45,7 @@ function mediaTypeIcon(type: string) {
 }
 
 const diskPercent = computed(() => {
-  if (!disk.value || !disk.value.totalBytes) return 0
+  if (!disk.value?.totalBytes) return 0
   return Math.round((disk.value.usedBytes / disk.value.totalBytes) * 100)
 })
 

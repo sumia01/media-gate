@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { MatchCandidate } from '@/types/api'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import type { MatchCandidate } from '@/types/api'
 
 const router = useRouter()
 const { searchMediaType, closeSearch } = useGlobalSearch()

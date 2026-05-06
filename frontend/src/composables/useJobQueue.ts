@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import type { Job } from '@/types/api'
 import { useEventStream } from './useEventStream'
@@ -9,9 +9,7 @@ const jobs = ref<Job[]>([])
 let subscribers = 0
 const jobDoneListeners = new Set<JobDoneCallback>()
 
-const hasActiveJob = computed(() =>
-  jobs.value.some((j) => j.status === 'pending' || j.status === 'running'),
-)
+const hasActiveJob = computed(() => jobs.value.some((j) => j.status === 'pending' || j.status === 'running'))
 
 async function fetchJobs() {
   const { data } = await client.GET('/jobs')
@@ -68,7 +66,9 @@ function getHandler(eventType: string) {
         const libraryId = data.libraryId
         const jobType = eventType.startsWith('library.sync') ? 'sync_library' : 'match_library'
         if (libraryId) {
-          jobDoneListeners.forEach((cb) => cb(libraryId, jobType))
+          jobDoneListeners.forEach((cb) => {
+            cb(libraryId, jobType)
+          })
         }
       }
     }

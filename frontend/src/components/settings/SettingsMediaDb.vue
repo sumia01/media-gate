@@ -23,9 +23,9 @@ defineEmits<{
   'update:primarySource': [value: string]
   'update:tmdbRateLimit': [value: string]
   'update:tvdbRateLimit': [value: string]
-  'dirty': [field: string]
-  'testTmdb': []
-  'testTvdb': []
+  dirty: [field: string]
+  testTmdb: []
+  testTvdb: []
 }>()
 </script>
 

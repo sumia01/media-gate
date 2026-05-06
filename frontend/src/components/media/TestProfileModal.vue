@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import type { MatchCandidate, TorrentResult } from '@/types/api'
-import BaseModal from '@/components/BaseModal.vue'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import { formatSize } from '@/utils/media'
 
 const props = defineProps<{
   profileId: number

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { DiscoverItem } from '@/types/api'
-import DiscoverCard from '@/components/media/DiscoverCard.vue'
 
 const props = defineProps<{
   category: 'trending' | 'popular-movies' | 'popular-series'
@@ -22,17 +21,23 @@ const libraryMap = ref<Map<string, number>>(new Map())
 
 const title = computed(() => {
   switch (props.category) {
-    case 'trending': return 'Trending This Week'
-    case 'popular-movies': return 'Popular Movies'
-    case 'popular-series': return 'Popular Series'
+    case 'trending':
+      return 'Trending This Week'
+    case 'popular-movies':
+      return 'Popular Movies'
+    case 'popular-series':
+      return 'Popular Series'
   }
 })
 
 const endpoint = computed(() => {
   switch (props.category) {
-    case 'trending': return '/discover/trending' as const
-    case 'popular-movies': return '/discover/popular-movies' as const
-    case 'popular-series': return '/discover/popular-series' as const
+    case 'trending':
+      return '/discover/trending' as const
+    case 'popular-movies':
+      return '/discover/popular-movies' as const
+    case 'popular-series':
+      return '/discover/popular-series' as const
   }
 })
 

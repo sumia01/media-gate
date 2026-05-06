@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue'
 import type { Ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useWorkers } from '@/composables/useWorkers'
-import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useAuth } from '@/composables/useAuth'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+import { useWorkers } from '@/composables/useWorkers'
 
 const router = useRouter()
 const { workers, runWorker, fetchWorkers } = useWorkers()
@@ -19,7 +19,7 @@ const showUpdatePanel = ref(false)
 const isMobile = inject<Ref<boolean>>('isMobile')
 const toggleSidebar = inject<() => void>('toggleSidebar')
 
-const hasRunningWorker = computed(() => workers.value.some(w => w.running))
+const hasRunningWorker = computed(() => workers.value.some((w) => w.running))
 
 const userInitial = computed(() => {
   const u = currentUser.value
@@ -40,7 +40,7 @@ function openWorkersPanel() {
 }
 
 const workerLabels: Record<string, string> = {
-  'monitor': 'Monitor',
+  monitor: 'Monitor',
   'metadata-refresh': 'Metadata Refresh',
   'indexer-def-refresh': 'Indexer Definitions',
   'update-check': 'Update Check',

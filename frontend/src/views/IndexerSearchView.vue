@@ -2,8 +2,6 @@
 import { ref } from 'vue'
 import client from '@/api/client'
 import type { TorrentResult } from '@/types/api'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import { formatSize } from '@/utils/media'
 
 const query = ref('')
 const searchType = ref('search')

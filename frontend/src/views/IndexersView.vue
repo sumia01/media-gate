@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import BaseModal from '@/components/BaseModal.vue'
-import IndexerTryModal from '@/components/media/IndexerTryModal.vue'
 
 const indexers = ref<Indexer[]>([])
 const definitions = ref<IndexerDefinition[]>([])
@@ -29,13 +25,11 @@ const tryingIndexer = ref<Indexer | null>(null)
 
 const flaresolverrConfigured = ref(false)
 
-const needsFlareSolverr = computed(() =>
-  selectedDefinition.value?.settings?.some(s => s.type === 'info_flaresolverr') ?? false
+const needsFlareSolverr = computed(
+  () => selectedDefinition.value?.settings?.some((s) => s.type === 'info_flaresolverr') ?? false,
 )
 
-const selectedDefinition = computed(() =>
-  definitions.value.find((d) => d.id === formDefinitionId.value),
-)
+const selectedDefinition = computed(() => definitions.value.find((d) => d.id === formDefinitionId.value))
 
 // Definition search dropdown state
 const defSearch = ref('')
@@ -135,7 +129,7 @@ async function fetchAll() {
   }
   indexers.value = indexerRes.data?.indexers ?? []
   definitions.value = defRes.data?.definitions ?? []
-  flaresolverrConfigured.value = !!(settingsRes.data?.settings?.flaresolverrUrl)
+  flaresolverrConfigured.value = !!settingsRes.data?.settings?.flaresolverrUrl
 }
 
 function openAdd() {
@@ -183,7 +177,8 @@ async function submitForm() {
   for (const [k, v] of Object.entries(formSettings.value)) {
     if (isMasked(v)) continue
     // When editing, skip empty password fields — they mean "keep current".
-    if (editing.value && v === '' && selectedDefinition.value?.settings?.find(s => s.name === k)?.type === 'password') continue
+    if (editing.value && v === '' && selectedDefinition.value?.settings?.find((s) => s.name === k)?.type === 'password')
+      continue
     settings[k] = v
   }
 

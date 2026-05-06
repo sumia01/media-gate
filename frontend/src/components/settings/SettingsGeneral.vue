@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useUpdateCheck } from '@/composables/useUpdateCheck'
 import { authFetch } from '@/api/client'
+import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
-const { updateEnabled, updateAvailable, latestVersion, releaseNotes, currentVersion, checking, applying, checkNow, applyUpdate } = useUpdateCheck()
+const {
+  updateEnabled,
+  updateAvailable,
+  latestVersion,
+  releaseNotes,
+  currentVersion,
+  checking,
+  applying,
+  checkNow,
+  applyUpdate,
+} = useUpdateCheck()
 
 const downloading = ref(false)
 
@@ -59,9 +69,9 @@ defineEmits<{
   'update:otelEndpoint': [value: string]
   'update:otelService': [value: string]
   'update:otelLogLevel': [value: string]
-  'dirty': [field: string]
-  'testDiscord': []
-  'disconnectDiscord': []
+  dirty: [field: string]
+  testDiscord: []
+  disconnectDiscord: []
 }>()
 
 const discordConnected = computed(() => props.discordUrl !== '')

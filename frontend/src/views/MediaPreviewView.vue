@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
-import { parseGenres, profileImageUrl } from '@/utils/media'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
-import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
+import { parseGenres } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,8 +41,8 @@ const imdbUrl = computed(() => {
 const trailerUrl = computed(() => detail.value?.trailerUrl ?? null)
 
 const credits = computed(() => detail.value?.credits ?? [])
-const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
-const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
+const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
+const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 
 async function checkWatched() {
   const d = detail.value
@@ -111,14 +108,16 @@ async function fetchDetail() {
     checkWatched()
     // Prefetch episodes for series (used by AddToLibraryModal)
     if (data.mediaType === 'series' && data.seasons && data.seasons > 0) {
-      client.GET('/search/{source}/{externalId}/episodes', {
-        params: {
-          path: { source: source as 'tmdb' | 'tvdb', externalId },
-          query: { seasonCount: data.seasons },
-        },
-      }).then(({ data: epData }) => {
-        externalSeasons.value = epData?.seasons ?? []
-      })
+      client
+        .GET('/search/{source}/{externalId}/episodes', {
+          params: {
+            path: { source: source as 'tmdb' | 'tvdb', externalId },
+            query: { seasonCount: data.seasons },
+          },
+        })
+        .then(({ data: epData }) => {
+          externalSeasons.value = epData?.seasons ?? []
+        })
     }
   }
 }

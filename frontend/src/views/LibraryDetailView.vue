@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { Library, MediaItem, MediaProfile } from '@/types/api'
-import { useJobQueue } from '@/composables/useJobQueue'
-import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useEventStream } from '@/composables/useEventStream'
-import { posterUrl } from '@/utils/media'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import BaseModal from '@/components/BaseModal.vue'
+import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import { useJobQueue } from '@/composables/useJobQueue'
+import type { Library, MediaItem, MediaProfile } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -76,11 +73,7 @@ const isMatchingThisLibrary = computed(() =>
 const matchProgress = computed(() => {
   if (!library.value) return null
   const job = jobs.value.find(
-    (j) =>
-      j.libraryId === library.value!.id &&
-      j.type === 'match_library' &&
-      j.status === 'running' &&
-      j.progress,
+    (j) => j.libraryId === library.value!.id && j.type === 'match_library' && j.status === 'running' && j.progress,
   )
   return job?.progress ?? null
 })

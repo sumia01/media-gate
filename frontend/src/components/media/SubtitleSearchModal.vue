@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import type { SubtitleSearchResult } from '@/types/api'
-import BaseModal from '@/components/BaseModal.vue'
-import ErrorBanner from '@/components/ErrorBanner.vue'
 
 const props = defineProps<{
   mediaItemId: number

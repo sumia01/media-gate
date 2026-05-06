@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import type { ScanEntry } from '@/types/api'
 
@@ -46,7 +46,7 @@ watch(currentPath, (val) => {
     const part = parts[i]!
     crumbs.push({
       name: part,
-      path: '/' + parts.slice(0, i + 1).join('/'),
+      path: `/${parts.slice(0, i + 1).join('/')}`,
     })
   }
   breadcrumbs.value = crumbs

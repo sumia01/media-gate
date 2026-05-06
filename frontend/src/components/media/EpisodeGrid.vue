@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { SeasonSummary, Episode } from '@/types/api'
+import type { Episode, SeasonSummary } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
@@ -58,7 +58,16 @@ function toggleSeason(seasonNumber: number) {
   expandedSeasons.value = s
 }
 
-type EpStatus = 'available' | 'missing' | 'unmonitored' | 'unaired' | 'pending' | 'downloading' | 'downloaded' | 'importing' | 'seeding'
+type EpStatus =
+  | 'available'
+  | 'missing'
+  | 'unmonitored'
+  | 'unaired'
+  | 'pending'
+  | 'downloading'
+  | 'downloaded'
+  | 'importing'
+  | 'seeding'
 
 function episodeStatus(ep: Episode): EpStatus {
   if (ep.hasFile) return 'available'

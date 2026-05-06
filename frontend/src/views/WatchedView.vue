@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import type { WatchedItem } from '@/types/api'
-import ErrorBanner from '@/components/ErrorBanner.vue'
 
 const router = useRouter()
 const items = ref<WatchedItem[]>([])
@@ -40,7 +39,7 @@ async function fetchWatched() {
 
 async function unmark(item: WatchedItem) {
   await client.DELETE('/watched/{id}', { params: { path: { id: item.id } } })
-  items.value = items.value.filter(i => i.id !== item.id)
+  items.value = items.value.filter((i) => i.id !== item.id)
 }
 
 function navigate(item: WatchedItem) {

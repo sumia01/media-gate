@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { Library, MediaProfile, ExternalSeasonSummary } from '@/types/api'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import type { ExternalSeasonSummary, Library, MediaProfile } from '@/types/api'
 
 const props = defineProps<{
   source: string
@@ -36,34 +36,33 @@ const expandedSeasons = ref<Set<number>>(new Set())
 const seasonMonitored = ref<Map<number, boolean>>(new Map())
 const episodeMonitored = ref<Map<string, boolean>>(new Map())
 
-const compatibleLibraries = computed(() =>
-  libraries.value.filter((lib) => lib.mediaType === props.mediaType),
-)
+const compatibleLibraries = computed(() => libraries.value.filter((lib) => lib.mediaType === props.mediaType))
 
 const isSeries = computed(() => props.mediaType === 'series')
 const hasSeasons = computed(() => (props.externalSeasons?.length ?? 0) > 0)
 
 // Initialize season/episode monitored maps when externalSeasons prop arrives
-watch(() => props.externalSeasons, (seasons) => {
-  if (!seasons?.length) return
-  const sm = new Map<number, boolean>()
-  const em = new Map<string, boolean>()
-  for (const s of seasons) {
-    sm.set(s.seasonNumber, true)
-    for (const ep of s.episodes) {
-      em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+watch(
+  () => props.externalSeasons,
+  (seasons) => {
+    if (!seasons?.length) return
+    const sm = new Map<number, boolean>()
+    const em = new Map<string, boolean>()
+    for (const s of seasons) {
+      sm.set(s.seasonNumber, true)
+      for (const ep of s.episodes) {
+        em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+      }
     }
-  }
-  seasonMonitored.value = sm
-  episodeMonitored.value = em
-}, { immediate: true })
+    seasonMonitored.value = sm
+    episodeMonitored.value = em
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   loadingLibraries.value = true
-  const [libRes, profileRes] = await Promise.all([
-    client.GET('/libraries'),
-    client.GET('/media-profiles'),
-  ])
+  const [libRes, profileRes] = await Promise.all([client.GET('/libraries'), client.GET('/media-profiles')])
   loadingLibraries.value = false
   libraries.value = libRes.data ?? []
   profiles.value = profileRes.data?.profiles ?? []
@@ -123,7 +122,7 @@ async function handleAdd() {
 
   // For series: include season monitor selections (only when monitored)
   if (monitored.value && isSeries.value && hasSeasons.value) {
-    body.seasonMonitors = props.externalSeasons!.map(s => ({
+    body.seasonMonitors = props.externalSeasons!.map((s) => ({
       seasonNumber: s.seasonNumber,
       monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
     }))
@@ -182,7 +181,7 @@ function toggleSeasonMonitor(seasonNumber: number) {
   const newVal = !current
   seasonMonitored.value = new Map(seasonMonitored.value.set(seasonNumber, newVal))
 
-  const season = props.externalSeasons?.find(s => s.seasonNumber === seasonNumber)
+  const season = props.externalSeasons?.find((s) => s.seasonNumber === seasonNumber)
   if (season?.episodes) {
     for (const ep of season.episodes) {
       episodeMonitored.value.set(`${seasonNumber}-${ep.episodeNumber}`, newVal)
@@ -197,9 +196,10 @@ function toggleEpisodeMonitor(seasonNumber: number, episodeNumber: number) {
   episodeMonitored.value = new Map(episodeMonitored.value.set(key, !current))
 }
 
-const allSeasonsMonitored = computed(() =>
-  (props.externalSeasons?.length ?? 0) > 0 &&
-  props.externalSeasons!.every(s => seasonMonitored.value.get(s.seasonNumber)),
+const allSeasonsMonitored = computed(
+  () =>
+    (props.externalSeasons?.length ?? 0) > 0 &&
+    props.externalSeasons!.every((s) => seasonMonitored.value.get(s.seasonNumber)),
 )
 
 function toggleAllSeasons() {

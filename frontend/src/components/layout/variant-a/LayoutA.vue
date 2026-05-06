@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import { ref, provide, onMounted, onUnmounted } from 'vue'
-import { RouterView } from 'vue-router'
-import SidebarA from './SidebarA.vue'
-import TopBarA from './TopBarA.vue'
-import GlobalSearchOverlay from '@/components/media/GlobalSearchOverlay.vue'
+import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 
 const MD_BREAKPOINT = 768

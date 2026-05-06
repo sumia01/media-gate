@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { Download, TorrentFile } from '@/types/api'
-import { formatSize, formatBytes } from '@/utils/media'
 import { useEventStream } from '@/composables/useEventStream'
+import type { Download, TorrentFile } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
@@ -42,25 +41,22 @@ const statusOrder: Record<string, number> = {
 }
 
 const sortedDownloads = computed(() =>
-  [...downloads.value].sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9))
+  [...downloads.value].sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)),
 )
 
-const activeDownloads = computed(() =>
-  sortedDownloads.value.filter(d => d.status !== 'completed')
-)
+const activeDownloads = computed(() => sortedDownloads.value.filter((d) => d.status !== 'completed'))
 
-const libraryCopies = computed(() =>
-  sortedDownloads.value.filter(d => d.status === 'completed' && d.linkedToLibrary)
-)
+const libraryCopies = computed(() => sortedDownloads.value.filter((d) => d.status === 'completed' && d.linkedToLibrary))
 
 const hasActiveDownloads = computed(() =>
-  downloads.value.some(d =>
-    d.status === 'pending' ||
-    d.status === 'downloading' ||
-    d.status === 'downloaded' ||
-    d.status === 'importing' ||
-    d.status === 'seeding'
-  )
+  downloads.value.some(
+    (d) =>
+      d.status === 'pending' ||
+      d.status === 'downloading' ||
+      d.status === 'downloaded' ||
+      d.status === 'importing' ||
+      d.status === 'seeding',
+  ),
 )
 
 // Progress polling — SSE handles state transitions, but progress/speed
@@ -174,25 +170,34 @@ async function deleteLibraryCopy(id: number) {
 
 function statusColor(status: string) {
   switch (status) {
-    case 'pending': return 'bg-gray-600/20 text-gray-400'
-    case 'downloading': return 'bg-sky-600/20 text-sky-300'
-    case 'downloaded': return 'bg-sky-600/20 text-sky-300'
-    case 'importing': return 'bg-sky-600/20 text-sky-300'
-    case 'seeding': return 'bg-emerald-600/20 text-emerald-300'
-    case 'completed': return 'bg-emerald-600/20 text-emerald-300'
-    case 'failed': return 'bg-red-600/20 text-red-300'
-    case 'import_failed': return 'bg-red-600/20 text-red-300'
-    default: return 'bg-gray-600/20 text-gray-400'
+    case 'pending':
+      return 'bg-gray-600/20 text-gray-400'
+    case 'downloading':
+      return 'bg-sky-600/20 text-sky-300'
+    case 'downloaded':
+      return 'bg-sky-600/20 text-sky-300'
+    case 'importing':
+      return 'bg-sky-600/20 text-sky-300'
+    case 'seeding':
+      return 'bg-emerald-600/20 text-emerald-300'
+    case 'completed':
+      return 'bg-emerald-600/20 text-emerald-300'
+    case 'failed':
+      return 'bg-red-600/20 text-red-300'
+    case 'import_failed':
+      return 'bg-red-600/20 text-red-300'
+    default:
+      return 'bg-gray-600/20 text-gray-400'
   }
 }
 
 function formatSpeed(bytesPerSec?: number): string {
   if (!bytesPerSec || bytesPerSec <= 0) return ''
-  if (bytesPerSec < 1024) return bytesPerSec + ' B/s'
+  if (bytesPerSec < 1024) return `${bytesPerSec} B/s`
   const kb = bytesPerSec / 1024
-  if (kb < 1024) return kb.toFixed(1) + ' KB/s'
+  if (kb < 1024) return `${kb.toFixed(1)} KB/s`
   const mb = kb / 1024
-  return mb.toFixed(1) + ' MB/s'
+  return `${mb.toFixed(1)} MB/s`
 }
 
 function formatRetryTime(dateStr: string): string {

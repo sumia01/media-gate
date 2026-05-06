@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { useAuth } from './useAuth'
 
 type EventCallback = (data: any) => void
@@ -91,7 +91,9 @@ function addESListener(es: EventSource, type: string) {
     }
     const cbs = listeners.get(type)
     if (cbs) {
-      cbs.forEach((cb) => cb(data))
+      cbs.forEach((cb) => {
+        cb(data)
+      })
     }
   }) as EventListener)
 }

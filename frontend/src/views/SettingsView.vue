@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import SettingsMediaDb from '@/components/settings/SettingsMediaDb.vue'
-import SettingsDownloads from '@/components/settings/SettingsDownloads.vue'
-import SettingsGeneral from '@/components/settings/SettingsGeneral.vue'
 
 const activeTab = ref<'media-db' | 'downloads' | 'general'>('general')
 
@@ -148,20 +144,38 @@ function markDirty(field: string) {
   if (entry) entry.ref.value = true
 }
 
-const anyDirty = computed(() =>
-  tmdbDirty.value || tvdbDirty.value ||
-  primarySourceDirty.value || tmdbRateLimitDirty.value || tvdbRateLimitDirty.value ||
-  qbUrlDirty.value || qbUsernameDirty.value || qbPasswordDirty.value ||
-  qbDownloadPathDirty.value || qbSavePathDirty.value || qbCategoryDirty.value ||
-  fsUrlDirty.value || discordUrlDirty.value ||
-  seasonPackPrefDirty.value ||
-  watchedListModeDirty.value ||
-  osApiKeyDirty.value || osUsernameDirty.value || osPasswordDirty.value || osRateLimitDirty.value ||
-  subtitleLanguagesDirty.value || subtitleAutoSearchDirty.value ||
-  monitorIntervalDirty.value || downloadIntervalDirty.value || importerIntervalDirty.value ||
-  metadataRefreshIntervalDirty.value || updateCheckIntervalDirty.value ||
-  otelEnabledDirty.value || otelEndpointDirty.value || otelServiceDirty.value ||
-  otelLogLevelDirty.value
+const anyDirty = computed(
+  () =>
+    tmdbDirty.value ||
+    tvdbDirty.value ||
+    primarySourceDirty.value ||
+    tmdbRateLimitDirty.value ||
+    tvdbRateLimitDirty.value ||
+    qbUrlDirty.value ||
+    qbUsernameDirty.value ||
+    qbPasswordDirty.value ||
+    qbDownloadPathDirty.value ||
+    qbSavePathDirty.value ||
+    qbCategoryDirty.value ||
+    fsUrlDirty.value ||
+    discordUrlDirty.value ||
+    seasonPackPrefDirty.value ||
+    watchedListModeDirty.value ||
+    osApiKeyDirty.value ||
+    osUsernameDirty.value ||
+    osPasswordDirty.value ||
+    osRateLimitDirty.value ||
+    subtitleLanguagesDirty.value ||
+    subtitleAutoSearchDirty.value ||
+    monitorIntervalDirty.value ||
+    downloadIntervalDirty.value ||
+    importerIntervalDirty.value ||
+    metadataRefreshIntervalDirty.value ||
+    updateCheckIntervalDirty.value ||
+    otelEnabledDirty.value ||
+    otelEndpointDirty.value ||
+    otelServiceDirty.value ||
+    otelLogLevelDirty.value,
 )
 
 function resetAllDirty() {
@@ -247,7 +261,11 @@ async function saveSettings() {
   if (osUsernameDirty.value) body.opensubtitlesUsername = osUsername.value
   if (osPasswordDirty.value && !isMasked(osPassword.value)) body.opensubtitlesPassword = osPassword.value
   if (osRateLimitDirty.value) body.opensubtitlesRateLimit = Number(osRateLimit.value)
-  if (subtitleLanguagesDirty.value) body.subtitleLanguages = subtitleLanguages.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+  if (subtitleLanguagesDirty.value)
+    body.subtitleLanguages = subtitleLanguages.value
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean)
   if (subtitleAutoSearchDirty.value) body.subtitleAutoSearch = subtitleAutoSearch.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
@@ -272,7 +290,9 @@ async function saveSettings() {
   }
 
   saveSuccess.value = true
-  setTimeout(() => { saveSuccess.value = false }, 3000)
+  setTimeout(() => {
+    saveSuccess.value = false
+  }, 3000)
 
   if (data?.settings) applySettings(data.settings as unknown as Record<string, unknown>)
 }

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { MediaItem, MatchCandidate } from '@/types/api'
-import ErrorBanner from '@/components/ErrorBanner.vue'
+import type { MatchCandidate, MediaItem } from '@/types/api'
 
 const props = defineProps<{
   item: MediaItem
@@ -20,12 +19,15 @@ const searching = ref(false)
 const matching = ref(false)
 const searchError = ref('')
 
-watch(() => props.item, (newItem) => {
-  query.value = newItem.title
-  candidates.value = []
-  searchError.value = ''
-  search()
-})
+watch(
+  () => props.item,
+  (newItem) => {
+    query.value = newItem.title
+    candidates.value = []
+    searchError.value = ''
+    search()
+  },
+)
 
 async function search() {
   searching.value = true

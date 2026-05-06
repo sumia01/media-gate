@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { SeasonSummary } from '@/types/api'
 
-const props = withDefaults(defineProps<{
-  seasons: SeasonSummary[]
-  monitorNewSeasons?: boolean
-}>(), {
-  monitorNewSeasons: true,
-})
+const props = withDefaults(
+  defineProps<{
+    seasons: SeasonSummary[]
+    monitorNewSeasons?: boolean
+  }>(),
+  {
+    monitorNewSeasons: true,
+  },
+)
 
 const emit = defineEmits<{
-  confirm: [monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean, episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]]
+  confirm: [
+    monitors: { seasonNumber: number; monitored: boolean }[],
+    monitorNewSeasons: boolean,
+    episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[],
+  ]
   cancel: []
 }>()
 
@@ -20,24 +27,32 @@ const episodeMonitored = ref<Map<string, boolean>>(new Map())
 const monitorFutureSeasons = ref(true)
 
 // Initialize all seasons and episodes as monitored by default
-watch(() => props.seasons, (seasons) => {
-  const sm = new Map<number, boolean>()
-  const em = new Map<string, boolean>()
-  for (const s of seasons) {
-    sm.set(s.seasonNumber, true)
-    if (s.episodes) {
-      for (const ep of s.episodes) {
-        em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+watch(
+  () => props.seasons,
+  (seasons) => {
+    const sm = new Map<number, boolean>()
+    const em = new Map<string, boolean>()
+    for (const s of seasons) {
+      sm.set(s.seasonNumber, true)
+      if (s.episodes) {
+        for (const ep of s.episodes) {
+          em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+        }
       }
     }
-  }
-  seasonMonitored.value = sm
-  episodeMonitored.value = em
-}, { immediate: true })
+    seasonMonitored.value = sm
+    episodeMonitored.value = em
+  },
+  { immediate: true },
+)
 
-watch(() => props.monitorNewSeasons, (val) => {
-  monitorFutureSeasons.value = val
-}, { immediate: true })
+watch(
+  () => props.monitorNewSeasons,
+  (val) => {
+    monitorFutureSeasons.value = val
+  },
+  { immediate: true },
+)
 
 function toggleSeason(seasonNumber: number) {
   const s = new Set(expandedSeasons.value)
@@ -52,7 +67,7 @@ function toggleSeasonMonitor(seasonNumber: number) {
   seasonMonitored.value = new Map(seasonMonitored.value.set(seasonNumber, newVal))
 
   // Cascade: set all episodes in this season to match
-  const season = props.seasons.find(s => s.seasonNumber === seasonNumber)
+  const season = props.seasons.find((s) => s.seasonNumber === seasonNumber)
   if (season?.episodes) {
     for (const ep of season.episodes) {
       episodeMonitored.value.set(`${seasonNumber}-${ep.episodeNumber}`, newVal)
@@ -67,9 +82,8 @@ function toggleEpisodeMonitor(seasonNumber: number, episodeNumber: number) {
   episodeMonitored.value = new Map(episodeMonitored.value.set(key, !current))
 }
 
-const allSeasonsMonitored = computed(() =>
-  props.seasons.length > 0 &&
-  props.seasons.every(s => seasonMonitored.value.get(s.seasonNumber)),
+const allSeasonsMonitored = computed(
+  () => props.seasons.length > 0 && props.seasons.every((s) => seasonMonitored.value.get(s.seasonNumber)),
 )
 
 function toggleAllSeasons() {
@@ -103,10 +117,15 @@ function handleConfirm() {
     }
   }
 
-  emit('confirm', props.seasons.map(s => ({
-    seasonNumber: s.seasonNumber,
-    monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
-  })), monitorFutureSeasons.value, epOverrides)
+  emit(
+    'confirm',
+    props.seasons.map((s) => ({
+      seasonNumber: s.seasonNumber,
+      monitored: seasonMonitored.value.get(s.seasonNumber) ?? true,
+    })),
+    monitorFutureSeasons.value,
+    epOverrides,
+  )
 }
 </script>
 

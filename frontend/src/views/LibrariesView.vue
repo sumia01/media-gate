@@ -1,12 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import client from '@/api/client'
-import type { Library, LibraryCreate, ScanEntry, MediaProfile } from '@/types/api'
-import FolderBrowser from '@/components/FolderBrowser.vue'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import BaseModal from '@/components/BaseModal.vue'
-import LibrariesMediaServer from '@/components/libraries/LibrariesMediaServer.vue'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
+import type { Library, LibraryCreate, MediaProfile, ScanEntry } from '@/types/api'
 
 const { refreshLibraries: refreshSidebar } = useSidebarLibraries()
 
@@ -34,10 +30,7 @@ const formProfileId = ref<number | null>(null)
 async function fetchLibraries() {
   loading.value = true
   error.value = ''
-  const [libRes, profileRes] = await Promise.all([
-    client.GET('/libraries'),
-    client.GET('/media-profiles'),
-  ])
+  const [libRes, profileRes] = await Promise.all([client.GET('/libraries'), client.GET('/media-profiles')])
   loading.value = false
   if (libRes.error) {
     error.value = 'Failed to load libraries'

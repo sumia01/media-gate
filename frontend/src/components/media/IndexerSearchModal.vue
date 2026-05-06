@@ -1,16 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import type { Indexer, Library, TorrentResult } from '@/types/api'
-import BaseModal from '@/components/BaseModal.vue'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import { formatSize } from '@/utils/media'
-import {
-  parseTitleSeasonEpisode,
-  classifyMatch,
-  matchLevelOrder,
-  type MatchLevel,
-} from '@/utils/torrent'
+import { classifyMatch, type MatchLevel, matchLevelOrder, parseTitleSeasonEpisode } from '@/utils/torrent'
 
 const props = defineProps<{
   mediaItemId?: number
@@ -45,7 +37,7 @@ const downloadedIdx = ref<Set<number>>(new Set())
 // --- Add & Download flow (preview context) ---
 const canAddAndDownload = computed(() => props.mediaItemId == null && props.source && props.externalId != null)
 const libraries = ref<Library[]>([])
-const compatibleLibraries = computed(() => libraries.value.filter(l => l.mediaType === props.mediaType))
+const compatibleLibraries = computed(() => libraries.value.filter((l) => l.mediaType === props.mediaType))
 const addDownloadIdx = ref<number | null>(null) // which result row triggered the picker
 const selectedLibraryId = ref<number | null>(null)
 const addingDownload = ref(false)
@@ -57,9 +49,10 @@ const sortedResults = computed(() => {
 
   const classify = (r: TorrentResult, i: number) => ({
     result: r,
-    matchLevel: (props.mediaType === 'series' && userSeason !== null)
-      ? classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode)
-      : 'none' as MatchLevel,
+    matchLevel:
+      props.mediaType === 'series' && userSeason !== null
+        ? classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode)
+        : ('none' as MatchLevel),
     profileMatch: r.profileMatch ?? false,
     originalIndex: i,
   })
@@ -78,19 +71,18 @@ const sortedResults = computed(() => {
 
 function matchRowClass(level: MatchLevel): string {
   switch (level) {
-    case 'full': return 'bg-emerald-500/15'
-    case 'season': return 'bg-amber-500/15'
-    default: return ''
+    case 'full':
+      return 'bg-emerald-500/15'
+    case 'season':
+      return 'bg-amber-500/15'
+    default:
+      return ''
   }
 }
 
-const hasMatches = computed(() =>
-  sortedResults.value.some((i) => i.matchLevel !== 'none')
-)
+const hasMatches = computed(() => sortedResults.value.some((i) => i.matchLevel !== 'none'))
 
-const hasProfileMatches = computed(() =>
-  sortedResults.value.some((i) => i.profileMatch)
-)
+const hasProfileMatches = computed(() => sortedResults.value.some((i) => i.profileMatch))
 
 // --- Lifecycle ---
 onMounted(async () => {
@@ -133,11 +125,7 @@ async function search() {
   results.value = []
 
   const hasImdb = !!props.imdbId
-  const searchType = hasImdb
-    ? props.mediaType === 'movie'
-      ? 'movie-search'
-      : 'tv-search'
-    : 'search'
+  const searchType = hasImdb ? (props.mediaType === 'movie' ? 'movie-search' : 'tv-search') : 'search'
 
   const { data, error: err } = await client.GET('/indexers/search', {
     params: {
@@ -220,9 +208,8 @@ async function confirmAddAndDownload() {
   if (addErr) {
     addingDownload.value = false
     const errBody = addErr as { code?: number }
-    error.value = errBody.code === 409
-      ? 'This media already exists in the selected library'
-      : 'Failed to add media to library'
+    error.value =
+      errBody.code === 409 ? 'This media already exists in the selected library' : 'Failed to add media to library'
     addDownloadIdx.value = null
     return
   }

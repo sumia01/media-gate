@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { MediaItem, DiscoverItem } from '@/types/api'
+import type { DiscoverItem, MediaItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
-import DiscoverCard from '@/components/media/DiscoverCard.vue'
 
 const router = useRouter()
 

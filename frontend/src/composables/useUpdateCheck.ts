@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import { useEventStream } from './useEventStream'
 

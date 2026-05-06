@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import FolderBrowser from '@/components/FolderBrowser.vue'
-
 defineProps<{
   qbUrl: string
   qbUsername: string
@@ -43,10 +41,10 @@ defineEmits<{
   'update:subtitleLanguages': [value: string]
   'update:subtitleAutoSearch': [value: boolean]
   'update:fsUrl': [value: string]
-  'dirty': [field: string]
-  'testQbittorrent': []
-  'testOpenSubtitles': []
-  'testFlaresolverr': []
+  dirty: [field: string]
+  testQbittorrent: []
+  testOpenSubtitles: []
+  testFlaresolverr: []
 }>()
 </script>
 

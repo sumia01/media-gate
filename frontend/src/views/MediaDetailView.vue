@@ -1,18 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
-import type { Library, MediaItem, MediaFile, MediaProfile, SeasonSummary } from '@/types/api'
 import { useEventStream } from '@/composables/useEventStream'
-import { parseGenres, profileImageUrl, posterUrl, formatBytes } from '@/utils/media'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import MatchPanel from '@/components/media/MatchPanel.vue'
-import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
-import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
-import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
-import SubtitleList from '@/components/media/SubtitleList.vue'
-import DownloadList from '@/components/media/DownloadList.vue'
-import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
+import type { Library, MediaFile, MediaItem, MediaProfile, SeasonSummary } from '@/types/api'
+import { parseGenres } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,8 +66,8 @@ const imdbUrl = computed(() => {
 const trailerUrl = computed(() => metadata.value?.trailerUrl ?? null)
 
 const credits = computed(() => metadata.value?.credits ?? [])
-const cast = computed(() => credits.value.filter(c => c.type === 'cast'))
-const crew = computed(() => credits.value.filter(c => c.type === 'crew'))
+const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
+const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 
 async function fetchItem(id: number) {
   loading.value = true
@@ -167,7 +159,12 @@ async function toggleWatched() {
   watchedLoading.value = false
 }
 
-async function updateMediaItem(update: { mediaProfileId?: number; monitored?: boolean; monitorNewSeasons?: boolean; seasonMonitors?: { seasonNumber: number; monitored: boolean }[] }) {
+async function updateMediaItem(update: {
+  mediaProfileId?: number
+  monitored?: boolean
+  monitorNewSeasons?: boolean
+  seasonMonitors?: { seasonNumber: number; monitored: boolean }[]
+}) {
   if (!item.value) return
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: item.value.id } },
@@ -197,9 +194,18 @@ async function onMonitoredToggle() {
   episodeRefreshKey.value++
 }
 
-async function onSeasonMonitorConfirm(monitors: { seasonNumber: number; monitored: boolean }[], monitorNewSeasons: boolean, episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]) {
+async function onSeasonMonitorConfirm(
+  monitors: { seasonNumber: number; monitored: boolean }[],
+  monitorNewSeasons: boolean,
+  episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[],
+) {
   showSeasonMonitorModal.value = false
-  const update: { monitored: boolean; seasonMonitors: { seasonNumber: number; monitored: boolean }[]; monitorNewSeasons: boolean; episodeMonitors?: { seasonNumber: number; episodeNumber: number; monitored: boolean }[] } = {
+  const update: {
+    monitored: boolean
+    seasonMonitors: { seasonNumber: number; monitored: boolean }[]
+    monitorNewSeasons: boolean
+    episodeMonitors?: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]
+  } = {
     monitored: true,
     seasonMonitors: monitors,
     monitorNewSeasons,
@@ -244,7 +250,12 @@ async function handleUnmatch() {
 
 async function handleDelete() {
   if (!item.value) return
-  if (!confirm(`Delete "${item.value.title}"? This will remove all files from the library, torrents from the download client, and all associated data.`)) return
+  if (
+    !confirm(
+      `Delete "${item.value.title}"? This will remove all files from the library, torrents from the download client, and all associated data.`,
+    )
+  )
+    return
   const { error: err } = await client.DELETE('/media/{id}', {
     params: { path: { id: item.value.id } },
   })
@@ -333,21 +344,11 @@ function handleImportEvent(data: any) {
   }
 }
 
-const mediaEvents = [
-  'media.item_matched',
-  'media.resync_completed',
-  'monitor.grabbed',
-]
+const mediaEvents = ['media.item_matched', 'media.resync_completed', 'monitor.grabbed']
 
-const importEvents = [
-  'download.import_completed',
-]
+const importEvents = ['download.import_completed']
 
-const subtitleEvents = [
-  'subtitle.downloaded',
-  'subtitle.deleted',
-  'subtitle.auto_search_completed',
-]
+const subtitleEvents = ['subtitle.downloaded', 'subtitle.deleted', 'subtitle.auto_search_completed']
 
 function handleSubtitleEvent(data: any) {
   if (item.value && data.mediaItemId === item.value.id) {

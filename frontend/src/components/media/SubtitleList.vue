@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { Subtitle } from '@/types/api'
 import { useEventStream } from '@/composables/useEventStream'
+import type { Subtitle } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
@@ -30,7 +30,7 @@ async function deleteSubtitle(id: number) {
   await client.DELETE('/subtitles/{id}', {
     params: { path: { id } },
   })
-  subtitles.value = subtitles.value.filter(s => s.id !== id)
+  subtitles.value = subtitles.value.filter((s) => s.id !== id)
 }
 
 function handleSubtitleEvent(data: any) {
@@ -64,8 +64,14 @@ onUnmounted(() => {
   off('subtitle.auto_search_completed', handleSubtitleEvent)
 })
 
-watch(() => props.mediaItemId, () => fetchSubtitles())
-watch(() => props.refreshKey, () => fetchSubtitles())
+watch(
+  () => props.mediaItemId,
+  () => fetchSubtitles(),
+)
+watch(
+  () => props.refreshKey,
+  () => fetchSubtitles(),
+)
 </script>
 
 <template>

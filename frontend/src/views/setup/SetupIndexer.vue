@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
 import type { IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
 

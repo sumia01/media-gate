@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
-import type { PlexSection, PlexMapping } from '@/types/api'
+import type { PlexMapping, PlexSection } from '@/types/api'
 
 // Connection settings
 const plexUrl = ref('')
@@ -16,9 +16,7 @@ const connectionError = ref('')
 
 // Integration state
 const connected = computed(() => savedPlexUrl.value !== '' && savedPlexToken.value !== '')
-const dirty = computed(
-  () => plexUrl.value !== savedPlexUrl.value || plexToken.value !== savedPlexToken.value,
-)
+const dirty = computed(() => plexUrl.value !== savedPlexUrl.value || plexToken.value !== savedPlexToken.value)
 
 // Library mappings
 const sections = ref<PlexSection[]>([])
@@ -108,10 +106,7 @@ async function testConnection() {
 async function loadMappings() {
   loadingMappings.value = true
   mappingError.value = ''
-  const [sectionsRes, mappingsRes] = await Promise.all([
-    client.GET('/plex/sections'),
-    client.GET('/plex/mappings'),
-  ])
+  const [sectionsRes, mappingsRes] = await Promise.all([client.GET('/plex/sections'), client.GET('/plex/mappings')])
   loadingMappings.value = false
 
   if (sectionsRes.data) {

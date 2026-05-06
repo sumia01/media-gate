@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import client from '@/api/client'
 import type { MediaProfile, MediaProfileCreate } from '@/types/api'
-import ErrorBanner from '@/components/ErrorBanner.vue'
-import BaseModal from '@/components/BaseModal.vue'
-import TestProfileModal from '@/components/media/TestProfileModal.vue'
 
 const profiles = ref<MediaProfile[]>([])
 const loading = ref(false)

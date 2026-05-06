@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useAuth } from '@/composables/useAuth'
+import { onMounted, ref } from 'vue'
 import client from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 
 const { currentUser, fetchProfile } = useAuth()
 

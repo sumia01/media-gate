@@ -9,7 +9,10 @@ export function parseGenres(genres: string | undefined | null): string[] {
   } catch {
     // Fall back to comma-separated
   }
-  return genres.split(',').map((g) => g.trim()).filter(Boolean)
+  return genres
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean)
 }
 
 /**
@@ -42,7 +45,7 @@ export function posterUrl(mediaItem: { id: number; updatedAt: string }): string 
 export function formatSize(size: string | undefined): string {
   if (!size) return ''
   const bytes = parseFloat(size)
-  if (isNaN(bytes)) return size
+  if (Number.isNaN(bytes)) return size
   // If parsing consumed the entire string, it's a raw number → format it
   if (size.trim() === String(bytes) || /^\d+$/.test(size.trim())) {
     return formatBytes(bytes)
@@ -56,12 +59,12 @@ export function formatSize(size: string | undefined): string {
  */
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
-  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024) return `${bytes} B`
   const kb = bytes / 1024
-  if (kb < 1024) return kb.toFixed(1) + ' KB'
+  if (kb < 1024) return `${kb.toFixed(1)} KB`
   const mb = kb / 1024
-  if (mb < 1024) return mb.toFixed(1) + ' MB'
+  if (mb < 1024) return `${mb.toFixed(1)} MB`
   const gb = mb / 1024
-  if (gb < 1024) return gb.toFixed(1) + ' GB'
-  return (gb / 1024).toFixed(1) + ' TB'
+  if (gb < 1024) return `${gb.toFixed(1)} GB`
+  return `${(gb / 1024).toFixed(1)} TB`
 }
