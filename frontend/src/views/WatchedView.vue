@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { WatchedItem } from '@/types/api'
 
 const router = useRouter()

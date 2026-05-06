@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import FolderBrowser from '@/components/FolderBrowser.vue'
+import LibrariesMediaServer from '@/components/libraries/LibrariesMediaServer.vue'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import type { Library, LibraryCreate, MediaProfile, ScanEntry } from '@/types/api'
 

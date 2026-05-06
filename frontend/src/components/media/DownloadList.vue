@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
+import { formatBytes, formatSize } from '@/utils/media'
 
 const props = defineProps<{
   mediaItemId: number

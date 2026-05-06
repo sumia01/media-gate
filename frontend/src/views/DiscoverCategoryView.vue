@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
+import DiscoverCard from '@/components/media/DiscoverCard.vue'
 import type { DiscoverItem } from '@/types/api'
 
 const props = defineProps<{

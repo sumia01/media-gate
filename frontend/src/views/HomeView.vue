@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
+import DiscoverCard from '@/components/media/DiscoverCard.vue'
 import type { DiscoverItem, MediaItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
 

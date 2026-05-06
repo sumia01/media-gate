@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { Indexer, Library, TorrentResult } from '@/types/api'
+import { formatSize } from '@/utils/media'
 import { classifyMatch, type MatchLevel, matchLevelOrder, parseTitleSeasonEpisode } from '@/utils/torrent'
 
 const props = defineProps<{

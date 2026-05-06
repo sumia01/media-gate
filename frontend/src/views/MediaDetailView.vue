@@ -2,9 +2,17 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import DownloadList from '@/components/media/DownloadList.vue'
+import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
+import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
+import MatchPanel from '@/components/media/MatchPanel.vue'
+import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
+import SubtitleList from '@/components/media/SubtitleList.vue'
+import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Library, MediaFile, MediaItem, MediaProfile, SeasonSummary } from '@/types/api'
-import { parseGenres } from '@/utils/media'
+import { formatBytes, parseGenres, posterUrl, profileImageUrl } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()

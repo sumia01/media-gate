@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import IndexerTryModal from '@/components/media/IndexerTryModal.vue'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
 
 const indexers = ref<Indexer[]>([])

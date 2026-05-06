@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import client from '@/api/client'
+import FolderBrowser from '@/components/FolderBrowser.vue'
 
 const emit = defineEmits<{ next: []; back: [] }>()
 

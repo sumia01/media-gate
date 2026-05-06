@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
+import { formatBytes, formatSize } from '@/utils/media'
 
 const router = useRouter()
 const { on, off } = useEventStream()

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { MatchCandidate, MediaItem } from '@/types/api'
 
 const props = defineProps<{

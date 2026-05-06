@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, provide, ref } from 'vue'
+import GlobalSearchOverlay from '@/components/media/GlobalSearchOverlay.vue'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
+import SidebarA from './SidebarA.vue'
+import TopBarA from './TopBarA.vue'
 
 const MD_BREAKPOINT = 768
 const isMobile = ref(window.innerWidth < MD_BREAKPOINT)

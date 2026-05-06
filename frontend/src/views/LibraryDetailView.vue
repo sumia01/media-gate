@@ -2,10 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import { useEventStream } from '@/composables/useEventStream'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useJobQueue } from '@/composables/useJobQueue'
 import type { Library, MediaItem, MediaProfile } from '@/types/api'
+import { posterUrl } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()

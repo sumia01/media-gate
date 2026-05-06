@@ -2,8 +2,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
+import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import type { ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
-import { parseGenres } from '@/utils/media'
+import { parseGenres, profileImageUrl } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()

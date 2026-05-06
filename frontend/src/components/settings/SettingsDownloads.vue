@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FolderBrowser from '@/components/FolderBrowser.vue'
+
 defineProps<{
   qbUrl: string
   qbUsername: string

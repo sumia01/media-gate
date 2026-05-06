@@ -1689,3 +1689,25 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 5. **Migration v6**: Backfills `language_mode='or'` on all existing profiles to preserve current behavior (no language filtering was equivalent to OR-with-empty-list).
 
 **Rationale**: Single source of truth eliminates frontend/backend divergence — the profile matching contract lives entirely in the backend. Language filtering fills a critical gap (users with multi-language libraries had no way to prefer their language). OR mode with priority ordering is the intuitive default (prefer English, accept French as fallback). AND mode covers the common request for "dual audio" releases requiring multiple languages. The `multi` token special-case handles a ubiquitous release naming convention.
+
+---
+
+## ADR-113: Biome noUnusedImports disabled for Vue SFCs
+**Date**: 2026-05-06
+**Status**: Accepted
+
+**Context**: The Biome linter's `noUnusedImports` rule removed 45 component imports across 22 `.vue` files during initial Biome adoption. Biome analyzes only the `<script setup>` block and cannot see template references — imports used exclusively in `<template>` (components like `ErrorBanner`, `BaseModal`, `DownloadList`, etc.) appear "unused" to the linter. Without an auto-import plugin (`unplugin-vue-components` is not configured), these components silently fail to render at runtime — no build error, no console warning in production.
+
+**Decision**: Disable `noUnusedImports` for `.vue` files via Biome's `overrides` section. The rule remains active for `.ts` files where it works correctly.
+
+```json
+"overrides": [{
+  "includes": ["**/*.vue"],
+  "linter": { "rules": { "correctness": {
+    "noUnusedVariables": "off",
+    "noUnusedImports": "off"
+  }}}
+}]
+```
+
+**Rationale**: Biome has no Vue template analysis capability — it cannot determine whether an import is used in a template. The alternative (adding `unplugin-vue-components` for auto-import) adds build complexity and magic behavior. Explicit imports with the rule disabled is safer: imports are visible in code, TypeScript catches typos at build time via `vue-tsc`, and there's no silent rendering failure. The `noUnusedVariables` rule was already disabled for `.vue` files for the same reason.

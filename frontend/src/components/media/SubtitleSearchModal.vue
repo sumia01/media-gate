@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { SubtitleSearchResult } from '@/types/api'
 
 const props = defineProps<{

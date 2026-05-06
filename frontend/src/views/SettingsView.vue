@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import client from '@/api/client'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import SettingsDownloads from '@/components/settings/SettingsDownloads.vue'
+import SettingsGeneral from '@/components/settings/SettingsGeneral.vue'
+import SettingsMediaDb from '@/components/settings/SettingsMediaDb.vue'
 
 const activeTab = ref<'media-db' | 'downloads' | 'general'>('general')
 

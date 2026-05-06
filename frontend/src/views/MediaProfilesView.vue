@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
+import TestProfileModal from '@/components/media/TestProfileModal.vue'
 import type { MediaProfile, MediaProfileCreate } from '@/types/api'
 
 const profiles = ref<MediaProfile[]>([])

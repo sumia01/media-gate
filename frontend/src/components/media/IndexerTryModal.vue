@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
+import BaseModal from '@/components/BaseModal.vue'
+import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { MatchCandidate, TorrentResult } from '@/types/api'
+import { formatSize } from '@/utils/media'
 
 const props = defineProps<{
   indexerId: number
