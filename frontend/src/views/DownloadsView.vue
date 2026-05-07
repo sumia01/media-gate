@@ -5,6 +5,7 @@ import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
 import { formatBytes, formatSize } from '@/utils/media'
+import { ArrowDown, ArrowUp, ExternalLink } from 'lucide-vue-next'
 
 const router = useRouter()
 const { on, off } = useEventStream()
@@ -316,8 +317,8 @@ onUnmounted(() => {
                 v-if="(dl.status === 'downloading' || dl.status === 'seeding') && (dl.downloadSpeed || dl.uploadSpeed)"
                 class="mt-1 flex items-center gap-3 text-[10px] text-gray-500"
               >
-                <span v-if="dl.downloadSpeed">&darr; {{ formatSpeed(dl.downloadSpeed) }}</span>
-                <span v-if="dl.uploadSpeed">&uarr; {{ formatSpeed(dl.uploadSpeed) }}</span>
+                <span v-if="dl.downloadSpeed"><ArrowDown class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.downloadSpeed) }}</span>
+                <span v-if="dl.uploadSpeed"><ArrowUp class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.uploadSpeed) }}</span>
               </div>
             </div>
 
@@ -331,9 +332,7 @@ onUnmounted(() => {
                 title="Open media in library"
                 @click="openMedia(dl.mediaItemId)"
               >
-                <svg class="w-3.5 h-3.5 inline-block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                </svg>
+                <ExternalLink class="w-3.5 h-3.5 inline-block" />
               </button>
 
               <!-- Files button -->

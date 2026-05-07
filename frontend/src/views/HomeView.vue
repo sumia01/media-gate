@@ -5,6 +5,7 @@ import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
 import type { DiscoverItem, MediaItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
+import { Eye, ArrowRight } from 'lucide-vue-next'
 
 const router = useRouter()
 
@@ -152,7 +153,7 @@ function getRecentPoster(item: MediaItem): string | null {
                 {{ item.mediaType }}
               </span>
               <span v-if="isRecentWatched(item)" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                <Eye class="w-2.5 h-2.5" />
                 seen
               </span>
             </div>
@@ -172,7 +173,7 @@ function getRecentPoster(item: MediaItem): string | null {
     <section v-if="trendingLoading || trendingItems.length" class="mb-10">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Trending This Week</h2>
-        <router-link :to="{ name: 'discover-trending' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+        <router-link :to="{ name: 'discover-trending' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
       </div>
       <div v-if="trendingLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
@@ -197,7 +198,7 @@ function getRecentPoster(item: MediaItem): string | null {
     <section v-if="moviesLoading || popularMovies.length" class="mb-10">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Movies</h2>
-        <router-link :to="{ name: 'discover-popular-movies' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+        <router-link :to="{ name: 'discover-popular-movies' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
       </div>
       <div v-if="moviesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
@@ -222,7 +223,7 @@ function getRecentPoster(item: MediaItem): string | null {
     <section v-if="seriesLoading || popularSeries.length" class="mb-10">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Series</h2>
-        <router-link :to="{ name: 'discover-popular-series' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more &rarr;</router-link>
+        <router-link :to="{ name: 'discover-popular-series' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
       </div>
       <div v-if="seriesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">

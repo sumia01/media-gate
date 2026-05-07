@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Check, X } from 'lucide-vue-next'
 defineProps<{
   tmdbKey: string
   tvdbKey: string
@@ -79,7 +80,7 @@ defineEmits<{
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ tmdbTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="tmdbTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ tmdbTest.message }}
           </span>
         </div>
@@ -131,7 +132,7 @@ defineEmits<{
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ tvdbTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="tvdbTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ tvdbTest.message }}
           </span>
         </div>

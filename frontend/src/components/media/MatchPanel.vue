@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { X } from 'lucide-vue-next'
 import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -98,7 +99,7 @@ onMounted(search)
           class="text-gray-500 hover:text-gray-300 transition-colors duration-200"
           @click="emit('close')"
         >
-          &#x2715;
+          <X class="w-4 h-4" />
         </button>
       </div>
 

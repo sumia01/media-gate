@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowLeft, Loader2 } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -145,7 +146,7 @@ const hasMore = computed(() => page.value < totalPages.value)
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl font-semibold text-gray-100 tracking-tight">{{ title }}</h1>
       <router-link :to="{ name: 'home' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">
-        &larr; Back
+        <ArrowLeft class="w-4 h-4 inline" /> Back
       </router-link>
     </div>
 
@@ -173,10 +174,7 @@ const hasMore = computed(() => page.value < totalPages.value)
     <!-- Sentinel + loading spinner for infinite scroll -->
     <div ref="sentinel" class="flex justify-center py-8">
       <div v-if="loading && !initialLoading" class="flex items-center gap-2 text-gray-400 text-sm">
-        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
+        <Loader2 class="w-5 h-5 animate-spin" />
         Loading more...
       </div>
       <p v-else-if="!hasMore && items.length" class="text-gray-500 text-sm">No more items</p>

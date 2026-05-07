@@ -9,6 +9,7 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useJobQueue } from '@/composables/useJobQueue'
 import type { Library, MediaItem, MediaProfile } from '@/types/api'
 import { posterUrl } from '@/utils/media'
+import { Plus, RefreshCw, Sparkles, Eye } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -207,7 +208,7 @@ watch(() => route.params.id, loadAll)
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
           @click="openAddSearch"
         >
-          <span class="text-base leading-none">+</span>
+          <Plus class="w-4 h-4" />
           Add
         </button>
         <button
@@ -215,7 +216,7 @@ watch(() => route.params.id, loadAll)
           :disabled="isSyncingThisLibrary"
           @click="handleSync"
         >
-          <span class="text-base leading-none" :class="isSyncingThisLibrary ? 'animate-spin' : ''">&#x21bb;</span>
+          <RefreshCw class="w-4 h-4" :class="isSyncingThisLibrary ? 'animate-spin' : ''" />
           {{ isSyncingThisLibrary ? 'Syncing...' : 'Sync' }}
         </button>
         <button
@@ -223,7 +224,7 @@ watch(() => route.params.id, loadAll)
           :disabled="isMatchingThisLibrary"
           @click="handleMatch"
         >
-          <span class="text-base leading-none" :class="isMatchingThisLibrary ? 'animate-pulse' : ''">&#x2728;</span>
+          <Sparkles class="w-4 h-4" :class="isMatchingThisLibrary ? 'animate-pulse' : ''" />
           <template v-if="isMatchingThisLibrary && matchProgress">
             Matching {{ matchProgress.current }}/{{ matchProgress.total }}...
           </template>
@@ -290,7 +291,7 @@ watch(() => route.params.id, loadAll)
                 {{ item.status }}
               </span>
               <span v-if="isItemWatched(item)" class="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300">
-                <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+                <Eye class="w-2.5 h-2.5" />
                 seen
               </span>
             </div>

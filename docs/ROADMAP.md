@@ -497,6 +497,14 @@
 - [x] Frontend: AND/OR toggle UI on profiles page, priority numbers on resolution/source/language buttons
 - [x] DB migration v6: backfills `language_mode='or'` on existing profiles
 
+## Phase 8.9: Icon system (Lucide) ✅
+→ See ADR-114
+- [x] Replaced all inline SVGs, Unicode characters, and HTML entities with Lucide Vue components (`lucide-vue-next`)
+- [x] Consistent monochrome icons that inherit parent `color` — gray inactive, violet active
+- [x] Consistent sizing via Tailwind classes (`w-3 h-3`, `w-4 h-4`, `w-5 h-5`)
+- [x] Dynamic library-type icons in sidebar (Clapperboard for movies, Tv for series)
+- [x] ~20+ frontend files converted to use Lucide components
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

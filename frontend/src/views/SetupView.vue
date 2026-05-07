@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Check } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -110,16 +111,7 @@ function handleBack() {
                     : 'bg-[#161b2e] text-gray-600'
               "
             >
-              <svg
-                v-if="i < currentStep"
-                class="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+              <Check v-if="i < currentStep" class="w-3.5 h-3.5" :stroke-width="2.5" />
               <span v-else>{{ i + 1 }}</span>
             </div>
             <!-- Label -->

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Check, X } from 'lucide-vue-next'
 import { authFetch } from '@/api/client'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
@@ -157,7 +158,7 @@ const discordConnected = computed(() => props.discordUrl !== '')
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ discordTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="discordTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ discordTest.message }}
           </span>
         </div>

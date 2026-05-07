@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import FolderBrowser from '@/components/FolderBrowser.vue'
+import { Check, X } from 'lucide-vue-next'
 
 defineProps<{
   qbUrl: string
@@ -121,7 +122,7 @@ defineEmits<{
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ qbTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="qbTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ qbTest.message }}
           </span>
         </div>
@@ -240,7 +241,7 @@ defineEmits<{
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ osTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="osTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ osTest.message }}
           </span>
         </div>
@@ -334,7 +335,7 @@ defineEmits<{
               ? 'bg-green-500/10 text-green-400 border border-green-500/30'
               : 'bg-red-500/10 text-red-400 border border-red-500/30'"
           >
-            <span>{{ fsTest.success ? '\u2713' : '\u2717' }}</span>
+            <Check v-if="fsTest.success" class="w-4 h-4 inline" /><X v-else class="w-4 h-4 inline" />
             {{ fsTest.message }}
           </span>
         </div>

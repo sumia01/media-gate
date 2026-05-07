@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { X, Check, Download } from 'lucide-vue-next'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -120,7 +121,7 @@ function langLabel(code: string): string {
         class="text-gray-500 hover:text-gray-300 text-lg transition-colors"
         @click="emit('close')"
       >
-        &#x2715;
+        <X class="w-4 h-4" />
       </button>
     </div>
 
@@ -278,7 +279,7 @@ function langLabel(code: string): string {
                 class="text-emerald-400"
                 disabled
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                <Check class="w-3.5 h-3.5" />
               </button>
               <button
                 v-else
@@ -286,7 +287,7 @@ function langLabel(code: string): string {
                 :disabled="downloadingIdx.has(idx)"
                 @click="download(result, idx)"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <Download class="w-3.5 h-3.5" />
               </button>
             </span>
           </div>

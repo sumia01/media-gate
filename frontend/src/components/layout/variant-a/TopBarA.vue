@@ -6,6 +6,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 import { useWorkers } from '@/composables/useWorkers'
+import { Download, Menu, RefreshCw, Search } from 'lucide-vue-next'
 
 const router = useRouter()
 const { workers, runWorker, fetchWorkers } = useWorkers()
@@ -75,9 +76,7 @@ async function handleRun(name: string) {
       class="p-2 rounded-lg text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
       @click="toggleSidebar?.()"
     >
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
+      <Menu class="w-5 h-5" />
     </button>
 
     <!-- Search -->
@@ -86,7 +85,7 @@ async function handleRun(name: string) {
         class="relative flex items-center border rounded-lg bg-[#161b2e] border-violet-800/30 hover:border-violet-500/50 transition-colors duration-200 cursor-pointer"
         @click="openSearch"
       >
-        <span class="pl-3 text-gray-500 text-sm">&#x2315;</span>
+        <Search class="w-4 h-4 ml-3 text-gray-500" />
         <span class="w-full py-2.5 px-3 text-sm text-gray-600 select-none">Search movies &amp; TV...</span>
       </div>
     </div>
@@ -100,9 +99,7 @@ async function handleRun(name: string) {
           @click="openWorkersPanel"
         >
           <!-- Cycle/recurring icon -->
-          <svg class="w-4 h-4" :class="hasRunningWorker ? 'animate-spin text-violet-400' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <RefreshCw class="w-4 h-4" :class="hasRunningWorker ? 'animate-spin text-violet-400' : ''" />
           <span class="text-xs hidden sm:inline">Workers</span>
           <span
             v-if="hasRunningWorker"
@@ -182,9 +179,7 @@ async function handleRun(name: string) {
           class="relative p-2 rounded-lg text-emerald-400 hover:text-emerald-300 transition-colors duration-200"
           @click="showUpdatePanel = !showUpdatePanel"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
+          <Download class="w-5 h-5" />
           <span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
         </button>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronRight, X } from 'lucide-vue-next'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -122,7 +123,7 @@ function handleBackdropClick(e: MouseEvent) {
             class="text-gray-500 hover:text-gray-300 text-lg transition-colors"
             @click="closeSearch()"
           >
-            &#x2715;
+            <X class="w-4 h-4" />
           </button>
         </div>
 
@@ -183,7 +184,7 @@ function handleBackdropClick(e: MouseEvent) {
 
               <!-- Arrow icon -->
               <div class="flex-shrink-0 self-center text-gray-600">
-                &#x203A;
+                <ChevronRight class="w-3 h-3" />
               </div>
             </div>
           </div>

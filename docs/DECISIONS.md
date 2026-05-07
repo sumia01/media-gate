@@ -1711,3 +1711,22 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 ```
 
 **Rationale**: Biome has no Vue template analysis capability — it cannot determine whether an import is used in a template. The alternative (adding `unplugin-vue-components` for auto-import) adds build complexity and magic behavior. Explicit imports with the rule disabled is safer: imports are visible in code, TypeScript catches typos at build time via `vue-tsc`, and there's no silent rendering failure. The `noUnusedVariables` rule was already disabled for `.vue` files for the same reason.
+
+---
+
+## ADR-114: Lucide Vue icon library adoption
+**Date**: 2026-05-07
+**Status**: Accepted
+
+**Context**: The frontend used a mix of inline SVGs (copy-pasted from various sources), Unicode characters (`▶`, `←`, `✕`), and HTML entities (`&times;`, `&#9654;`) for icons. This caused inconsistency in sizing, color inheritance, stroke width, and visual weight. Icons didn't respond to parent text color changes (e.g., active/inactive states in the sidebar). The ad-hoc approach made it hard to find and replace icons or maintain visual consistency as the UI grew.
+
+**Decision**: Adopt [Lucide](https://lucide.dev) as the standard icon library via `lucide-vue-next`. Replace all inline SVGs, Unicode characters, and HTML entities with Lucide Vue components across the entire frontend.
+
+1. **Library choice**: Lucide — ISC-licensed, tree-shakeable (only imported icons are bundled), 1500+ icons, consistent 24x24 viewBox with 2px stroke, inherits `currentColor` by default.
+2. **Usage pattern**: Import named components (`import { Search, Download, Eye } from 'lucide-vue-next'`), render with Tailwind size classes (`class="w-4 h-4"`). No wrapper component — direct usage keeps it simple and type-safe.
+3. **Color inheritance**: All Lucide icons use `stroke="currentColor"` by default. Parent elements control color via Tailwind text utilities (`text-gray-400`, `text-violet-400`). Active/inactive states work automatically.
+4. **Sizing**: Standardized on `w-3 h-3` (inline text), `w-4 h-4` (buttons, badges), `w-5 h-5` (topbar actions, sidebar items). No `size` prop — Tailwind classes are more consistent with the rest of the codebase.
+5. **Dynamic icons**: Sidebar library-type icons use `<component :is="mediaTypeIcons[lib.mediaType]">` with a `Record<string, Component>` map (`{ movie: Clapperboard, series: Tv }`).
+6. **Biome compatibility**: Lucide component imports are only used in `<template>`, so they appear "unused" to Biome's `noUnusedImports` rule. The rule is already disabled for `.vue` files (ADR-113), so no additional configuration needed.
+
+**Rationale**: A dedicated icon library eliminates visual inconsistency, reduces bundle size (tree-shaking vs. full inline SVGs), provides a searchable catalog for developers, and ensures icons scale and colorize uniformly. Lucide was chosen over alternatives (Heroicons, Phosphor, Material) for its ISC license compatibility, active maintenance, comprehensive icon set, and first-class Vue 3 support. The `currentColor` default is critical — it means icons automatically adapt to dark theme, hover states, and active/inactive transitions without per-icon color props.

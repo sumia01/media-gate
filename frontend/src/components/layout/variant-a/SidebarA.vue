@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import { useSystemInfo } from '@/composables/useSystemInfo'
 import { formatBytes } from '@/utils/media'
+import {
+  Compass,
+  Eye,
+  Download,
+  Library,
+  ArrowLeftRight,
+  SlidersHorizontal,
+  Settings,
+  Users,
+  Clapperboard,
+  Tv,
+} from 'lucide-vue-next'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const props = defineProps<{ isMobile: boolean }>()
@@ -27,21 +39,22 @@ const userName = computed(() => {
 })
 
 const staticTop = [
-  { icon: '\u25C8', label: 'Discover', to: '/' },
-  { icon: '\u25C9', label: 'Watched', to: '/watched' },
-  { icon: '\u2913', label: 'Downloads', to: '/downloads' },
+  { icon: Compass, label: 'Discover', to: '/' },
+  { icon: Eye, label: 'Watched', to: '/watched' },
+  { icon: Download, label: 'Downloads', to: '/downloads' },
 ]
 
 const staticBottom = [
-  { icon: '\u26C1', label: 'Libraries', to: '/libraries' },
-  { icon: '\u21CC', label: 'Indexers', to: '/indexers' },
-  { icon: '\u25A6', label: 'Profiles', to: '/media-profiles' },
-  { icon: '\u2699', label: 'Settings', to: '/settings' },
-  { icon: '\u2661', label: 'Users', to: '/users' },
+  { icon: Library, label: 'Libraries', to: '/libraries' },
+  { icon: ArrowLeftRight, label: 'Indexers', to: '/indexers' },
+  { icon: SlidersHorizontal, label: 'Profiles', to: '/media-profiles' },
+  { icon: Settings, label: 'Settings', to: '/settings' },
+  { icon: Users, label: 'Users', to: '/users' },
 ]
 
-function mediaTypeIcon(type: string) {
-  return type === 'movie' ? '◻' : '▤'
+const mediaTypeIcons: Record<string, Component> = {
+  movie: Clapperboard,
+  series: Tv,
 }
 
 const diskPercent = computed(() => {
@@ -98,7 +111,9 @@ onMounted(() => {
           : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
         @click="closeMobile"
       >
-        <span class="text-base w-5 text-center flex-shrink-0">{{ item.icon }}</span>
+        <span class="text-base w-5 text-center flex-shrink-0">
+          <component :is="item.icon" class="w-4 h-4 inline-block" />
+        </span>
         <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
       </RouterLink>
 
@@ -118,7 +133,9 @@ onMounted(() => {
             : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
           @click="closeMobile"
         >
-          <span class="text-base w-5 text-center flex-shrink-0">{{ mediaTypeIcon(lib.mediaType) }}</span>
+          <span class="text-base w-5 text-center flex-shrink-0">
+            <component :is="mediaTypeIcons[lib.mediaType] ?? Clapperboard" class="w-4 h-4 inline-block" />
+          </span>
           <span v-if="!collapsed" class="truncate">{{ lib.name }}</span>
         </RouterLink>
       </div>
@@ -137,7 +154,9 @@ onMounted(() => {
             : 'text-gray-500 hover:text-violet-300 hover:bg-violet-600/10'"
           @click="closeMobile"
         >
-          <span class="text-base w-5 text-center flex-shrink-0">{{ item.icon }}</span>
+          <span class="text-base w-5 text-center flex-shrink-0">
+            <component :is="item.icon" class="w-4 h-4 inline-block" />
+          </span>
           <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
         </RouterLink>
       </div>

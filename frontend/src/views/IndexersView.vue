@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { Check, Plus, X } from 'lucide-vue-next'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -284,7 +285,7 @@ onMounted(fetchAll)
         class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
         @click="openAdd"
       >
-        <span class="text-lg leading-none">+</span>
+        <Plus class="w-4 h-4" />
         Add Indexer
       </button>
     </div>
@@ -346,7 +347,7 @@ onMounted(fetchAll)
                 ? 'bg-green-500/10 text-green-400 border border-green-500/30'
                 : 'bg-red-500/10 text-red-400 border border-red-500/30'"
             >
-              <span>{{ testResult.success ? '\u2713' : '\u2717' }}</span>
+              <Check v-if="testResult.success" class="w-4 h-4" /><X v-else class="w-4 h-4" />
               {{ testResult.message }}
             </span>
           </div>

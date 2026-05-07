@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Plus } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
@@ -209,7 +210,7 @@ onMounted(() => {
           class="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors duration-200"
           @click="openAdd"
         >
-          <span class="text-lg leading-none">+</span>
+          <Plus class="w-4 h-4" />
           Add Profile
         </button>
       </div>

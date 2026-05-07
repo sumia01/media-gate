@@ -194,7 +194,7 @@ The UI includes a dedicated **Workers panel** with real-time SSE-driven status f
 | Layer | Tech |
 |-------|------|
 | Backend | Go 1.22+, stdlib `net/http`, GORM, `log/slog`, koanf |
-| Frontend | Vue 3 + TypeScript (Composition API), Tailwind CSS v4, Vue Router |
+| Frontend | Vue 3 + TypeScript (Composition API), Tailwind CSS v4, Vue Router, Lucide icons |
 | Database | SQLite via pure-Go driver (`glebarez/sqlite`) — no CGO needed |
 | API contract | OpenAPI spec &rarr; `oapi-codegen` (Go) + `openapi-typescript` (TS) |
 | Build | Makefile + Docker multi-stage for cross-compilation |

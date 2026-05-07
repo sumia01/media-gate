@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowLeft, ChevronRight, Download, ExternalLink, X } from 'lucide-vue-next'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
@@ -173,7 +174,7 @@ function formatDate(unix: number): string {
         class="text-gray-500 hover:text-gray-300 text-lg transition-colors"
         @click="emit('close')"
       >
-        &#x2715;
+        <X class="w-4 h-4" />
       </button>
     </div>
 
@@ -267,7 +268,7 @@ function formatDate(unix: number): string {
             </div>
 
             <!-- Arrow -->
-            <div class="flex-shrink-0 self-center text-gray-600">&#x203A;</div>
+            <div class="flex-shrink-0 self-center text-gray-600"><ChevronRight class="w-3 h-3" /></div>
           </div>
         </div>
       </div>
@@ -281,7 +282,7 @@ function formatDate(unix: number): string {
           class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-violet-300 transition-colors duration-200"
           @click="backToSearch"
         >
-          <span class="text-base leading-none">&larr;</span>
+          <ArrowLeft class="w-4 h-4" />
           Back
         </button>
         <span class="text-sm text-gray-500">|</span>
@@ -417,13 +418,13 @@ function formatDate(unix: number): string {
                   class="text-gray-400 hover:text-violet-300 transition-colors"
                   title="Open on tracker"
                 >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  <ExternalLink class="w-3.5 h-3.5" />
                 </a>
                 <button
                   class="text-gray-400 hover:text-emerald-300 transition-colors"
                   @click="dummyDownload(result.title)"
                 >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  <Download class="w-3.5 h-3.5" />
                 </button>
               </span>
             </div>

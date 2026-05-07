@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { Search, Languages } from 'lucide-vue-next'
 import client from '@/api/client'
 import type { Episode, SeasonSummary } from '@/types/api'
 
@@ -141,18 +142,14 @@ watch(() => props.refreshKey, fetchEpisodes)
               title="Search indexers for this season"
               @click.stop="emit('searchSeason', season.seasonNumber)"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
+              <Search class="w-3.5 h-3.5" />
             </button>
             <button
               class="px-1.5 py-1 rounded-md text-gray-400 hover:text-violet-300 hover:bg-violet-600/10 transition-colors duration-200"
               title="Search subtitles for this season"
               @click.stop="emit('searchSeasonSubtitles', season.seasonNumber)"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-              </svg>
+              <Languages class="w-3.5 h-3.5" />
             </button>
             <span
               v-if="props.monitored"
@@ -212,9 +209,7 @@ watch(() => props.refreshKey, fetchEpisodes)
               title="Search indexers for this episode"
               @click="emit('searchEpisode', season.seasonNumber, ep.episodeNumber, ep.id)"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
+              <Search class="w-3.5 h-3.5" />
             </button>
 
             <!-- Subtitle search button -->
@@ -223,9 +218,7 @@ watch(() => props.refreshKey, fetchEpisodes)
               title="Search subtitles for this episode"
               @click="emit('searchEpisodeSubtitles', season.seasonNumber, ep.episodeNumber)"
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-              </svg>
+              <Languages class="w-3.5 h-3.5" />
             </button>
 
             <!-- Status indicator -->

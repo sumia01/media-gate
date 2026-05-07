@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Home, Eye } from 'lucide-vue-next'
 import type { DiscoverItem } from '@/types/api'
 
 defineProps<{
@@ -32,11 +33,11 @@ defineEmits<{
           {{ item.mediaType }}
         </span>
         <span v-if="inLibrary" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-sky-600/90 text-sky-100">
-          <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 0 0-1.414 0l-7 7a1 1 0 0 0 1.414 1.414L4 10.414V17a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-6.586l.293.293a1 1 0 0 0 1.414-1.414l-7-7Z"/></svg>
+          <Home class="w-2.5 h-2.5" />
           in library
         </span>
         <span v-if="watched" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-600/90 text-emerald-100">
-          <svg class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1 10c.73 2.89 4 7 9 7s8.27-4.11 9-7c-.73-2.89-4-7-9-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-7.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+          <Eye class="w-2.5 h-2.5" />
           seen
         </span>
       </div>

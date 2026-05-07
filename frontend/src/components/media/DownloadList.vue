@@ -4,6 +4,7 @@ import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
 import { formatBytes, formatSize } from '@/utils/media'
+import { ChevronRight, ArrowDown, ArrowUp } from 'lucide-vue-next'
 
 const props = defineProps<{
   mediaItemId: number
@@ -259,10 +260,7 @@ watch(() => props.refreshKey, fetchDownloads)
         class="flex items-center gap-3 group cursor-pointer"
         @click="expanded = !expanded"
       >
-        <span
-          class="text-gray-500 text-xs transition-transform duration-200"
-          :class="{ 'rotate-90': expanded }"
-        >&#9654;</span>
+        <ChevronRight class="w-3 h-3 text-gray-500 transition-transform duration-200" :class="{ 'rotate-90': expanded }" />
         <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 group-hover:text-gray-400 transition-colors duration-200">Downloads</h2>
         <span
           class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300"
@@ -341,8 +339,8 @@ watch(() => props.refreshKey, fetchDownloads)
                   v-if="(dl.status === 'downloading' || dl.status === 'seeding') && (dl.downloadSpeed || dl.uploadSpeed)"
                   class="mt-1 flex items-center gap-3 text-[10px] text-gray-500"
                 >
-                  <span v-if="dl.downloadSpeed">&darr; {{ formatSpeed(dl.downloadSpeed) }}</span>
-                  <span v-if="dl.uploadSpeed">&uarr; {{ formatSpeed(dl.uploadSpeed) }}</span>
+                  <span v-if="dl.downloadSpeed"><ArrowDown class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.downloadSpeed) }}</span>
+                  <span v-if="dl.uploadSpeed"><ArrowUp class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.uploadSpeed) }}</span>
                 </div>
               </div>
 
@@ -437,10 +435,7 @@ watch(() => props.refreshKey, fetchDownloads)
         class="flex items-center gap-3 group cursor-pointer"
         @click="libraryCopiesExpanded = !libraryCopiesExpanded"
       >
-        <span
-          class="text-gray-500 text-xs transition-transform duration-200"
-          :class="{ 'rotate-90': libraryCopiesExpanded }"
-        >&#9654;</span>
+        <ChevronRight class="w-3 h-3 text-gray-500 transition-transform duration-200" :class="{ 'rotate-90': libraryCopiesExpanded }" />
         <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 group-hover:text-gray-400 transition-colors duration-200">Library Copies</h2>
         <span
           class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300"
