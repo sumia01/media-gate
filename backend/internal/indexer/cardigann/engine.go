@@ -967,7 +967,7 @@ func (e *Engine) parseRowsJSON(body []byte, tmplCtx *TemplateContext) ([]SearchR
 	attr := e.def.Search.Rows.Attribute
 	multiple := e.def.Search.Rows.Multiple
 
-	var results []SearchResult
+	results := make([]SearchResult, 0, len(items))
 
 	for _, item := range items {
 		obj, ok := item.(map[string]any)

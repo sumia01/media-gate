@@ -17,7 +17,7 @@ import (
 // "or" (default) requires at least one.
 func FilterByProfile(results []TorrentResult, resolutions, sources, languages, excludeTags []string, languageMode string) []TorrentResult {
 	excludeTagsLow := fileparse.LowercaseTags(excludeTags)
-	var filtered []TorrentResult
+	filtered := make([]TorrentResult, 0, len(results))
 	for _, r := range results {
 		if len(excludeTagsLow) > 0 && fileparse.ContainsExcludedTagLower(r.Title, excludeTagsLow) {
 			continue

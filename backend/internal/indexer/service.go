@@ -430,7 +430,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 				return
 			}
 
-			var converted []TorrentResult
+			converted := make([]TorrentResult, 0, len(results))
 			for _, r := range results {
 				converted = append(converted, TorrentResult{
 					IndexerID:            idx.ID,

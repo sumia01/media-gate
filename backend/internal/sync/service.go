@@ -67,7 +67,7 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	}
 
 	// Phase 1: Scan all top-level directories and their video files
-	var folders []folderInfo
+	folders := make([]folderInfo, 0, len(entries))
 
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -451,7 +451,7 @@ func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 // filterAiredEpisodes returns only episodes whose AirDate is non-empty and not in the future.
 func filterAiredEpisodes(episodes []store.Episode) []store.Episode {
 	today := time.Now().Format("2006-01-02")
-	var aired []store.Episode
+	aired := make([]store.Episode, 0, len(episodes))
 	for _, ep := range episodes {
 		if ep.AirDate != "" && ep.AirDate <= today {
 			aired = append(aired, ep)
@@ -561,7 +561,7 @@ func scanMediaFolder(folderPath string) []scannedFile {
 		return nil
 	}
 
-	var files []scannedFile
+	files := make([]scannedFile, 0, len(entries))
 
 	for _, e := range entries {
 		if e.IsDir() {
@@ -620,7 +620,7 @@ func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) []scannedFi
 		return nil
 	}
 
-	var files []scannedFile
+	files := make([]scannedFile, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			if recurse && !fileparse.IsSampleFile(e.Name()) {
