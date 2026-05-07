@@ -2,8 +2,18 @@ package matching
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 )
+
+// levPool recycles []int buffers for the levenshtein distance computation.
+// Titles are typically <100 chars, so pooled slices amortize quickly.
+var levPool = sync.Pool{
+	New: func() any {
+		buf := make([]int, 128)
+		return &buf
+	},
+}
 
 func Score(itemTitle string, itemYear *int, resultTitle string, resultYear *int) float64 {
 	normItem := normalize(itemTitle)
@@ -55,8 +65,19 @@ func levenshtein(a, b string) int {
 		return la
 	}
 
-	prev := make([]int, lb+1)
-	curr := make([]int, lb+1)
+	// We need 2*(lb+1) ints for prev and curr rows.
+	need := 2 * (lb + 1)
+
+	bufPtr := levPool.Get().(*[]int)
+	buf := *bufPtr
+	if cap(buf) < need {
+		buf = make([]int, need)
+	} else {
+		buf = buf[:need]
+	}
+
+	prev := buf[:lb+1]
+	curr := buf[lb+1 : need]
 	for j := range prev {
 		prev[j] = j
 	}
@@ -76,7 +97,11 @@ func levenshtein(a, b string) int {
 		}
 		prev, curr = curr, prev
 	}
-	return prev[lb]
+
+	result := prev[lb]
+	*bufPtr = buf
+	levPool.Put(bufPtr)
+	return result
 }
 
 func abs(x int) int {
