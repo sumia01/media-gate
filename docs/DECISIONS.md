@@ -1730,3 +1730,35 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 6. **Biome compatibility**: Lucide component imports are only used in `<template>`, so they appear "unused" to Biome's `noUnusedImports` rule. The rule is already disabled for `.vue` files (ADR-113), so no additional configuration needed.
 
 **Rationale**: A dedicated icon library eliminates visual inconsistency, reduces bundle size (tree-shaking vs. full inline SVGs), provides a searchable catalog for developers, and ensures icons scale and colorize uniformly. Lucide was chosen over alternatives (Heroicons, Phosphor, Material) for its ISC license compatibility, active maintenance, comprehensive icon set, and first-class Vue 3 support. The `currentColor` default is critical — it means icons automatically adapt to dark theme, hover states, and active/inactive transitions without per-icon color props.
+
+---
+
+## ADR-115: Backend performance optimization batch (v0.32.3)
+**Date**: 2026-05-07
+**Status**: Accepted
+
+**Context**: Profiling identified several hot paths in the Go backend that performed redundant allocations, repeated parsing, or used inefficient data structures. Most of these occur during indexer searches (high-frequency, user-facing latency) and library sync (background, memory-heavy). None required logic changes — all are mechanical refactors that preserve identical outputs.
+
+**Decision**: Apply a batch of 10 targeted optimizations:
+
+1. **RankResults O(N) pre-computation** (`indexer/filter.go`): Pre-compute sort scores once and stable-sort by score, replacing the O(N log N) comparator that re-parsed on every comparison.
+
+2. **Compile-once regex** (`cardigann/filters.go`): Hoist `fuzzytimeRe` from function-local `regexp.MustCompile` to a package-level `var`, eliminating per-call compilation.
+
+3. **ProfileCriteria struct** (`indexer/filter.go`, `api/v1/handlers_indexer.go`): `ParseProfileCriteria()` pre-computes resolution/source/language sets once from the profile JSON. `MatchesCriteria()` does O(1) set lookups per result instead of unmarshalling JSON per result.
+
+4. **Lowercase tag pre-computation** (`fileparse/match.go`, `indexer/filter.go`): `LowercaseTags()` lowercases exclude tags once at filter setup. `ContainsExcludedTagLower()` compares pre-lowered values, avoiding per-result `strings.ToLower` on the exclude list.
+
+5. **Slice pre-allocation** (`indexer/service.go`, `indexer/filter.go`, `cardigann/engine.go`, `sync/service.go`): `make([]T, 0, len(source))` on all known-size result slices to avoid repeated grow-and-copy.
+
+6. **sync.Pool for template buffers** (`cardigann/template.go`): `RenderTemplate` (called thousands of times per search across Cardigann indexers) now reuses `bytes.Buffer` from a pool instead of allocating fresh each call.
+
+7. **Map type + index-based loops** (`sync/service.go`, `matching/service.go`): `existingPaths` changed from `map[string]bool` to `map[string]struct{}` (saves 1 byte/entry at scale). Range loops replaced with index-based `&items[i]` to avoid copying large structs.
+
+8. **sync.Pool for Levenshtein buffers** (`matching/confidence.go`): The two `[]int` rows allocated per `levenshtein()` call (called O(N×M) during matching) are now pooled. Pool stores `*[]int` so grown slices return to the pool.
+
+9. **Settings Unsubscribe** (`settings/service.go`): New `Unsubscribe(ch)` method removes a subscriber channel and closes it. Prevents goroutine leaks when workers stop.
+
+10. **Blocking worker Stop** (`worker/loop.go`): `Stop()` now waits for the current `Process()` call to finish via a `doneCh` channel. Prevents use-after-close races during shutdown. `SettingsSubscriber` interface extended with `Unsubscribe()`.
+
+**Rationale**: Each optimization targets a verified hot path with a mechanical, logic-preserving transformation. The batch approach (one commit per change) provides clean bisectability if regressions appear. sync.Pool usage is limited to provably short-lived, high-frequency allocations (template rendering, Levenshtein distance) where the pool overhead is justified. The blocking Stop + Unsubscribe pair close a real shutdown race rather than being speculative — workers that outlive their settings channel would panic on send.

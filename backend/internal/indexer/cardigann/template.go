@@ -60,8 +60,7 @@ func RenderTemplate(tmplStr string, ctx *TemplateContext) (string, error) {
 		return "", fmt.Errorf("parsing template %q: %w", tmplStr, err)
 	}
 
-	var buf *bytes.Buffer
-	buf = bufPool.Get().(*bytes.Buffer)
+	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufPool.Put(buf)
 
