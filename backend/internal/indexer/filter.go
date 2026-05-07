@@ -16,9 +16,10 @@ import (
 // languageMode controls the logic: "and" requires all languages present,
 // "or" (default) requires at least one.
 func FilterByProfile(results []TorrentResult, resolutions, sources, languages, excludeTags []string, languageMode string) []TorrentResult {
+	excludeTagsLow := fileparse.LowercaseTags(excludeTags)
 	var filtered []TorrentResult
 	for _, r := range results {
-		if len(excludeTags) > 0 && fileparse.ContainsExcludedTag(r.Title, excludeTags) {
+		if len(excludeTagsLow) > 0 && fileparse.ContainsExcludedTagLower(r.Title, excludeTagsLow) {
 			continue
 		}
 		res := fileparse.ParseResolution(r.Title)
@@ -100,11 +101,12 @@ func RankResults(results []TorrentResult, resolutions, sources, languages []stri
 // ProfileCriteria holds pre-parsed profile criteria to avoid repeated JSON
 // unmarshaling when checking multiple results against the same profile.
 type ProfileCriteria struct {
-	Resolutions  []string
-	Sources      []string
-	Languages    []string
-	ExcludeTags  []string
-	LanguageMode string
+	Resolutions     []string
+	Sources         []string
+	Languages       []string
+	ExcludeTags     []string
+	excludeTagsLow []string // pre-lowercased for ContainsExcludedTagLower
+	LanguageMode    string
 }
 
 // ParseProfileCriteria unmarshals a MediaProfile's JSON fields once.
@@ -122,6 +124,7 @@ func ParseProfileCriteria(profile *store.MediaProfile, globalExcludeTags ...stri
 		_ = json.Unmarshal([]byte(profile.ExcludeTags), &c.ExcludeTags)
 	}
 	c.ExcludeTags = append(c.ExcludeTags, globalExcludeTags...)
+	c.excludeTagsLow = fileparse.LowercaseTags(c.ExcludeTags)
 	c.LanguageMode = profile.LanguageMode
 	if c.LanguageMode == "" {
 		c.LanguageMode = "or"
@@ -149,7 +152,7 @@ func MatchesMediaProfile(result *TorrentResult, profile *store.MediaProfile, glo
 // MatchesCriteria checks if a single torrent result matches pre-parsed profile criteria.
 // Use this in loops to avoid repeated JSON unmarshaling of the same profile.
 func MatchesCriteria(result *TorrentResult, c *ProfileCriteria) bool {
-	if len(c.ExcludeTags) > 0 && fileparse.ContainsExcludedTag(result.Title, c.ExcludeTags) {
+	if len(c.excludeTagsLow) > 0 && fileparse.ContainsExcludedTagLower(result.Title, c.excludeTagsLow) {
 		return false
 	}
 	res := fileparse.ParseResolution(result.Title)

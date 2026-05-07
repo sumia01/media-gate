@@ -121,6 +121,28 @@ func ContainsExcludedTag(title string, excludeTags []string) bool {
 	return false
 }
 
+// LowercaseTags returns a new slice with all tags lowercased.
+// Use with ContainsExcludedTagLower to pre-compute tag lowercasing once.
+func LowercaseTags(tags []string) []string {
+	out := make([]string, len(tags))
+	for i, t := range tags {
+		out[i] = strings.ToLower(t)
+	}
+	return out
+}
+
+// ContainsExcludedTagLower returns true if the title contains any of the pre-lowercased tags.
+// Tags must already be lowercased (via LowercaseTags).
+func ContainsExcludedTagLower(title string, loweredTags []string) bool {
+	lower := strings.ToLower(title)
+	for _, tag := range loweredTags {
+		if tag != "" && strings.Contains(lower, tag) {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(slice []string, val string) bool {
 	for _, s := range slice {
 		if s == val {
