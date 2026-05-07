@@ -97,65 +97,69 @@ func RankResults(results []TorrentResult, resolutions, sources, languages []stri
 	return ranked
 }
 
+// ProfileCriteria holds pre-parsed profile criteria to avoid repeated JSON
+// unmarshaling when checking multiple results against the same profile.
+type ProfileCriteria struct {
+	Resolutions  []string
+	Sources      []string
+	Languages    []string
+	ExcludeTags  []string
+	LanguageMode string
+}
+
+// ParseProfileCriteria unmarshals a MediaProfile's JSON fields once.
+// Optional globalExcludeTags are merged with the profile's own exclude tags.
+func ParseProfileCriteria(profile *store.MediaProfile, globalExcludeTags ...string) ProfileCriteria {
+	var c ProfileCriteria
+	_ = json.Unmarshal([]byte(profile.Resolutions), &c.Resolutions)
+	if profile.Languages != "" {
+		_ = json.Unmarshal([]byte(profile.Languages), &c.Languages)
+	}
+	if profile.Sources != "" {
+		_ = json.Unmarshal([]byte(profile.Sources), &c.Sources)
+	}
+	if profile.ExcludeTags != "" {
+		_ = json.Unmarshal([]byte(profile.ExcludeTags), &c.ExcludeTags)
+	}
+	c.ExcludeTags = append(c.ExcludeTags, globalExcludeTags...)
+	c.LanguageMode = profile.LanguageMode
+	if c.LanguageMode == "" {
+		c.LanguageMode = "or"
+	}
+	return c
+}
+
 // FilterByMediaProfile unmarshals profile criteria from a MediaProfile and applies FilterByProfile.
 // Optional globalExcludeTags are merged with the profile's own exclude tags.
 // In OR language mode, results are ranked by language priority after filtering.
 func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile, globalExcludeTags ...string) []TorrentResult {
-	var resolutions, sources, languages, excludeTags []string
-	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
-	if profile.Languages != "" {
-		_ = json.Unmarshal([]byte(profile.Languages), &languages)
-	}
-	if profile.Sources != "" {
-		_ = json.Unmarshal([]byte(profile.Sources), &sources)
-	}
-	if profile.ExcludeTags != "" {
-		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
-	}
-	excludeTags = append(excludeTags, globalExcludeTags...)
-
-	mode := profile.LanguageMode
-	if mode == "" {
-		mode = "or"
-	}
-
-	filtered := FilterByProfile(results, resolutions, sources, languages, excludeTags, mode)
-	return RankResults(filtered, resolutions, sources, languages, mode)
+	c := ParseProfileCriteria(profile, globalExcludeTags...)
+	filtered := FilterByProfile(results, c.Resolutions, c.Sources, c.Languages, c.ExcludeTags, c.LanguageMode)
+	return RankResults(filtered, c.Resolutions, c.Sources, c.Languages, c.LanguageMode)
 }
 
 // MatchesMediaProfile checks if a single torrent result matches the given media profile.
 // Returns true if the result would pass through FilterByMediaProfile.
 // Optional globalExcludeTags are merged with the profile's own exclude tags.
 func MatchesMediaProfile(result *TorrentResult, profile *store.MediaProfile, globalExcludeTags ...string) bool {
-	var resolutions, sources, languages, excludeTags []string
-	_ = json.Unmarshal([]byte(profile.Resolutions), &resolutions)
-	if profile.Languages != "" {
-		_ = json.Unmarshal([]byte(profile.Languages), &languages)
-	}
-	if profile.Sources != "" {
-		_ = json.Unmarshal([]byte(profile.Sources), &sources)
-	}
-	if profile.ExcludeTags != "" {
-		_ = json.Unmarshal([]byte(profile.ExcludeTags), &excludeTags)
-	}
-	excludeTags = append(excludeTags, globalExcludeTags...)
+	c := ParseProfileCriteria(profile, globalExcludeTags...)
+	return MatchesCriteria(result, &c)
+}
 
-	mode := profile.LanguageMode
-	if mode == "" {
-		mode = "or"
-	}
-
-	if len(excludeTags) > 0 && fileparse.ContainsExcludedTag(result.Title, excludeTags) {
+// MatchesCriteria checks if a single torrent result matches pre-parsed profile criteria.
+// Use this in loops to avoid repeated JSON unmarshaling of the same profile.
+func MatchesCriteria(result *TorrentResult, c *ProfileCriteria) bool {
+	if len(c.ExcludeTags) > 0 && fileparse.ContainsExcludedTag(result.Title, c.ExcludeTags) {
 		return false
 	}
 	res := fileparse.ParseResolution(result.Title)
 	src := fileparse.ParseSource(result.Title)
-	if !fileparse.MatchesProfile(res, src, resolutions, sources) {
+	if !fileparse.MatchesProfile(res, src, c.Resolutions, c.Sources) {
 		return false
 	}
-	if len(languages) > 0 {
+	if len(c.Languages) > 0 {
 		detected := fileparse.ParseLanguages(result.Title)
-		if !fileparse.MatchesLanguages(detected, languages, mode) {
+		if !fileparse.MatchesLanguages(detected, c.Languages, c.LanguageMode) {
 			return false
 		}
 	}

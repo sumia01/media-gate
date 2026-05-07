@@ -195,24 +195,25 @@ func (h *Handlers) SearchIndexers(ctx context.Context, req SearchIndexersRequest
 	}
 
 	// Resolve profile for annotation if profileId is provided
-	var profile *store.MediaProfile
+	var criteria *indexer.ProfileCriteria
 	var globalTags []string
 	if req.Params.ProfileId != nil {
 		p, err := h.store.GetMediaProfile(uint(*req.Params.ProfileId))
 		if err != nil {
 			return SearchIndexers200JSONResponse{Results: make([]TorrentResult, 0)}, nil
 		}
-		profile = p
 		if raw, err := h.settings.Get(settings.KeyGlobalExcludeTags); err == nil && raw != "" {
 			_ = json.Unmarshal([]byte(raw), &globalTags)
 		}
+		c := indexer.ParseProfileCriteria(p, globalTags...)
+		criteria = &c
 	}
 
 	apiResults := make([]TorrentResult, len(results))
 	for i, r := range results {
 		apiResults[i] = torrentResultToAPI(&r)
-		if profile != nil {
-			match := indexer.MatchesMediaProfile(&r, profile, globalTags...)
+		if criteria != nil {
+			match := indexer.MatchesCriteria(&r, criteria)
 			apiResults[i].ProfileMatch = &match
 		}
 	}
