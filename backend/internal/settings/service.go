@@ -142,6 +142,20 @@ func (s *Service) Subscribe() <-chan string {
 	return ch
 }
 
+// Unsubscribe removes a previously subscribed channel from notifications.
+// The channel is closed after removal so receivers can detect the unsubscription.
+func (s *Service) Unsubscribe(ch <-chan string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, sub := range s.subscribers {
+		if sub == ch {
+			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
+			close(sub)
+			return
+		}
+	}
+}
+
 func (s *Service) notify(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

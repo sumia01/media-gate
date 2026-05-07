@@ -12,6 +12,7 @@ import (
 // SettingsSubscriber provides settings subscription and interval reading.
 type SettingsSubscriber interface {
 	Subscribe() <-chan string
+	Unsubscribe(ch <-chan string)
 	GetDurationWithDefault(key string, fallback time.Duration) time.Duration
 }
 
@@ -126,6 +127,8 @@ func (l *Loop) process() {
 
 func (l *Loop) run() {
 	settingsCh := l.cfg.Settings.Subscribe()
+	defer l.cfg.Settings.Unsubscribe(settingsCh)
+
 	interval := l.cfg.Settings.GetDurationWithDefault(l.cfg.IntervalKey, l.cfg.DefaultInterval)
 
 	l.mu.Lock()
