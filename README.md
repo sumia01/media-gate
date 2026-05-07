@@ -14,20 +14,21 @@ Go backend, Vue 3 frontend, one executable. No containers required, no runtime d
 
 <details>
 <summary>Movie download — search, pick a release, send to qBittorrent</summary>
+<img width="1306" height="1037" alt="movie-download" src="https://github.com/user-attachments/assets/2e8a6324-55ef-4c4a-87a0-8764590e68c2" />
 
-<video src="docs/assets/movie-download.mp4" controls></video>
+
 </details>
 
 <details>
 <summary>Profile & indexer search — test quality profiles against live results</summary>
+<img width="1306" height="1037" alt="profile-indexer" src="https://github.com/user-attachments/assets/40389b70-babe-44f9-b269-6fb4dd269f91" />
 
-<video src="docs/assets/profile-indexer.mp4" controls></video>
 </details>
 
 <details>
 <summary>TV show monitoring — episode-level auto-grab setup</summary>
+<img width="1306" height="1037" alt="tv-show-monitor" src="https://github.com/user-attachments/assets/e136d55d-c18c-4caf-a34c-0d46de34ad15" />
 
-<video src="docs/assets/tv-show-monitor.mp4" controls></video>
 </details>
 
 <details>
