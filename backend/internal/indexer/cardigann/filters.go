@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// fuzzytimeRe matches relative time expressions like "3 hours ago".
+var fuzzytimeRe = regexp.MustCompile(`(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago`)
+
 // ApplyFilters runs a pipeline of named filters on a value.
 func ApplyFilters(value string, filters []Filter) (string, error) {
 	var err error
@@ -159,8 +162,7 @@ func filterFuzzytime(value string) (string, error) {
 		return strconv.FormatInt(now.Unix(), 10), nil
 	}
 
-	re := regexp.MustCompile(`(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago`)
-	m := re.FindStringSubmatch(value)
+	m := fuzzytimeRe.FindStringSubmatch(value)
 	if len(m) == 3 {
 		n, _ := strconv.Atoi(m[1])
 		switch m[2] {
