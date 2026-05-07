@@ -1,42 +1,35 @@
-# frontend
+# Media Gate — Frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + TypeScript SPA built with Vite and styled with Tailwind CSS v4.
 
-## Recommended IDE Setup
+For project-wide documentation (architecture, configuration, deployment) see the [root README](../README.md).
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Prerequisites
 
-## Recommended Browser Setup
+- Node.js (see `.nvmrc` or `package.json` engines if present)
+- Backend running on `localhost:8080` (Vite proxies `/api` there)
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Scripts
 
 ```sh
-npm install
+npm run dev            # Vite dev server with HMR
+npm run build          # Type-check + production build
+npm run type-check     # vue-tsc --build
+npm run lint           # Biome check (formatting + linting)
+npm run lint:fix       # Biome auto-fix
+npm run generate:api   # Regenerate TS types from OpenAPI spec
 ```
 
-### Compile and Hot-Reload for Development
+## Linting & Formatting
+
+Uses [Biome](https://biomejs.dev/) — config in `biome.json`. Note: `noUnusedImports` is disabled for `*.vue` files because Biome cannot see `<template>` usage.
+
+## Code Generation
+
+API types are generated from `../api/openapi.yaml`:
 
 ```sh
-npm run dev
+npm run generate:api   # outputs src/api/schema.d.ts
 ```
 
-### Type-Check, Compile and Minify for Production
-
-```sh
-npm run build
-```
+Never hand-edit `src/api/schema.d.ts`.
