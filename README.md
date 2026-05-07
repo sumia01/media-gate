@@ -6,6 +6,8 @@ Self-hosted, single-binary media management app built to replace the Sonarr + Ra
 
 Go backend, Vue 3 frontend, one executable. No containers required, no runtime dependencies — just drop the binary on your homelab box and go.
 
+**~70 MB RAM | near-zero CPU** — runs comfortably on a Raspberry Pi or a minimal LXC container.
+
 ![MediaGate — Discover trending and popular media](docs/assets/mediagate.discover.jpg)
 
 <details>
