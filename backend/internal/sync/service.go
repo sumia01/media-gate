@@ -99,12 +99,12 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		return 0, 0, fmt.Errorf("listing existing media files: %w", err)
 	}
 
-	existingPaths := make(map[string]store.MediaFile, len(existingFiles))
+	existingPaths := make(map[string]struct{}, len(existingFiles))
 	var removePaths []string
-	for _, f := range existingFiles {
-		existingPaths[f.Path] = f
-		if _, ok := diskFilePaths[f.Path]; !ok {
-			removePaths = append(removePaths, f.Path)
+	for i := range existingFiles {
+		existingPaths[existingFiles[i].Path] = struct{}{}
+		if _, ok := diskFilePaths[existingFiles[i].Path]; !ok {
+			removePaths = append(removePaths, existingFiles[i].Path)
 		}
 	}
 
@@ -116,8 +116,8 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		removed = len(removePaths)
 
 		pathToItem := make(map[string]uint, len(existingFiles))
-		for _, f := range existingFiles {
-			pathToItem[f.Path] = f.MediaItemID
+		for i := range existingFiles {
+			pathToItem[existingFiles[i].Path] = existingFiles[i].MediaItemID
 		}
 		orphanIDs := s.findOrphanedMediaItems(removePaths, existingFiles, pathToItem)
 		for _, id := range orphanIDs {
@@ -130,12 +130,12 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	// Phase 4: Build folder→MediaItemID map from existing files.
 	// A top-level folder maps to a MediaItem if any existing file lives under it.
 	folderToItem := make(map[string]uint)
-	for _, f := range existingFiles {
-		rel, _ := filepath.Rel(lib.Path, f.Path)
+	for i := range existingFiles {
+		rel, _ := filepath.Rel(lib.Path, existingFiles[i].Path)
 		parts := strings.SplitN(rel, string(filepath.Separator), 2)
 		if len(parts) > 0 {
 			topDir := filepath.Join(lib.Path, parts[0])
-			folderToItem[topDir] = f.MediaItemID
+			folderToItem[topDir] = existingFiles[i].MediaItemID
 		}
 	}
 

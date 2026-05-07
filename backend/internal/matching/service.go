@@ -136,14 +136,14 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 	ctx := context.Background()
 	matched := 0
 
-	for i, item := range items {
+	for i := range items {
 		if err := limiter.Wait(ctx); err != nil {
 			return err
 		}
 
-		if err := s.matchSingleItem(&item, source, apiKey, lib.MediaType, fullRematch); err != nil {
-			slog.Warn("match failed for item", "item_id", item.ID, "title", item.Title, "error", err)
-		} else if item.Status == "available" {
+		if err := s.matchSingleItem(&items[i], source, apiKey, lib.MediaType, fullRematch); err != nil {
+			slog.Warn("match failed for item", "item_id", items[i].ID, "title", items[i].Title, "error", err)
+		} else if items[i].Status == "available" {
 			matched++
 		}
 
