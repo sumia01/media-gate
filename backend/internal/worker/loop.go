@@ -45,6 +45,7 @@ type Status struct {
 type Loop struct {
 	cfg    Config
 	stopCh chan struct{}
+	doneCh chan struct{} // closed when run() goroutine exits
 	runCh  chan struct{} // trigger immediate execution
 
 	mu        sync.RWMutex
@@ -59,6 +60,7 @@ func New(cfg Config) *Loop {
 	return &Loop{
 		cfg:    cfg,
 		stopCh: make(chan struct{}),
+		doneCh: make(chan struct{}),
 		runCh:  make(chan struct{}, 1),
 	}
 }
@@ -68,9 +70,11 @@ func (l *Loop) Start() {
 	go l.run()
 }
 
-// Stop signals the worker to shut down.
+// Stop signals the worker to shut down and waits for the current Process
+// invocation (if any) to complete before returning.
 func (l *Loop) Stop() {
 	close(l.stopCh)
+	<-l.doneCh
 }
 
 // RunNow triggers an immediate execution of the worker's process function.
@@ -126,6 +130,8 @@ func (l *Loop) process() {
 }
 
 func (l *Loop) run() {
+	defer close(l.doneCh)
+
 	settingsCh := l.cfg.Settings.Subscribe()
 	defer l.cfg.Settings.Unsubscribe(settingsCh)
 
