@@ -6,6 +6,38 @@ Self-hosted, single-binary media management app built to replace the Sonarr + Ra
 
 Go backend, Vue 3 frontend, one executable. No containers required, no runtime dependencies — just drop the binary on your homelab box and go.
 
+![MediaGate — Discover trending and popular media](docs/assets/mediagate.discover.jpg)
+
+<details>
+<summary><strong>More screenshots & demos</strong></summary>
+<br>
+
+<details>
+<summary>Movie download — search, pick a release, send to qBittorrent</summary>
+
+<video src="docs/assets/movie-download.mp4" controls></video>
+</details>
+
+<details>
+<summary>Profile & indexer search — test quality profiles against live results</summary>
+
+<video src="docs/assets/profile-indexer.mp4" controls></video>
+</details>
+
+<details>
+<summary>TV show monitoring — episode-level auto-grab setup</summary>
+
+<video src="docs/assets/tv-show-monitor.mp4" controls></video>
+</details>
+
+<details>
+<summary>Plex library mapping — auto-refresh after import</summary>
+
+![Plex library mapping](docs/assets/library-plex-maping.jpg)
+</details>
+
+</details>
+
 ---
 
 ## Why
