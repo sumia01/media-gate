@@ -37,6 +37,14 @@ func FilterByProfile(results []TorrentResult, resolutions, sources, languages, e
 	return filtered
 }
 
+// rankScore holds pre-computed priority scores for a single torrent result.
+type rankScore struct {
+	idx  int // original index into results
+	res  int
+	lang int
+	src  int
+}
+
 // RankResults re-sorts filtered results by combined priority: resolution > language > source.
 // Each dimension uses the profile's ordered list as priority (lower index = higher priority).
 // Within the same combined score, the original order (seeders) is preserved (stable sort).
@@ -50,39 +58,43 @@ func RankResults(results []TorrentResult, resolutions, sources, languages []stri
 		return results
 	}
 
-	sort.SliceStable(results, func(i, j int) bool {
-		// Resolution priority (highest weight)
+	// Pre-compute scores once per result instead of re-parsing on every comparison.
+	scores := make([]rankScore, len(results))
+	for i := range results {
+		scores[i].idx = i
 		if hasRes {
-			iRes := fileparse.PriorityScore(fileparse.ParseResolution(results[i].Title), resolutions)
-			jRes := fileparse.PriorityScore(fileparse.ParseResolution(results[j].Title), resolutions)
-			if iRes != jRes {
-				return iRes < jRes
-			}
+			scores[i].res = fileparse.PriorityScore(fileparse.ParseResolution(results[i].Title), resolutions)
 		}
-
-		// Language priority (medium weight)
 		if hasLang {
-			iLangs := fileparse.ParseLanguages(results[i].Title)
-			jLangs := fileparse.ParseLanguages(results[j].Title)
-			iLScore := fileparse.LanguageScore(iLangs, languages)
-			jLScore := fileparse.LanguageScore(jLangs, languages)
-			if iLScore != jLScore {
-				return iLScore < jLScore
-			}
+			langs := fileparse.ParseLanguages(results[i].Title)
+			scores[i].lang = fileparse.LanguageScore(langs, languages)
 		}
-
-		// Source priority (lowest weight)
 		if hasSrc {
-			iSrc := fileparse.PriorityScore(fileparse.ParseSource(results[i].Title), sources)
-			jSrc := fileparse.PriorityScore(fileparse.ParseSource(results[j].Title), sources)
-			if iSrc != jSrc {
-				return iSrc < jSrc
-			}
+			scores[i].src = fileparse.PriorityScore(fileparse.ParseSource(results[i].Title), sources)
 		}
+	}
 
+	sort.SliceStable(scores, func(i, j int) bool {
+		// Resolution priority (highest weight)
+		if hasRes && scores[i].res != scores[j].res {
+			return scores[i].res < scores[j].res
+		}
+		// Language priority (medium weight)
+		if hasLang && scores[i].lang != scores[j].lang {
+			return scores[i].lang < scores[j].lang
+		}
+		// Source priority (lowest weight)
+		if hasSrc && scores[i].src != scores[j].src {
+			return scores[i].src < scores[j].src
+		}
 		return false // preserve original order (seeders)
 	})
-	return results
+
+	ranked := make([]TorrentResult, len(results))
+	for i, s := range scores {
+		ranked[i] = results[s.idx]
+	}
+	return ranked
 }
 
 // FilterByMediaProfile unmarshals profile criteria from a MediaProfile and applies FilterByProfile.
