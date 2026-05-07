@@ -5,8 +5,15 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"text/template"
 )
+
+// bufPool reuses bytes.Buffer instances across template renders to reduce
+// allocation pressure (templates are rendered per-field per-row per-search).
+var bufPool = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
 
 // TemplateContext is the dot-context passed to Cardigann Go templates.
 type TemplateContext struct {
@@ -53,8 +60,12 @@ func RenderTemplate(tmplStr string, ctx *TemplateContext) (string, error) {
 		return "", fmt.Errorf("parsing template %q: %w", tmplStr, err)
 	}
 
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, ctx); err != nil {
+	var buf *bytes.Buffer
+	buf = bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufPool.Put(buf)
+
+	if err := tmpl.Execute(buf, ctx); err != nil {
 		return "", fmt.Errorf("executing template %q: %w", tmplStr, err)
 	}
 	return buf.String(), nil
