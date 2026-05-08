@@ -2,9 +2,9 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R6R11XD6DX)
 
-Self-hosted, single-binary media management app built to replace the Sonarr + Radarr + Overseerr + Prowlarr stack.
+A self-hosted, single-binary media management app I built for my own homelab to consolidate what Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr do into one place.
 
-Go backend, Vue 3 frontend, one executable. No containers required, no runtime dependencies — just drop the binary on your homelab box and go.
+Go backend, Vue 3 frontend, one executable. No containers required, no runtime dependencies.
 
 **~70 MB RAM | near-zero CPU** — runs comfortably on a Raspberry Pi or a minimal LXC container.
 
@@ -45,7 +45,7 @@ Go backend, Vue 3 frontend, one executable. No containers required, no runtime d
 
 ## Why
 
-The *arr stack works, but running four separate services with their own databases, update cycles, and failure modes felt like overkill for a homelab. MediaGate consolidates all of that into a single process with a unified UI and one SQLite database.
+I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my homelab — five services, each with its own database, update cycle, and failure modes. It worked, but felt like more moving parts than I needed. MediaGate is my attempt to fold all of that into a single process with a unified UI and one SQLite database.
 
 ## Features
 
