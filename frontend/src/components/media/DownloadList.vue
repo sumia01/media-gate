@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { ArrowDown, ArrowUp, ChevronRight } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
 import { formatBytes, formatSize } from '@/utils/media'
-import { ChevronRight, ArrowDown, ArrowUp } from 'lucide-vue-next'
 
 const props = defineProps<{
   mediaItemId: number

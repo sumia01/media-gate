@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Home, Eye } from 'lucide-vue-next'
+import { Eye, Home } from 'lucide-vue-next'
 import type { DiscoverItem } from '@/types/api'
 
 defineProps<{

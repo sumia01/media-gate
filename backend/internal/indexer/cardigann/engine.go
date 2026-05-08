@@ -647,11 +647,29 @@ func (e *Engine) buildSearchResult(fields map[string]string, tmplCtx *TemplateCo
 		fields[name] = rendered
 	}
 
-	// Render any text fields that reference .Result
+	// Render text fields in dependency order: fields that reference .Result
+	// (i.e. depend on other extracted/rendered values) must come after fields
+	// that don't, so their dependencies are already resolved. Without this
+	// ordering, Go map iteration is non-deterministic and a field like
+	// "download" (which uses .Result._apikey) could be rendered before
+	// "_apikey" (which uses .Config.apikey), leaving a raw template literal
+	// in the URL.
+	textFields := make([]string, 0, len(e.def.Search.Fields))
+	textFieldsDep := make([]string, 0)
 	for name, fieldDef := range e.def.Search.Fields {
 		if fieldDef.Text == "" {
 			continue
 		}
+		if strings.Contains(fieldDef.Text, ".Result.") {
+			textFieldsDep = append(textFieldsDep, name)
+		} else {
+			textFields = append(textFields, name)
+		}
+	}
+	textFields = append(textFields, textFieldsDep...)
+
+	for _, name := range textFields {
+		fieldDef := e.def.Search.Fields[name]
 		ctx := &TemplateContext{
 			Config:     tmplCtx.Config,
 			Keywords:   tmplCtx.Keywords,

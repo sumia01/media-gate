@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Eye, EyeOff, ExternalLink, Play, Plus, Search } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, Eye, EyeOff, Play, Plus, Search } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'

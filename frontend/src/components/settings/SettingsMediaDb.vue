@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Check, X } from 'lucide-vue-next'
+
 defineProps<{
   tmdbKey: string
   tvdbKey: string

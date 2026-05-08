@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, type Component } from 'vue'
+import {
+  ArrowLeftRight,
+  Clapperboard,
+  Compass,
+  Download,
+  Eye,
+  Library,
+  Settings,
+  SlidersHorizontal,
+  Tv,
+  Users,
+} from 'lucide-vue-next'
+import { type Component, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useSidebarLibraries } from '@/composables/useSidebarLibraries'
 import { useSystemInfo } from '@/composables/useSystemInfo'
 import { formatBytes } from '@/utils/media'
-import {
-  Compass,
-  Eye,
-  Download,
-  Library,
-  ArrowLeftRight,
-  SlidersHorizontal,
-  Settings,
-  Users,
-  Clapperboard,
-  Tv,
-} from 'lucide-vue-next'
 
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const props = defineProps<{ isMobile: boolean }>()

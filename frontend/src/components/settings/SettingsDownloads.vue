@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import FolderBrowser from '@/components/FolderBrowser.vue'
 import { Check, X } from 'lucide-vue-next'
+import FolderBrowser from '@/components/FolderBrowser.vue'
 
 defineProps<{
   qbUrl: string

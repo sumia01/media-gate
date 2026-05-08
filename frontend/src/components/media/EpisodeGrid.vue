@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Languages, Search } from 'lucide-vue-next'
 import { onMounted, ref, watch } from 'vue'
-import { Search, Languages } from 'lucide-vue-next'
 import client from '@/api/client'
 import type { Episode, SeasonSummary } from '@/types/api'
 

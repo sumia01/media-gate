@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { Trash2 } from 'lucide-vue-next'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Subtitle } from '@/types/api'

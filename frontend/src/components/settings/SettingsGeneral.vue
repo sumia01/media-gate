@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
 import { Check, X } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
 import { authFetch } from '@/api/client'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Check, Download, X } from 'lucide-vue-next'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { X, Check, Download } from 'lucide-vue-next'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'

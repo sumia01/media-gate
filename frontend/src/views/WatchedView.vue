@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { Eye, X } from 'lucide-vue-next'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
-import { X, Eye } from 'lucide-vue-next'
 import type { WatchedItem } from '@/types/api'
 
 const router = useRouter()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Eye, Plus, RefreshCw, Sparkles } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -9,7 +10,6 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useJobQueue } from '@/composables/useJobQueue'
 import type { Library, MediaItem, MediaProfile } from '@/types/api'
 import { posterUrl } from '@/utils/media'
-import { Plus, RefreshCw, Sparkles, Eye } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()

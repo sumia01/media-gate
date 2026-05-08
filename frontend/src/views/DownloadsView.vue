@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { ArrowDown, ArrowUp, ExternalLink } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Download, TorrentFile } from '@/types/api'
 import { formatBytes, formatSize } from '@/utils/media'
-import { ArrowDown, ArrowUp, ExternalLink } from 'lucide-vue-next'
 
 const router = useRouter()
 const { on, off } = useEventStream()

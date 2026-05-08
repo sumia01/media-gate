@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Download, Menu, RefreshCw, Search } from 'lucide-vue-next'
 import type { Ref } from 'vue'
 import { computed, inject, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -6,7 +7,6 @@ import { useAuth } from '@/composables/useAuth'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 import { useWorkers } from '@/composables/useWorkers'
-import { Download, Menu, RefreshCw, Search } from 'lucide-vue-next'
 
 const router = useRouter()
 const { workers, runWorker, fetchWorkers } = useWorkers()
