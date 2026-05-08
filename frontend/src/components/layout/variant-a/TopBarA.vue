@@ -189,27 +189,28 @@ async function handleRun(name: string) {
             class="fixed inset-0 z-40"
             @click="showUpdatePanel = false"
           />
-        </Teleport>
-        <div
-          v-if="showUpdatePanel"
-          class="absolute right-0 top-full mt-2 w-72 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
-        >
-          <div class="px-4 py-3 border-b border-violet-900/20">
-            <p class="text-sm font-semibold text-gray-200">Update Available</p>
-          </div>
-          <div class="px-4 py-3 space-y-3">
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-gray-400">New version:</span>
-              <span class="text-emerald-400 font-mono font-medium">{{ latestVersion }}</span>
+          <div
+            v-if="showUpdatePanel"
+            class="fixed right-4 top-16 w-72 bg-[#0c0f1a] border border-violet-900/20 rounded-xl shadow-2xl z-50 overflow-hidden"
+            @click.stop
+          >
+            <div class="px-4 py-3 border-b border-violet-900/20">
+              <p class="text-sm font-semibold text-gray-200">Update Available</p>
             </div>
-            <button
-              class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
-              @click="showUpdatePanel = false; router.push('/settings')"
-            >
-              Go to Settings
-            </button>
+            <div class="px-4 py-3 space-y-3">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="text-gray-400">New version:</span>
+                <span class="text-emerald-400 font-mono font-medium">{{ latestVersion }}</span>
+              </div>
+              <button
+                class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
+                @click="showUpdatePanel = false; router.push('/settings')"
+              >
+                Go to Settings
+              </button>
+            </div>
           </div>
-        </div>
+        </Teleport>
       </div>
 
       <!-- User menu -->
