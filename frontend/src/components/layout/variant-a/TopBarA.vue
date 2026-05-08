@@ -12,7 +12,7 @@ const router = useRouter()
 const { workers, runWorker, fetchWorkers } = useWorkers()
 const { openSearch } = useGlobalSearch()
 const { currentUser, logout } = useAuth()
-const { updateAvailable, latestVersion, applying, applyUpdate } = useUpdateCheck()
+const { updateAvailable, latestVersion } = useUpdateCheck()
 const showPanel = ref(false)
 const showUserMenu = ref(false)
 const showUpdatePanel = ref(false)
@@ -203,11 +203,10 @@ async function handleRun(name: string) {
               <span class="text-emerald-400 font-mono font-medium">{{ latestVersion }}</span>
             </div>
             <button
-              class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="applying"
+              class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
               @click="showUpdatePanel = false; router.push('/settings')"
             >
-              {{ applying ? 'Updating...' : 'Update Now' }}
+              Go to Settings
             </button>
           </div>
         </div>
