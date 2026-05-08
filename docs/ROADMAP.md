@@ -446,7 +446,7 @@
 - [x] Linux-only gating — disabled on non-Linux, dev builds, or missing GitHub credentials
 - [x] SSE notification — `app.update_available` event pushed to all connected frontends
 - [x] API endpoints — `GET /update/status`, `POST /update/check`, `POST /update/apply`
-- [x] TopBar update indicator — green badge with dropdown showing version + "Update Now" button
+- [x] TopBar update indicator — green badge with dropdown showing version + "Go to Settings" navigation (panel teleported to body for z-index correctness)
 - [x] Settings General "Updates" section — current version, check now, apply update, check interval setting
 - [x] Frontend restart detection — polls `/api/v1/health` after apply, reloads when server returns
 - [x] Config — `MEDIAGATE_GITHUB_TOKEN` / `MEDIAGATE_GITHUB_REPO` via systemd EnvironmentFile
