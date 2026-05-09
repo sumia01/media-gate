@@ -32,6 +32,16 @@ func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]store.
 	return downloads, nil
 }
 
+func (s *SQLiteStore) HasActiveDownloadByURL(mediaItemID uint, downloadURL string) (bool, error) {
+	var count int64
+	err := s.db.Model(&store.Download{}).
+		Where("media_item_id = ? AND download_url = ? AND status IN ?",
+			mediaItemID, downloadURL, store.ActiveDownloadStatuses,
+		).
+		Count(&count).Error
+	return count > 0, err
+}
+
 func (s *SQLiteStore) DeleteDownload(id uint) error {
 	return deleteByID(s.db, &store.Download{}, id)
 }

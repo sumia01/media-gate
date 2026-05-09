@@ -282,6 +282,13 @@ func (s *Service) Create(dl *store.Download) error {
 	if err := validateURLScheme(dl.DownloadURL); err != nil {
 		return err
 	}
+	exists, err := s.store.HasActiveDownloadByURL(dl.MediaItemID, dl.DownloadURL)
+	if err != nil {
+		return fmt.Errorf("check duplicate download: %w", err)
+	}
+	if exists {
+		return fmt.Errorf("download already exists for this media item: %w", store.ErrDuplicate)
+	}
 	s.resolveEpisodeID(dl)
 	if err := s.store.CreateDownload(dl); err != nil {
 		return err

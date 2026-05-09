@@ -8,6 +8,16 @@ import (
 // ErrNotFound is returned when a requested record does not exist.
 var ErrNotFound = errors.New("record not found")
 
+// ErrDuplicate is returned when a duplicate record already exists.
+var ErrDuplicate = errors.New("duplicate record")
+
+// ActiveDownloadStatuses are download statuses that indicate work is in progress
+// or complete. If a download has one of these statuses, the item/episode should
+// not be re-downloaded.
+var ActiveDownloadStatuses = []string{
+	"pending", "downloading", "downloaded", "importing", "seeding", "completed",
+}
+
 // Store defines the data access interface.
 // Implementations must be safe for concurrent use.
 type Store interface {
@@ -98,6 +108,7 @@ type Store interface {
 	UpdateDownload(download *Download) error
 	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
 	DeleteDownload(id uint) error
+	HasActiveDownloadByURL(mediaItemID uint, downloadURL string) (bool, error)
 
 	// User CRUD
 	CreateUser(user *User) error

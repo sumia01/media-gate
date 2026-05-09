@@ -513,6 +513,7 @@
 - [x] Cardigann text field filters not applied after template rendering — filters on `.Text` fields with `.Result` references were never executed
 - [x] Monitor `buildDownloadMap` misclassifies single-episode downloads (missing `episode_id`) as season packs — blocks entire season from auto-download
 - [x] Cardigann text field rendering order non-deterministic — Go map iteration causes inter-field `.Result` references (e.g. Milkie `_apikey` → `download`) to resolve as raw template literals intermittently
+- [x] Duplicate download records created for same media item + URL — no dedup at creation, monitor `buildDownloadMap` ignored NULL `episode_id` single-episode downloads, frontend tracked download state by unstable array index
 
 ---
 

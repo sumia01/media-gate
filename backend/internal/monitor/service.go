@@ -18,16 +18,14 @@ import (
 
 const defaultPollInterval = 15 * time.Minute
 
-// activeStatuses are download statuses that indicate work is in progress or complete.
-// If a download has one of these statuses, the item/episode should not be re-downloaded.
-var activeStatuses = map[string]bool{
-	"pending":     true,
-	"downloading": true,
-	"downloaded":  true,
-	"importing":   true,
-	"seeding":     true,
-	"completed":   true,
-}
+// activeStatuses is derived from the shared store.ActiveDownloadStatuses list.
+var activeStatuses = func() map[string]bool {
+	m := make(map[string]bool, len(store.ActiveDownloadStatuses))
+	for _, s := range store.ActiveDownloadStatuses {
+		m[s] = true
+	}
+	return m
+}()
 
 type Service struct {
 	store      store.Store
@@ -228,7 +226,7 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		}
 		// Must not have an active download
 		epID := ep.ID
-		if hasActiveDownloadForEpisode(downloadMap, &epID, ep.SeasonNumber) {
+		if hasActiveDownloadForEpisode(downloadMap, &epID, ep.SeasonNumber, ep.EpisodeNumber) {
 			continue
 		}
 		wanted = append(wanted, wantedEp{episode: ep})
@@ -286,7 +284,7 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 			epID := w.episode.ID
 			freshDownloads, _ := s.store.ListDownloads(&item.ID, nil)
 			freshMap := buildDownloadMap(freshDownloads)
-			if hasActiveDownloadForEpisode(freshMap, &epID, w.episode.SeasonNumber) {
+			if hasActiveDownloadForEpisode(freshMap, &epID, w.episode.SeasonNumber, w.episode.EpisodeNumber) {
 				continue
 			}
 
@@ -412,6 +410,19 @@ func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {
 }
 
 func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.TorrentResult, episodeID *uint, seasonNumber *int) {
+	// Guard against duplicate downloads (same torrent URL already active).
+	exists, err := s.store.HasActiveDownloadByURL(item.ID, result.DownloadURL)
+	if err != nil {
+		slog.Error("monitor: failed to check duplicate download",
+			"item_id", item.ID, "title", result.Title, "error", err)
+		return
+	}
+	if exists {
+		slog.Debug("monitor: skipping duplicate download",
+			"item_id", item.ID, "title", result.Title)
+		return
+	}
+
 	dl := &store.Download{
 		MediaItemID:  item.ID,
 		EpisodeID:    episodeID,
@@ -494,8 +505,9 @@ func hasActiveDownload(downloads []store.Download, episodeID *uint) bool {
 }
 
 type downloadKey struct {
-	episodeID    uint
-	seasonNumber int
+	episodeID     uint
+	seasonNumber  int
+	episodeNumber int // from title parsing when episodeID is unknown
 }
 
 func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
@@ -507,25 +519,32 @@ func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 		if dl.EpisodeID != nil {
 			m[downloadKey{episodeID: *dl.EpisodeID}] = true
 		}
-		if dl.SeasonNumber != nil && dl.EpisodeID == nil {
-			// Only treat as season pack if the title actually parses as one.
-			// Downloads created via the UI may have season_number set without
-			// episode_id even for single-episode torrents.
-			parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
-			if parsed.Season != nil && parsed.Episode == nil {
-				m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
-			}
+		// Parse the title to detect season packs vs single episodes, and to
+		// track downloads that lack an episode_id (e.g. created via the UI
+		// when the episode doesn't exist in the DB yet).
+		parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+		if parsed.Season != nil && parsed.Episode == nil && dl.SeasonNumber != nil && dl.EpisodeID == nil {
+			// Season pack
+			m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
+		}
+		if parsed.Season != nil && parsed.Episode != nil && dl.EpisodeID == nil {
+			// Single episode without episode_id — track by parsed season+episode
+			m[downloadKey{seasonNumber: *parsed.Season, episodeNumber: *parsed.Episode}] = true
 		}
 	}
 	return m
 }
 
-func hasActiveDownloadForEpisode(m map[downloadKey]bool, episodeID *uint, seasonNumber int) bool {
+func hasActiveDownloadForEpisode(m map[downloadKey]bool, episodeID *uint, seasonNumber int, episodeNumber int) bool {
 	if episodeID != nil && m[downloadKey{episodeID: *episodeID}] {
 		return true
 	}
-	// Also check if a season pack is active
-	return m[downloadKey{seasonNumber: seasonNumber}]
+	// Check season pack
+	if m[downloadKey{seasonNumber: seasonNumber}] {
+		return true
+	}
+	// Check title-parsed single episode (covers downloads missing episode_id)
+	return m[downloadKey{seasonNumber: seasonNumber, episodeNumber: episodeNumber}]
 }
 
 func buildFileMap(files []store.MediaFile) map[string]bool {

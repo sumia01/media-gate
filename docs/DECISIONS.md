@@ -1762,3 +1762,25 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 10. **Blocking worker Stop** (`worker/loop.go`): `Stop()` now waits for the current `Process()` call to finish via a `doneCh` channel. Prevents use-after-close races during shutdown. `SettingsSubscriber` interface extended with `Unsubscribe()`.
 
 **Rationale**: Each optimization targets a verified hot path with a mechanical, logic-preserving transformation. The batch approach (one commit per change) provides clean bisectability if regressions appear. sync.Pool usage is limited to provably short-lived, high-frequency allocations (template rendering, Levenshtein distance) where the pool overhead is justified. The blocking Stop + Unsubscribe pair close a real shutdown race rather than being speculative — workers that outlive their settings channel would panic on send.
+
+---
+
+## ADR-116: Download deduplication — multi-layer guard (v0.32.9)
+**Date**: 2026-05-09
+**Status**: Accepted
+
+**Context**: Production data for media item 156 ("Éttermek csatája") showed duplicate download records — identical `download_url` + `media_item_id` pairs in active states. Root cause: (1) no uniqueness check existed at download creation time, (2) `buildDownloadMap` in the monitor ignored downloads with NULL `episode_id` that weren't detected as season packs, allowing re-downloads of the same episode, and (3) the frontend `IndexerSearchModal` tracked "already downloading" state by array index, which was unstable across re-searches.
+
+**Decision**: Three-layer deduplication:
+
+1. **Store layer** (`store.HasActiveDownloadByURL`): New method checks whether an active download (pending/downloading/importing/seeding) already exists for a given `(mediaItemID, downloadURL)` pair. A shared `store.ActiveDownloadStatuses` slice is the single source of truth for what constitutes "active", used by both the store query and the monitor's `buildDownloadMap`.
+
+2. **Service layer** (two call sites):
+   - `download.Service.Create()` calls `HasActiveDownloadByURL` before inserting; returns `store.ErrDuplicate` if a match exists.
+   - `monitor.createAutoDownload()` performs the same check before calling `Create()`, providing defense-in-depth for the automated path.
+
+3. **Frontend layer** (`IndexerSearchModal.vue`): Changed `downloadingUrls`/`downloadedUrls` from `Set<number>` (array index) to `Set<string>` (download URL). Added null-guard (`if (!url) return`) and `v-if="item.result.downloadUrl"` in both desktop and mobile templates.
+
+4. **Monitor `buildDownloadMap`** fix: Downloads with NULL `episode_id` that are NOT season packs (determined by title parsing) now generate a download key using `(seasonNumber, episodeNumber)` extracted from the title. This prevents the monitor from ignoring single-episode downloads that were created without an `episode_id`, which was the root cause of re-downloads.
+
+**Rationale**: The `(mediaItemID, downloadURL)` pair is the natural dedup key — confirmed by prod data showing all duplicates shared the same URL. A DB-level unique constraint was considered but rejected: legitimate re-downloads of the same URL after a previous failure/cancellation must remain possible. The check-then-insert approach (no constraint) allows this while blocking duplicates within the active lifecycle. The shared `ActiveDownloadStatuses` constant eliminates the risk of the store and monitor drifting on what "active" means. The frontend fix is independent — it prevents UI-level double-clicks from queueing duplicates even if the backend guard didn't exist.

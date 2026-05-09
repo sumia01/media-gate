@@ -35,8 +35,8 @@ const episode = ref(props.episodeNumber?.toString() ?? '')
 const results = ref<TorrentResult[]>([])
 const loading = ref(false)
 const error = ref('')
-const downloadingIdx = ref<Set<number>>(new Set())
-const downloadedIdx = ref<Set<number>>(new Set())
+const downloadingUrls = ref<Set<string>>(new Set())
+const downloadedUrls = ref<Set<string>>(new Set())
 
 // --- Add & Download flow (preview context) ---
 const canAddAndDownload = computed(() => props.mediaItemId == null && props.source && props.externalId != null)
@@ -154,10 +154,12 @@ async function search() {
 }
 
 // --- Download ---
-async function download(result: TorrentResult, idx: number) {
-  if (downloadingIdx.value.has(idx) || downloadedIdx.value.has(idx)) return
+async function download(result: TorrentResult) {
+  const url = result.downloadUrl
+  if (!url) return
+  if (downloadingUrls.value.has(url) || downloadedUrls.value.has(url)) return
 
-  downloadingIdx.value = new Set([...downloadingIdx.value, idx])
+  downloadingUrls.value = new Set([...downloadingUrls.value, url])
 
   const { error: err } = await client.POST('/downloads', {
     body: {
@@ -167,23 +169,23 @@ async function download(result: TorrentResult, idx: number) {
       indexerId: result.indexerId,
       indexerName: result.indexerName,
       title: result.title,
-      downloadUrl: result.downloadUrl!,
+      downloadUrl: url,
       detailsUrl: result.detailsUrl,
       size: result.size,
       imdbId: result.imdbId || props.imdbId,
     },
   })
 
-  const next = new Set(downloadingIdx.value)
-  next.delete(idx)
-  downloadingIdx.value = next
+  const next = new Set(downloadingUrls.value)
+  next.delete(url)
+  downloadingUrls.value = next
 
   if (err) {
     error.value = 'Failed to add download'
     return
   }
 
-  downloadedIdx.value = new Set([...downloadedIdx.value, idx])
+  downloadedUrls.value = new Set([...downloadedUrls.value, url])
 }
 
 // --- Add to Library & Download ---
@@ -441,23 +443,23 @@ function formatDate(unix: number): string {
                 >
                   Open
                 </a>
-                <template v-if="props.mediaItemId != null">
-                  <button
-                    v-if="downloadedIdx.has(item.originalIndex)"
-                    class="px-2.5 py-1.5 rounded-md text-xs text-emerald-400"
-                    disabled
-                  >
-                    Added
-                  </button>
-                  <button
-                    v-else
-                    class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
-                    :disabled="downloadingIdx.has(item.originalIndex)"
-                    @click="download(item.result, item.originalIndex)"
-                  >
-                    {{ downloadingIdx.has(item.originalIndex) ? 'Adding...' : 'Download' }}
-                  </button>
-                </template>
+              <template v-if="props.mediaItemId != null && item.result.downloadUrl">
+                <button
+                  v-if="downloadedUrls.has(item.result.downloadUrl)"
+                  class="text-emerald-400"
+                  disabled
+                >
+                  <Check class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  v-else
+                  class="text-gray-400 hover:text-emerald-300 transition-colors"
+                  :disabled="downloadingUrls.has(item.result.downloadUrl)"
+                  @click="download(item.result)"
+                >
+                  <Download class="w-3.5 h-3.5" />
+                </button>
+              </template>
                 <button
                   v-if="canAddAndDownload"
                   class="px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:text-emerald-300 hover:bg-emerald-600/10 transition-colors duration-200"
@@ -509,7 +511,7 @@ function formatDate(unix: number): string {
               </a>
               <template v-if="props.mediaItemId != null">
                 <button
-                  v-if="downloadedIdx.has(item.originalIndex)"
+                  v-if="downloadedUrls.has(item.result.downloadUrl!)"
                   class="text-emerald-400"
                   disabled
                 >
@@ -518,8 +520,8 @@ function formatDate(unix: number): string {
                 <button
                   v-else
                   class="text-gray-400 hover:text-emerald-300 transition-colors"
-                  :disabled="downloadingIdx.has(item.originalIndex)"
-                  @click="download(item.result, item.originalIndex)"
+                  :disabled="downloadingUrls.has(item.result.downloadUrl!)"
+                  @click="download(item.result)"
                 >
                   <Download class="w-3.5 h-3.5" />
                 </button>
