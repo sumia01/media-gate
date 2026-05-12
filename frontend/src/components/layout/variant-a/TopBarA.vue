@@ -11,7 +11,7 @@ import { useWorkers } from '@/composables/useWorkers'
 const router = useRouter()
 const { workers, runWorker, fetchWorkers } = useWorkers()
 const { openSearch } = useGlobalSearch()
-const { currentUser, logout } = useAuth()
+const { currentUser, isAdmin, logout } = useAuth()
 const { updateAvailable, latestVersion } = useUpdateCheck()
 const showPanel = ref(false)
 const showUserMenu = ref(false)
@@ -151,14 +151,14 @@ async function handleRun(name: string) {
                   <td class="px-3 py-2.5 text-gray-400 whitespace-nowrap">{{ formatTime(w.nextRunAt) }}</td>
                   <td class="px-3 py-2.5 text-right">
                     <button
-                      v-if="w.running"
+                      v-if="w.running && isAdmin"
                       class="px-2.5 py-1 text-[11px] font-medium rounded bg-violet-600/20 text-violet-400 cursor-not-allowed opacity-60"
                       disabled
                     >
                       Running&hellip;
                     </button>
                     <button
-                      v-else
+                      v-else-if="isAdmin"
                       class="px-2.5 py-1 text-[11px] font-medium rounded bg-violet-600/20 text-violet-300 hover:bg-violet-600/40 transition-colors"
                       @click="handleRun(w.name)"
                     >
