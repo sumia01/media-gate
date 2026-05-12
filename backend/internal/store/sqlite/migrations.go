@@ -18,6 +18,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV4, // 3→4: episode_monitors table (AutoMigrate handles creation, this is a no-op placeholder)
 	migrateV5, // 4→5: subtitles table (AutoMigrate handles creation, this is a no-op placeholder)
 	migrateV6, // 5→6: media_profiles.language_mode — backfill existing rows with 'or'
+	migrateV7, // 6→7: users.is_admin — promote the first-created user to admin
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -435,5 +436,13 @@ func cleanupOrphans(db *sql.DB) {
 // the value to ensure no NULLs remain.
 func migrateV6(db *sql.DB) error {
 	_, err := db.Exec(`UPDATE media_profiles SET language_mode = 'or' WHERE language_mode IS NULL OR language_mode = ''`)
+	return err
+}
+
+// migrateV7 promotes the first-created user (lowest ID) to admin.
+// AutoMigrate adds the is_admin column with DEFAULT false; this migration
+// ensures the original user gets admin privileges.
+func migrateV7(db *sql.DB) error {
+	_, err := db.Exec(`UPDATE users SET is_admin = true WHERE id = (SELECT MIN(id) FROM users)`)
 	return err
 }

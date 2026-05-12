@@ -198,7 +198,15 @@ func (h *Handlers) RegisterUser(_ context.Context, req RegisterUserRequestObject
 	return RegisterUser201JSONResponse(userToAPI(user)), nil
 }
 
-func (h *Handlers) DeleteUser(_ context.Context, req DeleteUserRequestObject) (DeleteUserResponseObject, error) {
+func (h *Handlers) DeleteUser(ctx context.Context, req DeleteUserRequestObject) (DeleteUserResponseObject, error) {
+	userID, ok := auth.UserIDFromContext(ctx)
+	if !ok {
+		return DeleteUser403JSONResponse{Code: 403, Message: "unauthorized"}, nil
+	}
+	if uint(req.Id) == userID {
+		return DeleteUser403JSONResponse{Code: 403, Message: "cannot delete yourself"}, nil
+	}
+
 	if err := h.authSvc.DeleteUser(uint(req.Id)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteUser404JSONResponse{Code: 404, Message: "user not found"}, nil
@@ -278,6 +286,13 @@ func (h *Handlers) SetupHandler() http.HandlerFunc {
 		user, err := h.authSvc.Register(req.Email, req.Password, "", "", nil)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Code: 400, Message: err.Error()})
+			return
+		}
+
+		// First user created via setup is always admin.
+		user.IsAdmin = true
+		if err := h.store.UpdateUser(user); err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Code: 500, Message: "failed to promote user to admin"})
 			return
 		}
 

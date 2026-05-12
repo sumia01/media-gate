@@ -22,7 +22,7 @@ const collapsed = defineModel<boolean>('collapsed', { default: false })
 const props = defineProps<{ isMobile: boolean }>()
 const route = useRoute()
 const { libraries, refreshLibraries } = useSidebarLibraries()
-const { currentUser } = useAuth()
+const { currentUser, isAdmin } = useAuth()
 const { version, disk, refreshSystemInfo } = useSystemInfo()
 
 const userInitial = computed(() => {
@@ -45,12 +45,14 @@ const staticTop = [
 ]
 
 const staticBottom = [
-  { icon: Library, label: 'Libraries', to: '/libraries' },
-  { icon: ArrowLeftRight, label: 'Indexers', to: '/indexers' },
-  { icon: SlidersHorizontal, label: 'Profiles', to: '/media-profiles' },
-  { icon: Settings, label: 'Settings', to: '/settings' },
-  { icon: Users, label: 'Users', to: '/users' },
+  { icon: Library, label: 'Libraries', to: '/libraries', admin: true },
+  { icon: ArrowLeftRight, label: 'Indexers', to: '/indexers', admin: true },
+  { icon: SlidersHorizontal, label: 'Profiles', to: '/media-profiles', admin: true },
+  { icon: Settings, label: 'Settings', to: '/settings', admin: true },
+  { icon: Users, label: 'Users', to: '/users', admin: true },
 ]
+
+const visibleBottom = computed(() => staticBottom.filter((item) => !item.admin || isAdmin.value))
 
 const mediaTypeIcons: Record<string, Component> = {
   movie: Clapperboard,
@@ -145,7 +147,7 @@ onMounted(() => {
         <div v-if="!collapsed" class="border-t border-violet-900/20 mb-2" />
         <div v-else class="border-t border-violet-900/20 mb-2" />
         <RouterLink
-          v-for="item in staticBottom"
+          v-for="item in visibleBottom"
           :key="item.label"
           :to="item.to"
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200"

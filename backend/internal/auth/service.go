@@ -283,6 +283,15 @@ func (s *Service) DeleteUser(id uint) error {
 	return s.store.DeleteUser(id)
 }
 
+// IsUserAdmin checks whether the given user has admin privileges.
+func (s *Service) IsUserAdmin(userID uint) (bool, error) {
+	user, err := s.store.GetUser(userID)
+	if err != nil {
+		return false, err
+	}
+	return user.IsAdmin, nil
+}
+
 // Bootstrap creates the initial user from env vars if no users exist.
 // Returns nil if users already exist or if no credentials are provided
 // (the setup wizard will handle first-user creation in that case).
@@ -304,7 +313,14 @@ func (s *Service) Bootstrap(defaultEmail, defaultPassword string) error {
 	if err != nil {
 		return fmt.Errorf("creating default user: %w", err)
 	}
-	slog.Info("created default user from environment", "email", user.Email)
+
+	// First user is always admin.
+	user.IsAdmin = true
+	if err := s.store.UpdateUser(user); err != nil {
+		return fmt.Errorf("promoting default user to admin: %w", err)
+	}
+
+	slog.Info("created default admin user from environment", "email", user.Email)
 	return nil
 }
 

@@ -246,7 +246,9 @@ func main() {
 	defer metaRefreshSvc.Stop()
 	workerReg.Register(metaRefreshSvc.Loop())
 
-	strictHandler := apiv1.NewStrictHandler(handlers, nil)
+	strictHandler := apiv1.NewStrictHandler(handlers, []apiv1.StrictMiddlewareFunc{
+		apiv1.AdminMiddleware(authSvc),
+	})
 
 	// Build the API mux with all /api/ routes.
 	apiMux := http.NewServeMux()

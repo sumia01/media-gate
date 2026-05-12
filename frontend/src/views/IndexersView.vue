@@ -6,6 +6,7 @@ import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import IndexerTryModal from '@/components/media/IndexerTryModal.vue'
 import type { Indexer, IndexerDefinition, IndexerDefinitionSetting } from '@/types/api'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const indexers = ref<Indexer[]>([])
 const definitions = ref<IndexerDefinition[]>([])
@@ -534,7 +535,7 @@ onMounted(fetchAll)
             class="px-3 py-2 rounded-lg bg-sky-500/5 border border-sky-500/15 text-xs text-gray-400"
           >
             <span class="font-medium text-gray-300">{{ setting.label }}:</span>
-            <span v-html="setting.default" />
+            <span v-html="sanitizeHtml(setting.default ?? '')" />
           </div>
         </div>
 

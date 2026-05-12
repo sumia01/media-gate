@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import client from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import type { UserProfile } from '@/types/api'
+
+const { isAdmin } = useAuth()
 
 const users = ref<UserProfile[]>([])
 const loading = ref(true)
@@ -84,6 +87,7 @@ onMounted(loadUsers)
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold text-gray-200">Users</h1>
       <button
+        v-if="isAdmin"
         class="py-2 px-4 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
         @click="showForm = !showForm"
       >
@@ -189,27 +193,29 @@ onMounted(loadUsers)
             </td>
             <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(user.createdAt) }}</td>
             <td class="px-6 py-4 text-right">
-              <button
-                v-if="deleteTarget?.id !== user.id"
-                class="text-sm text-red-400/60 hover:text-red-400 transition-colors"
-                @click="deleteTarget = user"
-              >
-                Delete
-              </button>
-              <span v-else class="inline-flex items-center gap-2">
+              <template v-if="isAdmin && !user.isAdmin">
                 <button
-                  class="text-sm text-red-400 hover:text-red-300 transition-colors"
-                  @click="deleteUser(user)"
+                  v-if="deleteTarget?.id !== user.id"
+                  class="text-sm text-red-400/60 hover:text-red-400 transition-colors"
+                  @click="deleteTarget = user"
                 >
-                  Confirm
+                  Delete
                 </button>
-                <button
-                  class="text-sm text-gray-500 hover:text-gray-300 transition-colors"
-                  @click="deleteTarget = null"
-                >
-                  Cancel
-                </button>
-              </span>
+                <span v-else class="inline-flex items-center gap-2">
+                  <button
+                    class="text-sm text-red-400 hover:text-red-300 transition-colors"
+                    @click="deleteUser(user)"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    class="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+                    @click="deleteTarget = null"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              </template>
             </td>
           </tr>
         </tbody>

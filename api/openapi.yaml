@@ -134,6 +134,12 @@ paths:
       responses:
         "204":
           description: User deleted
+        "403":
+          description: Cannot delete yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: User not found
           content:
@@ -3589,6 +3595,7 @@ components:
       required:
         - id
         - email
+        - isAdmin
         - createdAt
         - updatedAt
       properties:
@@ -3604,6 +3611,8 @@ components:
           type: string
         birthYear:
           type: integer
+        isAdmin:
+          type: boolean
         createdAt:
           type: string
           format: date-time

@@ -15,6 +15,7 @@ const currentUser = ref<UserProfile | null>(null)
 const setupStatusCache = ref<SetupStatus | null>(null)
 
 const isAuthenticated = computed(() => !!accessToken.value && !!currentUser.value)
+const isAdmin = computed(() => currentUser.value?.isAdmin === true)
 
 async function login(email: string, password: string, rememberMe: boolean = false): Promise<void> {
   const res = await fetch('/api/v1/auth/login', {
@@ -108,6 +109,7 @@ export function useAuth() {
     accessToken,
     currentUser,
     isAuthenticated,
+    isAdmin,
     login,
     setup,
     getSetupStatus,

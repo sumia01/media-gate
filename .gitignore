@@ -43,3 +43,6 @@ backend/.env
 *.swo
 *~
 tmp/
+
+# Local dev scripts
+scripts/

@@ -227,7 +227,13 @@
 - [x] Go import paths unchanged (module root = `backend/`, module name unchanged)
 
 ## Phase 5.6: Security hardening round 2 ✅
-→ See ADR-075
+→ See ADR-075, ADR-117
+- [x] Admin role system (`IsAdmin` bool on User model, migration V7 promotes first user)
+- [x] Centralized `AdminMiddleware` — operationID-based `StrictMiddlewareFunc` guards ~40 operations
+- [x] Manual handler admin guard (DB export has inline `IsUserAdmin` check)
+- [x] Self-delete prevention (`DeleteUser` returns 403 when user targets themselves)
+- [x] Frontend admin enforcement: router guards (`meta.admin`), sidebar filtering (`visibleBottom`), UI element hiding
+- [x] XSS sanitization — DOMParser-based allowlist sanitizer (`frontend/src/utils/sanitize.ts`) for indexer description HTML
 
 ## Phase 5.7: Dead code cleanup ✅
 - [x] Remove unused exported methods: `RevokeAllUserTokens`, `BroadcastJSON`, `AddTorrent`/`extractHash`/`btihRegexp`/`postMultipart`, `Caps()`

@@ -2,7 +2,10 @@
 import { Check, X } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { authFetch } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+
+const { isAdmin } = useAuth()
 
 const {
   updateEnabled,
@@ -382,7 +385,7 @@ const discordConnected = computed(() => props.discordUrl !== '')
   <!-- Database section -->
   <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 mt-8">Database</h2>
 
-  <div class="space-y-4">
+  <div v-if="isAdmin" class="space-y-4">
     <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
       <div class="flex items-center justify-between">
         <div>

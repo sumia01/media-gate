@@ -180,6 +180,7 @@ type User struct {
 	FirstName    string
 	LastName     string
 	BirthYear    *int
+	IsAdmin      bool `gorm:"not null;default:false"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

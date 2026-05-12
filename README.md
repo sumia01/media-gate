@@ -178,16 +178,20 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 ### Multi-User Auth & Security
 
 - Multi-user support with registration, login, profile management
+- **Admin/user role system** — first user is admin; admin-only access to settings, libraries, indexers, profiles, workers, updates, Plex, and user management
 - JWT access tokens (15min) + refresh tokens (24h / 30d with "remember me")
 - HTTP-only cookies, optional secure flag for TLS reverse proxies
 - Password hashing (bcrypt), refresh token hashing (SHA-256)
 - AES-256-GCM at-rest encryption for sensitive settings
 - Path traversal protection at three enforcement points
+- XSS sanitization on user-facing HTML content (indexer descriptions)
 - 6-step browser-based onboarding wizard on first launch
 
 ### Administration
 
-- Database export endpoint for backup and debugging (full SQLite dump via API)
+- Admin role required for all management operations (enforced via centralized middleware)
+- Database export endpoint for backup and debugging (full SQLite dump via API, admin-only)
+- Self-delete prevention (users cannot delete themselves)
 
 ### Observability
 

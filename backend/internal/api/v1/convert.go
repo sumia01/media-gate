@@ -18,6 +18,7 @@ func userToAPI(u *store.User) UserProfile {
 	p := UserProfile{
 		Id:        int64(u.ID),
 		Email:     openapi_types.Email(u.Email),
+		IsAdmin:   u.IsAdmin,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
 	}

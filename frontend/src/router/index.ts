@@ -62,6 +62,7 @@ const router = createRouter({
           path: 'libraries',
           name: 'libraries',
           component: LibrariesView,
+          meta: { admin: true },
         },
         {
           path: 'library/:id',
@@ -85,6 +86,7 @@ const router = createRouter({
           path: 'media-profiles',
           name: 'media-profiles',
           component: MediaProfilesView,
+          meta: { admin: true },
         },
         {
           path: 'watched',
@@ -100,6 +102,7 @@ const router = createRouter({
           path: 'indexers',
           name: 'indexers',
           component: IndexersView,
+          meta: { admin: true },
         },
         {
           path: 'indexers/search',
@@ -110,6 +113,7 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: SettingsView,
+          meta: { admin: true },
         },
         {
           path: 'profile',
@@ -120,6 +124,7 @@ const router = createRouter({
           path: 'users',
           name: 'users',
           component: UsersView,
+          meta: { admin: true },
         },
       ],
     },
@@ -130,7 +135,7 @@ router.beforeEach(async (to) => {
   // Always allow access to the setup page itself.
   if (to.name === 'setup') return true
 
-  const { isAuthenticated, refresh, fetchProfile, getSetupStatus } = useAuth()
+  const { isAuthenticated, isAdmin, refresh, fetchProfile, getSetupStatus } = useAuth()
 
   // Check onboarding status — redirect to wizard if not completed.
   try {
@@ -145,21 +150,27 @@ router.beforeEach(async (to) => {
   // Public routes (login) don't need auth.
   if (to.meta.public) return true
 
-  if (isAuthenticated.value) return true
-
-  // Try refreshing the token (cookie might still be valid).
-  const ok = await refresh()
-  if (ok) {
-    try {
-      await fetchProfile()
-    } catch {
-      // Profile fetch failed — token might be invalid.
+  if (!isAuthenticated.value) {
+    // Try refreshing the token (cookie might still be valid).
+    const ok = await refresh()
+    if (ok) {
+      try {
+        await fetchProfile()
+      } catch {
+        // Profile fetch failed — token might be invalid.
+        return { name: 'login', query: { redirect: to.fullPath } }
+      }
+    } else {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
-    return true
   }
 
-  return { name: 'login', query: { redirect: to.fullPath } }
+  // Admin-only routes — redirect non-admins to home.
+  if (to.meta.admin && !isAdmin.value) {
+    return { name: 'home' }
+  }
+
+  return true
 })
 
 router.afterEach(() => {

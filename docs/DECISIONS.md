@@ -1784,3 +1784,31 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 4. **Monitor `buildDownloadMap`** fix: Downloads with NULL `episode_id` that are NOT season packs (determined by title parsing) now generate a download key using `(seasonNumber, episodeNumber)` extracted from the title. This prevents the monitor from ignoring single-episode downloads that were created without an `episode_id`, which was the root cause of re-downloads.
 
 **Rationale**: The `(mediaItemID, downloadURL)` pair is the natural dedup key — confirmed by prod data showing all duplicates shared the same URL. A DB-level unique constraint was considered but rejected: legitimate re-downloads of the same URL after a previous failure/cancellation must remain possible. The check-then-insert approach (no constraint) allows this while blocking duplicates within the active lifecycle. The shared `ActiveDownloadStatuses` constant eliminates the risk of the store and monitor drifting on what "active" means. The frontend fix is independent — it prevents UI-level double-clicks from queueing duplicates even if the backend guard didn't exist.
+
+---
+
+## ADR-117: Admin role system with centralized middleware (v0.33.0)
+**Date**: 2026-05-12
+**Status**: Accepted
+
+**Context**: MediaGate had no authorization beyond authentication — any logged-in user could access all settings, manage libraries, delete other users, export the database, etc. For multi-user households, admin operations (settings, library management, indexer configuration, user management) should be restricted to the instance owner while normal users only consume content (browse, search, download, watch).
+
+**Decision**: Implemented a role-based admin system with three layers of enforcement:
+
+1. **Data model**: `IsAdmin bool` field on `store.User` (GORM `not null;default:false`). Migration V7 promotes the first-created user (MIN id) to admin. `Setup` and `Bootstrap` handlers explicitly set `IsAdmin=true` on first user creation.
+
+2. **Backend enforcement** (centralized):
+   - `AdminMiddleware` — a `StrictMiddlewareFunc` that intercepts requests based on operationID. A `adminOnlyOps` map (~40 operations) defines which endpoints require admin privileges. Non-admin requests receive HTTP 403 with JSON error body. This runs before the handler, so no handler code needs admin checks.
+   - `DatabaseExportHandler` — manual handler (not in OpenAPI) retains inline `IsUserAdmin` check since it bypasses the strict handler chain.
+   - `DeleteUser` — self-delete prevention returns 403 (new `DeleteUser403JSONResponse` from updated OpenAPI spec).
+
+3. **Frontend enforcement** (defense-in-depth UX):
+   - `useAuth` composable exports `isAdmin` computed property from `currentUser.isAdmin`.
+   - Router: admin-only routes (`libraries`, `indexers`, `media-profiles`, `settings`, `users`) have `meta: { admin: true }`. `beforeEach` guard redirects non-admins to home.
+   - Sidebar: `staticBottom` items tagged with `admin: true`, filtered via `visibleBottom` computed.
+   - UsersView: Add User button and Delete actions hidden for non-admins.
+   - SettingsGeneral: DB export section hidden for non-admins.
+
+4. **XSS mitigation**: `sanitizeHtml()` utility (`frontend/src/utils/sanitize.ts`) — DOMParser-based allowlist sanitizer strips all HTML except `a`, `b`, `i`, `em`, `strong`, `br`, `p`, `span`, `code` tags. Applied to indexer definition `setting.default` values rendered via `v-html`.
+
+**Rationale**: Centralized operationID-based middleware eliminates the need to modify ~40 handlers individually and ensures new endpoints are non-admin by default (secure by default). The `StrictMiddlewareFunc` signature provides access to operationID without reflection or path matching. Frontend guards are UX-only — the backend is the security boundary. The `IsAdmin` bool (not role strings/enum) is appropriate for a homelab app with a simple owner/user distinction. Migration V7 uses `MIN(id)` (not hardcoded ID=1) to handle edge cases where user IDs start at a different value.
