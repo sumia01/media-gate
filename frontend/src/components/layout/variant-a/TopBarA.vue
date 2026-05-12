@@ -203,6 +203,7 @@ async function handleRun(name: string) {
                 <span class="text-emerald-400 font-mono font-medium">{{ latestVersion }}</span>
               </div>
               <button
+                v-if="isAdmin"
                 class="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
                 @click="showUpdatePanel = false; router.push('/settings')"
               >
