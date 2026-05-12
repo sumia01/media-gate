@@ -1812,3 +1812,19 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 4. **XSS mitigation**: `sanitizeHtml()` utility (`frontend/src/utils/sanitize.ts`) — DOMParser-based allowlist sanitizer strips all HTML except `a`, `b`, `i`, `em`, `strong`, `br`, `p`, `span`, `code` tags. Applied to indexer definition `setting.default` values rendered via `v-html`.
 
 **Rationale**: Centralized operationID-based middleware eliminates the need to modify ~40 handlers individually and ensures new endpoints are non-admin by default (secure by default). The `StrictMiddlewareFunc` signature provides access to operationID without reflection or path matching. Frontend guards are UX-only — the backend is the security boundary. The `IsAdmin` bool (not role strings/enum) is appropriate for a homelab app with a simple owner/user distinction. Migration V7 uses `MIN(id)` (not hardcoded ID=1) to handle edge cases where user IDs start at a different value.
+
+---
+
+## ADR-118: Four-tier download status resolution and orphan download cleanup
+**Date**: 2026-05-12
+**Status**: Accepted
+
+**Context**: `AssembleEpisodes` resolved download status at three tiers: episode-level (by `EpisodeID`), season-level (by `SeasonNumber` when `EpisodeID` is NULL), and item-level. Downloads created via season search for single episodes that didn't yet exist in the DB (e.g., metadata provider didn't list the episode yet) had `EpisodeID = NULL` and `SeasonNumber` set. The season-level tier treated these as season packs, causing their "seeding" status to propagate to every episode in the season — including future episodes that had nothing to do with the download. Observed in production: media item 156 ("Ettermek csataja") showed "seeding" for episodes 13-16 (which hadn't even aired yet) because earlier single-episode downloads (E07-E11) lacked `EpisodeID`.
+
+**Decision**: Two changes:
+
+1. **Four-tier status resolution** (`sync/episodes.go`): Extracted `resolveDownloadStatuses()` as a pure function with four tiers. For downloads with `EpisodeID = NULL` and `SeasonNumber` set, the function parses the download title via `fileparse.ParseTorrentSeasonEpisode`. If the title contains a single episode number (and no episode range), the status is scoped to that specific episode via an `episodeKeyStatus` map (keyed by `"S{n}E{n}"`). Only true season packs (season-only title or episode ranges) go to the season tier. Resolution order: `episodeID > episodeKey > season > item`.
+
+2. **Orphan download resolution on metadata refresh** (`metarefresh/service.go`): After a metadata refresh detects changes (new episodes), `resolveOrphanDownloads()` iterates active downloads with `EpisodeID = NULL`, parses their titles, and fills in `EpisodeID` by looking up the now-existing episode via `store.GetEpisodeByNumber`. This converts orphan downloads from the episode-key tier to the episode-id tier, the same logic as `download.Service.resolveEpisodeID` but running retroactively.
+
+**Rationale**: The four-tier approach is backward-compatible: true season packs and episode ranges still apply to the whole season. The title parsing fallback is best-effort — unparseable titles fall to the season tier (same as before). The orphan resolution on metadata refresh is the natural trigger: it runs when new episodes appear, which is exactly when previously-unknown episodes can be matched to existing downloads. The `resolveDownloadStatuses` function is pure (no store dependency) with full test coverage (11 cases), including the exact production scenario that triggered this fix.

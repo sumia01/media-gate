@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
+	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
@@ -112,6 +113,11 @@ func (s *Service) processOnce() {
 				}
 			}
 
+			// Resolve orphan downloads: fill in episode_id for single-episode downloads
+			// that were created before the episode existed in the database (e.g. via season
+			// search when metadata provider didn't list the episode yet).
+			s.resolveOrphanDownloads(item.ID)
+
 			updated++
 			_ = s.syncSvc.RecalcMediaItemStatus(item.ID)
 			s.bus.Publish(eventbus.MetadataRefreshed, eventbus.MediaItemPayload{
@@ -127,5 +133,48 @@ func (s *Service) processOnce() {
 
 	if checked > 0 {
 		slog.Debug("metadata-refresh: cycle complete", "checked", checked, "updated", updated)
+	}
+}
+
+// resolveOrphanDownloads fills in EpisodeID for active downloads that were created
+// before the episode existed in the database. This happens when a user downloads via
+// season search before the metadata provider lists the episode, then later refreshes
+// metadata to a provider that knows about the episode.
+func (s *Service) resolveOrphanDownloads(itemID uint) {
+	downloads, err := s.store.ListDownloads(&itemID, nil)
+	if err != nil {
+		return
+	}
+	for i := range downloads {
+		dl := &downloads[i]
+		if dl.EpisodeID != nil {
+			continue
+		}
+		// Skip terminal downloads — no point resolving episode_id on finished work.
+		// Note: different from store.ActiveDownloadStatuses which includes "completed".
+		if dl.Status == "completed" || dl.Status == "failed" {
+			continue
+		}
+		parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+		if parsed.Season == nil || parsed.Episode == nil {
+			continue // can't determine episode, or it's a genuine season pack
+		}
+		ep, err := s.store.GetEpisodeByNumber(itemID, *parsed.Season, *parsed.Episode)
+		if err != nil {
+			continue // episode still not in DB
+		}
+		dl.EpisodeID = &ep.ID
+		if dl.SeasonNumber == nil {
+			sn := *parsed.Season
+			dl.SeasonNumber = &sn
+		}
+		if err := s.store.UpdateDownload(dl); err != nil {
+			slog.Warn("metadata-refresh: failed to resolve orphan download",
+				"download_id", dl.ID, "title", dl.Title, "error", err)
+			continue
+		}
+		slog.Info("metadata-refresh: resolved orphan download",
+			"download_id", dl.ID, "title", dl.Title, "episode_id", ep.ID,
+			"season", *parsed.Season, "episode", *parsed.Episode)
 	}
 }

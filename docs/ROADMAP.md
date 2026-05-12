@@ -264,13 +264,14 @@
 - [x] Removed freeleech/volume labels (`volumeLabel`) from all torrent result lists (desktop + mobile)
 
 ## Phase 6.1: Metadata refresh worker ✅
-→ See ADR-081
+→ See ADR-081, ADR-118
 - [x] `metarefresh.Service` with `worker.Loop` — periodic TMDB/TVDB check for new seasons on monitored series
 - [x] `matching.RefreshSeriesMetadata` — compares stored vs external season count, fetches only new seasons (no delete+recreate)
 - [x] Skips ended/canceled series, 500ms inter-item rate limiting
 - [x] `MetadataRefreshed` SSE event with `MediaItemPayload`
 - [x] `KeyWorkerMetadataRefreshInterval` setting (default 6 hours, min 1 hour, configurable in UI)
 - [x] Settings UI: metadata refresh interval input in Workers section
+- [x] Orphan download resolution — backfills `episode_id` on active downloads whose episode now exists after metadata refresh
 
 ## Phase 6.2: Remote download path mapping ✅
 → See ADR-082
@@ -520,6 +521,7 @@
 - [x] Monitor `buildDownloadMap` misclassifies single-episode downloads (missing `episode_id`) as season packs — blocks entire season from auto-download
 - [x] Cardigann text field rendering order non-deterministic — Go map iteration causes inter-field `.Result` references (e.g. Milkie `_apikey` → `download`) to resolve as raw template literals intermittently
 - [x] Duplicate download records created for same media item + URL — no dedup at creation, monitor `buildDownloadMap` ignored NULL `episode_id` single-episode downloads, frontend tracked download state by unstable array index
+- [x] Episode download status bleed — single-episode downloads without `episode_id` (created via season search) treated as season packs in `AssembleEpisodes`, causing "seeding" status to propagate to all episodes in the season including unaired ones
 
 ---
 

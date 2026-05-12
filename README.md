@@ -133,6 +133,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Targets monitored series that are not "Ended" or "Canceled"
 - Creates episode records and season monitors when new content is discovered
 - Recalculates media item status after updates
+- Resolves orphan downloads: backfills episode IDs on downloads created before the episode existed in the database
 
 ### Subtitles
 

@@ -31,6 +31,7 @@ CLAUDE.md
 AGENTS.md
 playground.md
 opencode.json
+dbhub.toml
 
 # Environment
 .env

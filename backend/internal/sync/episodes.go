@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -71,38 +72,9 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 		epMonitorLookup[key] = em.Monitored
 	}
 
-	// Build download status lookups.
-	// Priority: downloading > pending > downloaded > importing > seeding (completed/failed ignored).
-	dlStatusPriority := map[string]int{
-		"downloading": 5,
-		"pending":     4,
-		"downloaded":  3,
-		"importing":   2,
-		"seeding":     1,
-	}
-	episodeDownloadStatus := make(map[uint]string)
-	seasonDownloadStatus := make(map[int]string)
-	var itemDownloadStatus string
-	for _, dl := range downloads {
-		pri := dlStatusPriority[dl.Status]
-		if pri == 0 {
-			continue // skip completed/failed
-		}
-		if dl.EpisodeID != nil {
-			if cur, ok := episodeDownloadStatus[*dl.EpisodeID]; !ok || pri > dlStatusPriority[cur] {
-				episodeDownloadStatus[*dl.EpisodeID] = dl.Status
-			}
-		} else if dl.SeasonNumber != nil {
-			sn := *dl.SeasonNumber
-			if cur, ok := seasonDownloadStatus[sn]; !ok || pri > dlStatusPriority[cur] {
-				seasonDownloadStatus[sn] = dl.Status
-			}
-		} else {
-			if dlStatusPriority[itemDownloadStatus] < pri {
-				itemDownloadStatus = dl.Status
-			}
-		}
-	}
+	// Build download status lookups with title parsing to distinguish
+	// single-episode downloads from actual season packs.
+	epDL, epKeyDL, seasonDL, itemDL := resolveDownloadStatuses(downloads)
 
 	// Group episodes by season.
 	seasonMap := make(map[int][]EpisodeSummary)
@@ -120,13 +92,15 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 			summary.Monitored = seasonMon
 		}
 
-		// Resolve download status: episode-level > season-level > item-level.
-		if status, ok := episodeDownloadStatus[ep.ID]; ok {
+		// Resolve download status: episode-id > episode-key > season-level > item-level.
+		if status, ok := epDL[ep.ID]; ok {
 			summary.DownloadStatus = status
-		} else if status, ok := seasonDownloadStatus[ep.SeasonNumber]; ok {
+		} else if status, ok := epKeyDL[key]; ok {
 			summary.DownloadStatus = status
-		} else if itemDownloadStatus != "" {
-			summary.DownloadStatus = itemDownloadStatus
+		} else if status, ok := seasonDL[ep.SeasonNumber]; ok {
+			summary.DownloadStatus = status
+		} else if itemDL != "" {
+			summary.DownloadStatus = itemDL
 		}
 
 		seasonMap[ep.SeasonNumber] = append(seasonMap[ep.SeasonNumber], summary)
@@ -159,6 +133,69 @@ func (s *Service) AssembleEpisodes(itemID uint) ([]SeasonSummary, error) {
 	})
 
 	return seasons, nil
+}
+
+// dlStatusPriority defines the priority of download statuses for resolution.
+// Higher value wins. Completed/failed are excluded (priority 0).
+var dlStatusPriority = map[string]int{
+	"downloading": 5,
+	"pending":     4,
+	"downloaded":  3,
+	"importing":   2,
+	"seeding":     1,
+}
+
+// resolveDownloadStatuses buckets downloads into four tiers:
+//   - episodeStatus:    keyed by episode DB ID (downloads with EpisodeID set)
+//   - episodeKeyStatus: keyed by "S{n}E{n}" (single-episode downloads without EpisodeID,
+//     detected via title parsing)
+//   - seasonStatus:     keyed by season number (true season packs only)
+//   - itemStatus:       fallback for downloads with neither EpisodeID nor SeasonNumber
+//
+// Within each tier the highest-priority status wins.
+func resolveDownloadStatuses(downloads []store.Download) (
+	episodeStatus map[uint]string,
+	episodeKeyStatus map[string]string,
+	seasonStatus map[int]string,
+	itemStatus string,
+) {
+	episodeStatus = make(map[uint]string)
+	episodeKeyStatus = make(map[string]string)
+	seasonStatus = make(map[int]string)
+
+	for _, dl := range downloads {
+		pri := dlStatusPriority[dl.Status]
+		if pri == 0 {
+			continue // skip completed/failed
+		}
+		if dl.EpisodeID != nil {
+			if cur, ok := episodeStatus[*dl.EpisodeID]; !ok || pri > dlStatusPriority[cur] {
+				episodeStatus[*dl.EpisodeID] = dl.Status
+			}
+		} else if dl.SeasonNumber != nil {
+			// Parse title to distinguish single-episode downloads from actual season packs.
+			// Downloads created via season search may lack episode_id even for single episodes.
+			parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+			if parsed.Episode != nil && parsed.EpisodeEnd == nil {
+				// Single-episode download — scope status to that episode only.
+				key := fmt.Sprintf("S%dE%d", *dl.SeasonNumber, *parsed.Episode)
+				if cur, ok := episodeKeyStatus[key]; !ok || pri > dlStatusPriority[cur] {
+					episodeKeyStatus[key] = dl.Status
+				}
+			} else {
+				// True season pack (or episode range) — applies to entire season.
+				sn := *dl.SeasonNumber
+				if cur, ok := seasonStatus[sn]; !ok || pri > dlStatusPriority[cur] {
+					seasonStatus[sn] = dl.Status
+				}
+			}
+		} else {
+			if dlStatusPriority[itemStatus] < pri {
+				itemStatus = dl.Status
+			}
+		}
+	}
+	return
 }
 
 // SeasonMonitorInput represents a season monitor create/update request.
