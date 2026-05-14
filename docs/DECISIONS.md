@@ -1828,3 +1828,21 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 2. **Orphan download resolution on metadata refresh** (`metarefresh/service.go`): After a metadata refresh detects changes (new episodes), `resolveOrphanDownloads()` iterates active downloads with `EpisodeID = NULL`, parses their titles, and fills in `EpisodeID` by looking up the now-existing episode via `store.GetEpisodeByNumber`. This converts orphan downloads from the episode-key tier to the episode-id tier, the same logic as `download.Service.resolveEpisodeID` but running retroactively.
 
 **Rationale**: The four-tier approach is backward-compatible: true season packs and episode ranges still apply to the whole season. The title parsing fallback is best-effort — unparseable titles fall to the season tier (same as before). The orphan resolution on metadata refresh is the natural trigger: it runs when new episodes appear, which is exactly when previously-unknown episodes can be matched to existing downloads. The `resolveDownloadStatuses` function is pure (no store dependency) with full test coverage (11 cases), including the exact production scenario that triggered this fix.
+
+---
+
+## ADR-119: Episode backfill for last known season during metadata refresh
+**Date**: 2026-05-15
+**Status**: Accepted
+
+**Context**: `RefreshSeriesMetadata` only fetched episodes for brand-new seasons (when the season count increased). If a provider (TVDB/TMDB) added new episodes to the currently-airing season after the initial match — without adding a new season — those episodes were never picked up. This meant auto-download would never discover or download them. Observed in production: a series with S1 at 16 episodes where TVDB later added episode 17 to the same season.
+
+**Decision**: Three changes:
+
+1. **Last-season backfill** (`matching/service.go`): When `RefreshSeriesMetadata` detects no new seasons (`seasonsChanged == false`), it calls `backfillSeasonEpisodes()` for the last known season. This re-fetches the episode list from the provider and inserts any episodes not yet in the DB. Uses `GetEpisodeByNumber` to skip existing episodes (protected by unique index on `media_item_id, season_number, episode_number`). When new seasons ARE detected, backfill is skipped for the old last season (it's assumed complete once a new season appears).
+
+2. **Proper not-found error handling** (`store/sqlite/episode.go`): `GetEpisodeByNumber` now wraps GORM's `ErrRecordNotFound` into `store.ErrNotFound`, consistent with all other store getters. `backfillSeasonEpisodes` uses `errors.Is(err, store.ErrNotFound)` to distinguish "episode doesn't exist" from transient DB errors.
+
+3. **Episode construction helper** (`matching/service.go`): Extracted `newEpisodeFromData()` to eliminate duplicated episode construction logic across `fetchAndStoreEpisodes`, `RefreshSeriesMetadata`, and `backfillSeasonEpisodes`. Also added error logging on `CreateEpisode` calls that previously silently discarded errors.
+
+**Rationale**: Re-fetching only the last known season is a minimal-cost approach (1 extra API call per series per 6-hour cycle) that catches the most common case: currently-airing seasons gaining new episode listings. The guard against backfilling when new seasons appear avoids redundant API calls — if a new season exists, the old one is likely complete. Ended/canceled series are already skipped at the `metarefresh` level, so the backfill only runs for actively-airing shows.

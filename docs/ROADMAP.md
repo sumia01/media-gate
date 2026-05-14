@@ -264,9 +264,10 @@
 - [x] Removed freeleech/volume labels (`volumeLabel`) from all torrent result lists (desktop + mobile)
 
 ## Phase 6.1: Metadata refresh worker ✅
-→ See ADR-081, ADR-118
+→ See ADR-081, ADR-118, ADR-119
 - [x] `metarefresh.Service` with `worker.Loop` — periodic TMDB/TVDB check for new seasons on monitored series
 - [x] `matching.RefreshSeriesMetadata` — compares stored vs external season count, fetches only new seasons (no delete+recreate)
+- [x] Episode backfill on last known season — when season count is unchanged, re-fetches episode list for the last known season and inserts any new episodes not yet in the DB (covers providers adding episodes to a currently-airing season)
 - [x] Skips ended/canceled series, 500ms inter-item rate limiting
 - [x] `MetadataRefreshed` SSE event with `MediaItemPayload`
 - [x] `KeyWorkerMetadataRefreshInterval` setting (default 6 hours, min 1 hour, configurable in UI)

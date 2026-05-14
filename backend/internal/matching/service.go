@@ -641,20 +641,7 @@ func (s *Service) fetchAndStoreEpisodes(item *store.MediaItem, source, apiKey st
 			continue
 		}
 		for _, ep := range episodes {
-			var runtime *int
-			if ep.runtime > 0 {
-				r := ep.runtime
-				runtime = &r
-			}
-			_ = s.store.CreateEpisode(&store.Episode{
-				MediaItemID:   item.ID,
-				SeasonNumber:  ep.seasonNumber,
-				EpisodeNumber: ep.episodeNumber,
-				Title:         ep.title,
-				Overview:      ep.overview,
-				AirDate:       ep.airDate,
-				Runtime:       runtime,
-			})
+			_ = s.store.CreateEpisode(newEpisodeFromData(item.ID, ep))
 		}
 	}
 }
@@ -900,9 +887,12 @@ func (s *Service) TMDBClient() *tmdb.Client {
 	return s.cachedTMDB(apiKey)
 }
 
-// RefreshSeriesMetadata checks TMDB/TVDB for new seasons on a matched series.
-// If the season count increased, it fetches episodes for the new seasons only
-// and updates the metadata. Returns true if the metadata was updated.
+// RefreshSeriesMetadata checks TMDB/TVDB for new seasons and new episodes on a
+// matched series. When the season count increases, it fetches episodes for the
+// brand-new seasons. When it stays the same, it re-fetches the last known season
+// and inserts any episodes not yet in the database (covers the case where a
+// provider adds episodes to a currently-airing season after the initial match).
+// Returns true if the metadata was updated.
 func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.MediaMetadata) (bool, error) {
 	apiKey, err := s.resolveAPIKey(meta.Source)
 	if err != nil {
@@ -939,11 +929,10 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 	statusChanged := newStatus != "" && newStatus != meta.Status
 	seasonsChanged := newSeasons > oldSeasons
 
-	if !seasonsChanged && !statusChanged {
-		return false, nil
-	}
+	changed := false
 
 	if seasonsChanged {
+		// Fetch episodes for brand-new seasons only.
 		for season := oldSeasons + 1; season <= newSeasons; season++ {
 			episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
 			if err != nil {
@@ -952,27 +941,32 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 				continue
 			}
 			for _, ep := range episodes {
-				var runtime *int
-				if ep.runtime > 0 {
-					r := ep.runtime
-					runtime = &r
+				if err := s.store.CreateEpisode(newEpisodeFromData(item.ID, ep)); err != nil {
+					slog.Warn("metadata refresh: failed to create episode",
+						"item_id", item.ID, "season", ep.seasonNumber,
+						"episode", ep.episodeNumber, "error", err)
 				}
-				_ = s.store.CreateEpisode(&store.Episode{
-					MediaItemID:   item.ID,
-					SeasonNumber:  ep.seasonNumber,
-					EpisodeNumber: ep.episodeNumber,
-					Title:         ep.title,
-					Overview:      ep.overview,
-					AirDate:       ep.airDate,
-					Runtime:       runtime,
-				})
 			}
 		}
 		meta.Seasons = &newSeasons
+		changed = true
+	} else if oldSeasons > 0 {
+		// Season count unchanged — re-check the last known season for new
+		// episodes that the provider may have added since the initial match
+		// (e.g. a currently-airing season gaining new episode listings).
+		newEps := s.backfillSeasonEpisodes(item.ID, meta, apiKey, oldSeasons)
+		if newEps > 0 {
+			changed = true
+		}
 	}
 
 	if statusChanged {
 		meta.Status = newStatus
+		changed = true
+	}
+
+	if !changed {
+		return false, nil
 	}
 
 	if err := s.store.UpdateMediaMetadata(meta); err != nil {
@@ -985,6 +979,64 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 		"status", meta.Status)
 
 	return true, nil
+}
+
+// backfillSeasonEpisodes fetches episodes for the given season from the
+// provider and inserts any that are missing from the database. Returns the
+// number of new episodes inserted.
+func (s *Service) backfillSeasonEpisodes(mediaItemID uint, meta *store.MediaMetadata, apiKey string, season int) int {
+	episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
+	if err != nil {
+		slog.Warn("metadata refresh: failed to fetch episodes for backfill",
+			"item_id", mediaItemID, "season", season, "source", meta.Source, "error", err)
+		return 0
+	}
+
+	inserted := 0
+	for _, ep := range episodes {
+		// Skip episodes that already exist in the database.
+		_, err := s.store.GetEpisodeByNumber(mediaItemID, ep.seasonNumber, ep.episodeNumber)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			slog.Warn("metadata refresh: failed to check existing episode",
+				"item_id", mediaItemID, "season", ep.seasonNumber,
+				"episode", ep.episodeNumber, "error", err)
+			continue
+		}
+
+		if err := s.store.CreateEpisode(newEpisodeFromData(mediaItemID, ep)); err != nil {
+			slog.Warn("metadata refresh: failed to create backfill episode",
+				"item_id", mediaItemID, "season", ep.seasonNumber,
+				"episode", ep.episodeNumber, "error", err)
+			continue
+		}
+		inserted++
+		slog.Info("metadata refresh: backfilled new episode",
+			"item_id", mediaItemID, "season", ep.seasonNumber,
+			"episode", ep.episodeNumber, "title", ep.title)
+	}
+	return inserted
+}
+
+// newEpisodeFromData converts an episodeData (provider response) into a
+// store.Episode ready for persistence.
+func newEpisodeFromData(mediaItemID uint, ep episodeData) *store.Episode {
+	var runtime *int
+	if ep.runtime > 0 {
+		r := ep.runtime
+		runtime = &r
+	}
+	return &store.Episode{
+		MediaItemID:   mediaItemID,
+		SeasonNumber:  ep.seasonNumber,
+		EpisodeNumber: ep.episodeNumber,
+		Title:         ep.title,
+		Overview:      ep.overview,
+		AirDate:       ep.airDate,
+		Runtime:       runtime,
+	}
 }
 
 // cachedTMDB returns a cached TMDB client for the given key, re-creating if the key changed.
