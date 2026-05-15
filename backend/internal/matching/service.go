@@ -841,8 +841,10 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 	meta.Status = details.Status.Name
 	meta.ImdbID = details.ImdbID()
 	if len(details.Seasons) > 0 {
-		ns := len(details.Seasons)
-		meta.Seasons = &ns
+		ns := details.MaxSeasonNumber()
+		if ns > 0 {
+			meta.Seasons = &ns
+		}
 	}
 	if y := dateutil.ParseYear(details.FirstAired); y != nil {
 		meta.Year = y
@@ -889,9 +891,10 @@ func (s *Service) TMDBClient() *tmdb.Client {
 
 // RefreshSeriesMetadata checks TMDB/TVDB for new seasons and new episodes on a
 // matched series. When the season count increases, it fetches episodes for the
-// brand-new seasons. When it stays the same, it re-fetches the last known season
-// and inserts any episodes not yet in the database (covers the case where a
-// provider adds episodes to a currently-airing season after the initial match).
+// brand-new seasons and backfills the previous last season. When it stays the
+// same, it re-fetches ALL known seasons and inserts any episodes not yet in the
+// database (covers providers adding episodes to any season after the initial
+// match). Also corrects stale season counts (e.g. after TVDB counting fix).
 // Returns true if the metadata was updated.
 func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.MediaMetadata) (bool, error) {
 	apiKey, err := s.resolveAPIKey(meta.Source)
@@ -915,7 +918,7 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 		if err != nil {
 			return false, fmt.Errorf("fetching TVDB series %d: %w", meta.ExternalID, err)
 		}
-		newSeasons = len(details.Seasons)
+		newSeasons = details.MaxSeasonNumber()
 		newStatus = details.Status.Name
 	default:
 		return false, fmt.Errorf("unknown source: %s", meta.Source)
@@ -932,6 +935,14 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 	changed := false
 
 	if seasonsChanged {
+		// Backfill the previous last season — it may have gained episodes
+		// since the last refresh (e.g. still airing when a new season appeared).
+		if oldSeasons > 0 {
+			if n := s.backfillSeasonEpisodes(item.ID, meta, apiKey, oldSeasons); n > 0 {
+				slog.Info("metadata refresh: backfilled old last season",
+					"item_id", item.ID, "season", oldSeasons, "new_episodes", n)
+			}
+		}
 		// Fetch episodes for brand-new seasons only.
 		for season := oldSeasons + 1; season <= newSeasons; season++ {
 			episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
@@ -951,13 +962,22 @@ func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.Media
 		meta.Seasons = &newSeasons
 		changed = true
 	} else if oldSeasons > 0 {
-		// Season count unchanged — re-check the last known season for new
+		// Season count unchanged — re-check ALL known seasons for new
 		// episodes that the provider may have added since the initial match
 		// (e.g. a currently-airing season gaining new episode listings).
-		newEps := s.backfillSeasonEpisodes(item.ID, meta, apiKey, oldSeasons)
-		if newEps > 0 {
-			changed = true
+		for season := 1; season <= oldSeasons; season++ {
+			newEps := s.backfillSeasonEpisodes(item.ID, meta, apiKey, season)
+			if newEps > 0 {
+				changed = true
+			}
 		}
+	}
+
+	// Correct stale season count when the provider reports fewer seasons than
+	// stored (e.g. after fixing TVDB counting that previously included specials).
+	if newSeasons > 0 && newSeasons < oldSeasons {
+		meta.Seasons = &newSeasons
+		changed = true
 	}
 
 	if statusChanged {

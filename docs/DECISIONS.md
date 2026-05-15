@@ -1831,18 +1831,30 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 
 ---
 
-## ADR-119: Episode backfill for last known season during metadata refresh
+## ADR-119: Episode backfill for all seasons during metadata refresh
 **Date**: 2026-05-15
-**Status**: Accepted
+**Status**: Accepted (supersedes previous last-season-only approach)
 
-**Context**: `RefreshSeriesMetadata` only fetched episodes for brand-new seasons (when the season count increased). If a provider (TVDB/TMDB) added new episodes to the currently-airing season after the initial match — without adding a new season — those episodes were never picked up. This meant auto-download would never discover or download them. Observed in production: a series with S1 at 16 episodes where TVDB later added episode 17 to the same season.
+**Context**: `RefreshSeriesMetadata` originally only fetched episodes for brand-new seasons (when the season count increased). A first fix added backfill for the last known season only, but production revealed this was insufficient: a TVDB-sourced series ("Éttermek csatája", TVDB 476493) had 21 episodes on season 1 while the DB only had 16 — because `meta.Seasons=3` (inflated by TVDB counting bug) meant only season 3 was backfilled, never season 1.
 
 **Decision**: Three changes:
 
-1. **Last-season backfill** (`matching/service.go`): When `RefreshSeriesMetadata` detects no new seasons (`seasonsChanged == false`), it calls `backfillSeasonEpisodes()` for the last known season. This re-fetches the episode list from the provider and inserts any episodes not yet in the DB. Uses `GetEpisodeByNumber` to skip existing episodes (protected by unique index on `media_item_id, season_number, episode_number`). When new seasons ARE detected, backfill is skipped for the old last season (it's assumed complete once a new season appears).
+1. **All-season backfill** (`matching/service.go`): When `seasonsChanged == false`, iterate ALL seasons (`1..oldSeasons`) and call `backfillSeasonEpisodes()` for each. When new seasons ARE detected, also backfill the previous last season before fetching brand-new ones.
 
-2. **Proper not-found error handling** (`store/sqlite/episode.go`): `GetEpisodeByNumber` now wraps GORM's `ErrRecordNotFound` into `store.ErrNotFound`, consistent with all other store getters. `backfillSeasonEpisodes` uses `errors.Is(err, store.ErrNotFound)` to distinguish "episode doesn't exist" from transient DB errors.
+2. **Proper not-found error handling** (`store/sqlite/episode.go`): `GetEpisodeByNumber` wraps GORM's `ErrRecordNotFound` into `store.ErrNotFound`, consistent with all other store getters.
 
-3. **Episode construction helper** (`matching/service.go`): Extracted `newEpisodeFromData()` to eliminate duplicated episode construction logic across `fetchAndStoreEpisodes`, `RefreshSeriesMetadata`, and `backfillSeasonEpisodes`. Also added error logging on `CreateEpisode` calls that previously silently discarded errors.
+3. **Stale season count correction**: When the provider reports fewer seasons than stored (e.g. after TVDB counting fix), `meta.Seasons` is corrected downward.
 
-**Rationale**: Re-fetching only the last known season is a minimal-cost approach (1 extra API call per series per 6-hour cycle) that catches the most common case: currently-airing seasons gaining new episode listings. The guard against backfilling when new seasons appear avoids redundant API calls — if a new season exists, the old one is likely complete. Ended/canceled series are already skipped at the `metarefresh` level, so the backfill only runs for actively-airing shows.
+**Rationale**: The API cost of checking all seasons is acceptable (~50-80 calls per 6h cycle for ~16 monitored items × ~3-5 seasons). Only checking the last season misses episodes added to earlier seasons. Ended/canceled series are still skipped at the `metarefresh` level, limiting the scope to actively-tracked shows.
+
+---
+
+## ADR-120: TVDB season counting uses max(Number) instead of len(Seasons)
+**Date**: 2026-05-15
+**Status**: Accepted
+
+**Context**: TVDB's `/series/{id}/extended` endpoint returns a `seasons` array that includes season 0 (specials) and potentially duplicate entries from alternative orderings (absolute, DVD). Using `len(details.Seasons)` inflated the season count — e.g. a show with seasons [0, 1] would get `meta.Seasons=2`, causing the backfill to target season 2 (non-existent) instead of season 1 (the actual last season). The initial match loop (`fetchAndStoreEpisodes`) would also try to fetch a phantom season.
+
+**Decision**: Added `SeriesDetails.MaxSeasonNumber()` method that returns the highest `Number` field from the seasons list. Applied in both `fetchTVDBDetails` (initial match) and `RefreshSeriesMetadata` (periodic refresh). TMDB is unaffected — its `NumberOfSeasons` already excludes specials.
+
+**Rationale**: `max(Number)` correctly handles: specials (season 0 doesn't inflate), duplicate ordering types (same number = no inflation), and unordered entries. Edge case: if TVDB returns absolute-order seasons with very high numbers, this could over-count — but in practice TVDB doesn't include those in the standard seasons array. A future improvement could filter by season type if needed.

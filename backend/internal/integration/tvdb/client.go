@@ -236,6 +236,19 @@ func (d *SeriesDetails) ImdbID() string {
 	return ""
 }
 
+// MaxSeasonNumber returns the highest season number from the Seasons list,
+// ignoring season 0 (specials) and any duplicates caused by alternative
+// orderings (absolute, DVD, etc.) that TVDB may include.
+func (d *SeriesDetails) MaxSeasonNumber() int {
+	max := 0
+	for _, s := range d.Seasons {
+		if s.Number > max {
+			max = s.Number
+		}
+	}
+	return max
+}
+
 type Status struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
