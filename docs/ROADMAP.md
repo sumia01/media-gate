@@ -504,6 +504,7 @@
 - [x] Frontend: removed duplicated matching logic from `utils/torrent.ts` — reads `profileMatch` from API response
 - [x] Frontend: AND/OR toggle UI on profiles page, priority numbers on resolution/source/language buttons
 - [x] DB migration v6: backfills `language_mode='or'` on existing profiles
+- [x] English fallback: untagged releases (no detectable language token) treated as English when `eng` is in the profile — `MatchesLanguages` and `LanguageScore` short-circuit for the common case where indexers omit the language tag on English-only releases
 
 ## Phase 8.9: Icon system (Lucide) ✅
 → See ADR-114

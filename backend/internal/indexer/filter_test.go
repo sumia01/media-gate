@@ -42,6 +42,57 @@ func TestFilterByProfile_Languages(t *testing.T) {
 			t.Fatalf("expected 4 results, got %d", len(filtered))
 		}
 	})
+
+	t.Run("OR mode: untagged release passes when eng in profile (English fallback)", func(t *testing.T) {
+		// Indexers often omit the language tag for English-only releases.
+		// In OR mode with "eng" in the profile, such releases should pass.
+		withUntagged := []TorrentResult{
+			{Title: "Movie.2024.1080p.BluRay.x264-RARBG", Seeders: 500}, // no language tag
+			{Title: "Movie.2024.1080p.GER.BluRay.x264", Seeders: 150},
+		}
+		filtered := FilterByProfile(withUntagged, nil, nil, []string{"hun", "eng"}, nil, "or")
+		if len(filtered) != 1 {
+			t.Fatalf("expected 1 result, got %d: %v", len(filtered), titles(filtered))
+		}
+		if filtered[0].Title != withUntagged[0].Title {
+			t.Errorf("expected untagged release to pass, got %q", filtered[0].Title)
+		}
+	})
+
+	t.Run("OR mode: untagged release dropped when eng NOT in profile", func(t *testing.T) {
+		withUntagged := []TorrentResult{
+			{Title: "Movie.2024.1080p.BluRay.x264-RARBG", Seeders: 500}, // no language tag
+			{Title: "Movie.2024.1080p.HUN.BluRay.x264", Seeders: 100},
+		}
+		filtered := FilterByProfile(withUntagged, nil, nil, []string{"hun", "ger"}, nil, "or")
+		if len(filtered) != 1 {
+			t.Fatalf("expected 1 result, got %d: %v", len(filtered), titles(filtered))
+		}
+		if filtered[0].Title != withUntagged[1].Title {
+			t.Errorf("expected only HUN release, got %q", filtered[0].Title)
+		}
+	})
+
+	t.Run("AND mode: untagged release passes for eng-only profile", func(t *testing.T) {
+		withUntagged := []TorrentResult{
+			{Title: "Movie.2024.1080p.BluRay.x264-RARBG", Seeders: 500},
+		}
+		filtered := FilterByProfile(withUntagged, nil, nil, []string{"eng"}, nil, "and")
+		if len(filtered) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(filtered))
+		}
+	})
+
+	t.Run("AND mode: untagged release still dropped for multi-language profile", func(t *testing.T) {
+		// English fallback only adds "eng" virtually; hun is still missing.
+		withUntagged := []TorrentResult{
+			{Title: "Movie.2024.1080p.BluRay.x264-RARBG", Seeders: 500},
+		}
+		filtered := FilterByProfile(withUntagged, nil, nil, []string{"hun", "eng"}, nil, "and")
+		if len(filtered) != 0 {
+			t.Fatalf("expected 0 results, got %d: %v", len(filtered), titles(filtered))
+		}
+	})
 }
 
 func TestRankResults(t *testing.T) {

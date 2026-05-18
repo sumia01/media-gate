@@ -91,6 +91,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 - Define preferred resolutions, languages, source types (BluRay, WEB-DL, etc.)
 - Language filtering with AND/OR mode: OR = any language matches (order = priority), AND = all languages required
+- English fallback: untagged releases (no language token in title) are treated as English when `eng` is in the profile — most indexers omit the language tag for English-only releases
 - Priority-based ranking: resolution > language > source, with user-defined preference order
 - Exclude tags to filter unwanted releases (global + per-profile)
 - Season pack preference: `prefer_packs`, `prefer_episodes`, `packs_only`

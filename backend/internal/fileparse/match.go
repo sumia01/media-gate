@@ -27,6 +27,13 @@ func MatchesProfile(resolution, source string, profileResolutions, profileSource
 //
 // If profileLanguages is empty, any release is accepted (no language filter).
 // The special language "multi" in detectedLanguages satisfies any requirement.
+//
+// English fallback: when a release has no detectable language tag and "eng" is
+// in the profile, the release is treated as English. Many indexers omit the
+// language tag for English-only releases (the implicit default). The fallback
+// applies in BOTH "or" and "and" modes — an untagged release with profile ["eng"]
+// in AND mode passes, but profile ["hun","eng"] in AND mode still fails because
+// "hun" is missing.
 func MatchesLanguages(detectedLanguages, profileLanguages []string, mode string) bool {
 	if len(profileLanguages) == 0 {
 		return true
@@ -39,9 +46,14 @@ func MatchesLanguages(detectedLanguages, profileLanguages []string, mode string)
 		}
 	}
 
-	detected := make(map[string]bool, len(detectedLanguages))
+	detected := make(map[string]bool, len(detectedLanguages)+1)
 	for _, d := range detectedLanguages {
 		detected[d] = true
+	}
+
+	// Untagged release + English in profile -> treat as English.
+	if len(detected) == 0 && contains(profileLanguages, "eng") {
+		detected["eng"] = true
 	}
 
 	switch mode {
@@ -69,6 +81,13 @@ func MatchesLanguages(detectedLanguages, profileLanguages []string, mode string)
 // Returns 0 if no profile languages are configured.
 // Returns the 1-based index of the first matching profile language found in the release.
 // Returns len(profileLanguages)+1 if no match (worst score).
+//
+// English fallback: when no language tag is detected and "eng" is in the profile,
+// the release is treated as English and scored at eng's 1-based position.
+// Mirrors MatchesLanguages so filtering and ranking stay consistent. Note this
+// means untagged releases out-rank explicitly-tagged non-English releases when
+// "eng" is the first profile entry — intentional, since the fallback's whole
+// point is to surface untagged English releases.
 func LanguageScore(detectedLanguages, profileLanguages []string) int {
 	if len(profileLanguages) == 0 {
 		return 0
@@ -81,9 +100,14 @@ func LanguageScore(detectedLanguages, profileLanguages []string) int {
 		}
 	}
 
-	detected := make(map[string]bool, len(detectedLanguages))
+	detected := make(map[string]bool, len(detectedLanguages)+1)
 	for _, d := range detectedLanguages {
 		detected[d] = true
+	}
+
+	// Untagged release + English in profile -> treat as English.
+	if len(detected) == 0 && contains(profileLanguages, "eng") {
+		detected["eng"] = true
 	}
 
 	for i, lang := range profileLanguages {

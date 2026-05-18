@@ -1858,3 +1858,30 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 **Decision**: Added `SeriesDetails.MaxSeasonNumber()` method that returns the highest `Number` field from the seasons list. Applied in both `fetchTVDBDetails` (initial match) and `RefreshSeriesMetadata` (periodic refresh). TMDB is unaffected — its `NumberOfSeasons` already excludes specials.
 
 **Rationale**: `max(Number)` correctly handles: specials (season 0 doesn't inflate), duplicate ordering types (same number = no inflation), and unordered entries. Edge case: if TVDB returns absolute-order seasons with very high numbers, this could over-count — but in practice TVDB doesn't include those in the standard seasons array. A future improvement could filter by season type if needed.
+
+---
+
+## ADR-121: English fallback for untagged language releases
+**Date**: 2026-05-18
+**Status**: Accepted
+
+**Context**: When a user's profile included `eng` (with or without other languages, e.g. `["hun","eng"]`) and an indexer returned a release whose title contained no detectable language token (`Movie.2024.1080p.BluRay.x264-RARBG`), the release was dropped by `FilterByProfile`. In practice, many indexers and release groups omit the language tag for English-only releases — English is the implicit default in scene/p2p naming conventions. This caused a frustrating discrepancy: searching with HUN+ENG yielded fewer English results than searching with ENG alone (which would still drop untagged releases too, since the filter required *some* recognized language token).
+
+**Decision**: When `ParseLanguages` returns an empty list AND `"eng"` is in the profile's language list, virtually treat the release as English. Implemented as a single guarded line in both `fileparse/MatchesLanguages` and `fileparse/LanguageScore`:
+
+```go
+if len(detected) == 0 && contains(profileLanguages, "eng") {
+    detected["eng"] = true
+}
+```
+
+The fallback applies in BOTH "or" and "and" modes:
+- Profile `["eng"]` + AND + untagged → passes (eng is now in detected; AND is satisfied).
+- Profile `["hun","eng"]` + AND + untagged → still fails (hun is missing; AND not satisfied).
+- Profile `["hun","eng"]` + OR + untagged → passes, scored at eng's position (2nd).
+- Profile `["hun"]` + OR + untagged → fails (no eng in profile, no fallback triggers).
+- Profile `["hun","eng"]` + OR + `[ger]` → fails (detected is non-empty, fallback skipped).
+
+Centralized in `fileparse/match.go` so all three call sites (`indexer.FilterByProfile`, `indexer.MatchesCriteria`, `indexer.RankResults`) and all consumers (`SearchIndexers` handler, `TestMediaProfileSearch` handler, `monitor.Service.filterByProfile`) get the new behavior automatically. `multi` token short-circuit still takes precedence — it remains the strongest signal.
+
+**Rationale**: A virtual injection into the `detected` set is the smallest possible diff: zero new API surface, zero new profile fields, zero migration. The behavior naturally falls out of the existing AND/OR logic — no special-case branches in either function. The `len(detected) == 0` guard prevents collateral damage: genuinely-detected non-English releases (e.g. `[ger]`) never silently morph into English. Documented in both function docstrings so the AND-mode application is explicit (the reviewer flagged ambiguity as the chief risk). Side effect: in OR mode with `["eng","hun"]`, untagged releases now out-rank explicitly-tagged HUN releases — intentional, since "untagged ≈ English ≈ first preference" is the whole point of the fallback. Per-profile feature flag was considered but rejected as over-engineered for what is, in practice, a near-universal release convention.

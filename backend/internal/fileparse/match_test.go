@@ -47,15 +47,22 @@ func TestMatchesLanguages(t *testing.T) {
 		{"and: missing one", []string{"hun"}, []string{"hun", "eng"}, "and", false},
 		{"and: none present", []string{"ger"}, []string{"hun", "eng"}, "and", false},
 		{"and: superset detected", []string{"hun", "eng", "ger"}, []string{"hun", "eng"}, "and", true},
-		{"and: empty detected", nil, []string{"hun", "eng"}, "and", false},
+		{"and: empty detected with hun+eng profile still false", nil, []string{"hun", "eng"}, "and", false},
 		{"and: multi satisfies all", []string{"multi"}, []string{"hun", "eng"}, "and", true},
 
 		// OR mode
 		{"or: one present", []string{"hun"}, []string{"hun", "eng"}, "or", true},
 		{"or: other present", []string{"eng"}, []string{"hun", "eng"}, "or", true},
 		{"or: none present", []string{"ger"}, []string{"hun", "eng"}, "or", false},
-		{"or: empty detected", nil, []string{"hun", "eng"}, "or", false},
 		{"or: multi satisfies", []string{"multi"}, []string{"hun", "eng"}, "or", true},
+
+		// English fallback: untagged release treated as English if "eng" in profile.
+		{"or: empty detected falls back to eng when in profile", nil, []string{"hun", "eng"}, "or", true},
+		{"or: empty detected no eng in profile stays false", nil, []string{"hun", "ger"}, "or", false},
+		{"or: empty detected eng-only profile", nil, []string{"eng"}, "or", true},
+		{"and: empty detected eng-only profile", nil, []string{"eng"}, "and", true},
+		{"and: empty detected hun+eng profile cannot satisfy hun", nil, []string{"hun", "eng"}, "and", false},
+		{"or: detected ger ignores eng fallback", []string{"ger"}, []string{"hun", "eng"}, "or", false},
 
 		// No profile languages = no filter
 		{"no profile languages", []string{"hun"}, nil, "and", true},
@@ -64,6 +71,7 @@ func TestMatchesLanguages(t *testing.T) {
 
 		// Empty mode defaults to OR
 		{"empty mode defaults to or", []string{"hun"}, []string{"hun", "eng"}, "", true},
+		{"empty mode defaults to or with eng fallback", nil, []string{"hun", "eng"}, "", true},
 	}
 
 	for _, tt := range tests {
@@ -89,7 +97,12 @@ func TestLanguageScore(t *testing.T) {
 		{"second priority match", []string{"eng"}, []string{"hun", "eng"}, 2},
 		{"no match worst score", []string{"ger"}, []string{"hun", "eng"}, 3},
 		{"multi gets best score", []string{"multi"}, []string{"hun", "eng"}, 1},
-		{"empty detected worst score", nil, []string{"hun", "eng"}, 3},
+		// English fallback: untagged release scored as English when "eng" in profile.
+		{"empty detected falls back to eng (2nd in profile)", nil, []string{"hun", "eng"}, 2},
+		{"empty detected falls back to eng (1st in profile)", nil, []string{"eng", "hun"}, 1},
+		{"empty detected eng-only profile", nil, []string{"eng"}, 1},
+		{"empty detected no eng in profile worst score", nil, []string{"hun", "ger"}, 3},
+		{"detected ger ignores eng fallback worst score", []string{"ger"}, []string{"hun", "eng"}, 3},
 	}
 
 	for _, tt := range tests {
