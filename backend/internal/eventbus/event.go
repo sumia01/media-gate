@@ -11,6 +11,7 @@ const (
 	DownloadSentToClient EventType = "download.sent_to_client"
 	DownloadFailed       EventType = "download.failed"
 	DownloadCompleted    EventType = "download.completed"
+	DownloadDeleted      EventType = "download.deleted"
 	ImportCompleted      EventType = "download.import_completed"
 	ImportFailed         EventType = "download.import_failed"
 	SeedingCompleted     EventType = "download.seeding_completed"

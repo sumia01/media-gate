@@ -152,9 +152,12 @@ func main() {
 	// Auto-subtitle search on import (must subscribe before bus.Start).
 	bus.Subscribe(eventbus.ImportCompleted, subtitleSvc.HandleImportCompleted)
 
-	// Plex library refresh on import (must subscribe before bus.Start).
+	// Plex library refresh on content changes (must subscribe before bus.Start).
 	plexRefreshSvc := plexrefresh.NewService(plexProvider, db, slog.Default())
 	bus.Subscribe(eventbus.ImportCompleted, plexRefreshSvc.HandleImportCompleted)
+	bus.Subscribe(eventbus.MediaItemDeleted, plexRefreshSvc.HandleMediaItemDeleted)
+	bus.Subscribe(eventbus.SubtitleDeleted, plexRefreshSvc.HandleSubtitleDeleted)
+	bus.Subscribe(eventbus.DownloadDeleted, plexRefreshSvc.HandleDownloadDeleted)
 
 	bus.Start()
 	defer bus.Stop()

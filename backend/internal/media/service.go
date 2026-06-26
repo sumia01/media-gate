@@ -134,6 +134,16 @@ func (s *Service) DeleteDownload(dlID uint, deleteFiles bool) error {
 		return err
 	}
 	slog.Info("media: download deleted", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID, "delete_files", deleteFiles)
+
+	// Notify listeners only when imported files were actually removed from disk;
+	// dropping just the download record leaves the library untouched.
+	if deleteFiles && dl.LinkedToLibrary {
+		s.bus.Publish(eventbus.DownloadDeleted, eventbus.DownloadPayload{
+			DownloadID:  dl.ID,
+			MediaItemID: dl.MediaItemID,
+			Title:       dl.Title,
+		})
+	}
 	return nil
 }
 
