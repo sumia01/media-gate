@@ -2,12 +2,14 @@ package tmdb
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 const defaultBaseURL = "https://api.themoviedb.org/3"
@@ -155,10 +157,22 @@ func (c *Client) get(path string) ([]byte, error) {
 	return c.getWithParams(path, nil)
 }
 
+// getWithParams issues an authenticated GET request. MediaGate stores the
+// TMDB credential as a v3 API key (see settings.KeyTMDBApiKey / the setup UI,
+// which explicitly labels it "API Key (v3 auth)"), not a v4 read-access
+// token — so it cannot be sent as an `Authorization: Bearer` header and must
+// stay in the `api_key` query parameter for TMDB v3 auth to work.
+//
+// Because the key lives in the URL, any transport-level error (DNS failure,
+// timeout, connection reset, etc.) surfaces as a *url.Error whose Error()
+// string embeds the full request URL, including the plaintext api_key. All
+// errors returned from this method are passed through redact() so that value
+// never reaches callers — and therefore never reaches logs — regardless of
+// how the request failed.
 func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %w", err)
+		return nil, c.redact(fmt.Errorf("parsing URL: %w", err))
 	}
 
 	q := u.Query()
@@ -172,20 +186,41 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 
 	resp, err := c.httpClient.Get(u.String())
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, c.redact(fmt.Errorf("request failed: %w", err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, c.redact(fmt.Errorf("reading response: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TMDB API returned %d: %s", resp.StatusCode, string(body))
+		return nil, c.redact(fmt.Errorf("TMDB API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	return body, nil
+}
+
+// redact strips the plaintext API key from an error's message before it is
+// returned to the caller. Callers (matching, metarefresh) log TMDB errors
+// verbatim to journald, so this is the last line of defense preventing the
+// key — which is otherwise stored encrypted at rest — from leaking into
+// logs on network failures. It matches both the raw key and its
+// query-escaped form, since the key travels through url.Values.Encode().
+func (c *Client) redact(err error) error {
+	if err == nil || c.apiKey == "" {
+		return err
+	}
+	msg := err.Error()
+	redacted := strings.ReplaceAll(msg, c.apiKey, "REDACTED")
+	if escaped := url.QueryEscape(c.apiKey); escaped != c.apiKey {
+		redacted = strings.ReplaceAll(redacted, escaped, "REDACTED")
+	}
+	if redacted == msg {
+		return err
+	}
+	return errors.New(redacted)
 }
 
 // Types

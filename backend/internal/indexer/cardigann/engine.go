@@ -17,6 +17,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
+	"gopkg.in/yaml.v3"
 )
 
 // SearchResult holds a single torrent result from an indexer search.
@@ -48,10 +49,46 @@ type Engine struct {
 // Cloudflare or similar bot-detection on public indexers.
 const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
+// UnmarshalYAML allows the Search block to specify its path either as the
+// standard "paths: [...]" list or as a single scalar "path: <path>" key.
+// Some real Prowlarr definitions (e.g. Bittorrentfiles.yml, houseofdevil.yml)
+// use the singular form, which previously unmarshalled into an empty Paths
+// slice and caused Search() to panic on Paths[0].
+func (s *Search) UnmarshalYAML(value *yaml.Node) error {
+	type rawSearch struct {
+		Paths   []SearchPath        `yaml:"paths"`
+		Path    string              `yaml:"path"`
+		Inputs  map[string]string   `yaml:"inputs"`
+		Headers map[string][]string `yaml:"headers"`
+		Rows    RowsBlock           `yaml:"rows"`
+		Fields  map[string]FieldDef `yaml:"fields"`
+	}
+
+	var raw rawSearch
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	s.Paths = raw.Paths
+	s.Inputs = raw.Inputs
+	s.Headers = raw.Headers
+	s.Rows = raw.Rows
+	s.Fields = raw.Fields
+
+	if len(s.Paths) == 0 && raw.Path != "" {
+		s.Paths = []SearchPath{{Path: raw.Path}}
+	}
+
+	return nil
+}
+
 // NewEngine creates a Cardigann engine for the given definition and user config.
 func NewEngine(def *Definition, config map[string]string) (*Engine, error) {
 	if len(def.Links) == 0 {
 		return nil, fmt.Errorf("definition %q has no links", def.ID)
+	}
+	if len(def.Search.Paths) == 0 {
+		return nil, fmt.Errorf("definition %q: search block has no path", def.ID)
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -267,6 +304,9 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		Categories: categories,
 	}
 
+	if len(e.def.Search.Paths) == 0 {
+		return nil, fmt.Errorf("indexer %q: search block has no path", e.def.ID)
+	}
 	searchPath := e.def.Search.Paths[0].Path
 	renderedPath, err := RenderTemplate(searchPath, tmplCtx)
 	if err != nil {

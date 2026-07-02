@@ -69,14 +69,16 @@ func (s *Service) processOnce() {
 		return
 	}
 
-	// Health check: if qBit is unreachable, skip sendPending entirely
-	// so pending downloads don't burn retry attempts.
+	// Health check: if qBit is unreachable, skip the whole tick. This gates BOTH
+	// sendPending (so pending downloads don't burn retry attempts) AND pollActive
+	// — during a qBit restart GetTorrent returns "not found" for a still-valid
+	// torrent, and polling would wrongly flip it to "failed" and clear its hash.
 	if err := client.TestConnection(); err != nil {
-		slog.Warn("download worker: qBittorrent unreachable, skipping send", "error", err)
-	} else {
-		s.sendPending(client)
+		slog.Warn("download worker: qBittorrent unreachable, skipping tick", "error", err)
+		return
 	}
 
+	s.sendPending(client)
 	s.pollActive(client)
 }
 
@@ -209,8 +211,12 @@ func (s *Service) pollActive(client *qbittorrent.Client) {
 		info, err := client.GetTorrent(dl.ClientTorrentHash)
 		if err != nil {
 			if err == qbittorrent.ErrTorrentNotFound {
-				slog.Warn("download worker: torrent not found in qBittorrent",
-					"download_id", dl.ID, "hash", dl.ClientTorrentHash)
+				// Torrent removed from qBit (e.g. deleted in the UI) while still
+				// "downloading". Don't leave the row stuck in an active status
+				// forever — transition it to a terminal state (mirrors how
+				// cleanupSeeding treats missing seeding torrents) so the monitor
+				// can re-grab.
+				s.handleMissingTorrent(dl)
 			} else {
 				slog.Error("download worker: failed to get torrent info",
 					"download_id", dl.ID, "error", err)
@@ -219,6 +225,36 @@ func (s *Service) pollActive(client *qbittorrent.Client) {
 		}
 
 		s.updateFromTorrent(dl, info)
+	}
+}
+
+// handleMissingTorrent transitions a download whose torrent has vanished from
+// qBittorrent to a terminal (non-active) status. If the files were already
+// imported it is marked "completed"; otherwise "failed" so the monitor can
+// re-grab. Mirrors cleanupSeeding's handling of missing seeding torrents.
+func (s *Service) handleMissingTorrent(dl *store.Download) {
+	if dl.LinkedToLibrary {
+		dl.Status = "completed"
+		now := time.Now()
+		dl.CompletedAt = &now
+	} else {
+		dl.Status = "failed"
+		dl.ClientTorrentHash = ""
+	}
+
+	if err := s.store.UpdateDownload(dl); err != nil {
+		slog.Error("download worker: failed to update download for missing torrent",
+			"download_id", dl.ID, "error", err)
+		return
+	}
+
+	slog.Warn("download worker: torrent missing from qBittorrent, marking terminal",
+		"download_id", dl.ID, "title", dl.Title, "status", dl.Status)
+
+	if dl.Status == "failed" {
+		s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
+			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
+		})
 	}
 }
 
@@ -396,6 +432,12 @@ func (s *Service) ListTorrentFiles(hash string) ([]qbittorrent.TorrentFile, erro
 // removed externally are marked as failed. Best-effort — skipped if qBit
 // is not configured or unreachable.
 func (s *Service) Reconcile() {
+	// Recover downloads stuck in the transient "importing" state after a crash or
+	// restart mid-import. This is a pure DB fixup independent of qBittorrent, so
+	// run it before the qBit reachability check below (which returns early when
+	// qBit is unconfigured/unreachable).
+	s.recoverStuckImporting()
+
 	client, err := s.qbit.Client()
 	if err != nil {
 		return // qBit not configured
@@ -433,6 +475,32 @@ func (s *Service) Reconcile() {
 				_ = s.store.UpdateDownload(dl)
 			}
 		}
+	}
+}
+
+// recoverStuckImporting resets downloads left in the transient "importing" state
+// by a crash/restart (or a one-off UpdateDownload failure mid-import) back to
+// "downloaded" so the importer re-processes them on its next tick. Without this,
+// such rows stay "importing" — an active status — forever and never get re-picked.
+// The importer's re-import is idempotent for files it has already tracked, so
+// re-processing does not duplicate already-hardlinked files.
+func (s *Service) recoverStuckImporting() {
+	status := "importing"
+	downloads, err := s.store.ListDownloads(nil, &status)
+	if err != nil {
+		slog.Warn("startup: failed to list stuck importing downloads", "error", err)
+		return
+	}
+	for i := range downloads {
+		dl := &downloads[i]
+		dl.Status = "downloaded"
+		if err := s.store.UpdateDownload(dl); err != nil {
+			slog.Error("startup: failed to reset stuck importing download",
+				"download_id", dl.ID, "error", err)
+			continue
+		}
+		slog.Warn("startup: reset stuck 'importing' download to 'downloaded' for re-import",
+			"download_id", dl.ID, "title", dl.Title)
 	}
 }
 

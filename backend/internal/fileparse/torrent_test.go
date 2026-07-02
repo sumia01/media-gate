@@ -19,6 +19,14 @@ func TestParseTorrentSeasonEpisode(t *testing.T) {
 		{"no match", "Just.A.Movie.2024.1080p.BluRay", nil, nil, nil},
 		{"S01E05 case insensitive", "show.s01e05.hdtv", intPtr(1), intPtr(5), nil},
 		{"season pack with dot", "Show.S02.COMPLETE.1080p", intPtr(2), nil, nil},
+		// Bug #10b regression: range without a second "E" must still set EpisodeEnd.
+		{"range S01E01-03 no second E", "Show.S01E01-03.1080p", intPtr(1), intPtr(1), intPtr(3)},
+		{"range S02E05-08 no second E with spaces", "Show S02E05-08 720p", intPtr(2), intPtr(5), intPtr(8)},
+		// Single episode must still parse without a bogus EpisodeEnd.
+		{"single episode S01E07 no range", "Show.S01E07.1080p.WEB-DL", intPtr(1), intPtr(7), nil},
+		// Guard: hyphenated year/quality tokens after a single episode must not
+		// be mistaken for a range end.
+		{"S01E01 followed by year, not a range", "Show.S01E01-1984.mkv", intPtr(1), intPtr(1), nil},
 	}
 
 	for _, tt := range tests {

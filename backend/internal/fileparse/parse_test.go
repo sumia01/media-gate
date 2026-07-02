@@ -97,6 +97,33 @@ func TestParse(t *testing.T) {
 			filename: "Kacsamesek.01.Hasonmasok.DVDRip.XviD.Hun-Coopter.avi",
 			want:     FileInfo{SourceType: "dvdrip", EpisodeNumber: intPtr(1)},
 		},
+		// Bug #23 regression: WxH resolution tokens must NOT be parsed as SxE.
+		{
+			name:     "resolution 1920x1080 not parsed as SxE",
+			filename: "Movie.2024.1920x1080.x264.mkv",
+			want:     FileInfo{},
+		},
+		{
+			name:     "resolution 1280x720 not parsed as SxE",
+			filename: "Show.Name.101.1280x720.mkv",
+			want:     FileInfo{},
+		},
+		{
+			name:     "resolution 720x404 not parsed as SxE",
+			filename: "Show.S01.720x404.HDTV.mkv",
+			want:     FileInfo{SourceType: "hdtv"},
+		},
+		// Legitimate ##x## episode notation must still parse.
+		{
+			name:     "legitimate 1x05 still parses",
+			filename: "Show.1x05.mkv",
+			want:     FileInfo{SeasonNumber: intPtr(1), EpisodeNumber: intPtr(5)},
+		},
+		{
+			name:     "legitimate 12x34 still parses",
+			filename: "Series 12x34",
+			want:     FileInfo{SeasonNumber: intPtr(12), EpisodeNumber: intPtr(34)},
+		},
 	}
 
 	for _, tt := range tests {

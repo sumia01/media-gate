@@ -30,6 +30,14 @@ var adminOnlyOps = map[string]struct{}{
 	"triggerSync":   {},
 	"triggerMatch":  {},
 
+	// Media operations — ONLY the destructive ones that remove tracked files
+	// from disk are admin-gated (the original security finding). Add/request,
+	// match, resync and status-mutation stay available to non-admin users, who
+	// reach them from the (non-admin) discover, media-detail and downloads views
+	// — gating those would break the request workflow.
+	"deleteMediaItem": {},
+	"deleteDownload":  {},
+
 	// Indexer management (NOT searchIndexers — users need torrent search)
 	"listIndexerDefinitions": {},
 	"getIndexerDefinition":   {},

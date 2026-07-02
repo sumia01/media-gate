@@ -423,38 +423,80 @@ type EpisodeMonitorReq struct {
 	Monitored     bool
 }
 
-// AddMediaToLibraryFull creates a media item inside a transaction, applies
-// optional monitoring/profile settings and season monitors, then downloads
-// the poster outside the transaction.
+// AddMediaToLibraryFull creates a media item and its metadata/episodes/monitors
+// atomically, then downloads the poster and recalculates status outside the
+// transaction.
+//
+// Ordering is deliberate to avoid holding SQLite's single write lock during
+// network I/O (which caused "database is locked" storms) and to make the
+// status recalc actually run:
+//  1. Fetch ALL external metadata + episodes into memory BEFORE the tx.
+//  2. Open a SHORT write transaction that ONLY does DB writes from that data.
+//  3. Recalc status and publish the event AFTER commit, via the top-level
+//     store, so the recalculator can see the committed item (previously it ran
+//     inside the tx against a connection that couldn't see the uncommitted row,
+//     so it silently no-op'd).
 func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, error) {
-	var resultItem *store.MediaItem
-	var resultMeta *store.MediaMetadata
+	// Duplicate check before any network work (read-only, outside the tx).
+	exists, err := s.store.MediaItemExistsByExternalID(lib.ID, req.Source, req.ExternalID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("checking for duplicates: %w", err)
+	}
+	if exists {
+		return nil, nil, ErrAlreadyExists
+	}
 
-	err := topStore.WithTx(func(tx store.Store) error {
+	apiKey, err := s.resolveAPIKey(req.Source)
+	if err != nil {
+		return nil, nil, fmt.Errorf("no API key configured for %s", req.Source)
+	}
+
+	// Fetch ALL external metadata and episodes BEFORE opening the transaction.
+	// No network I/O happens while the write lock is held. If the fetch fails,
+	// we abort here before any write, so nothing is half-created.
+	meta, episodes, err := s.fetchMatchData(req.Source, apiKey, lib.MediaType, req.ExternalID, 1.0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching metadata: %w", err)
+	}
+
+	var resultItem *store.MediaItem
+
+	// Short write transaction: only DB writes from the already-fetched data.
+	// If anything fails the whole tx rolls back — nothing is half-written.
+	err = topStore.WithTx(func(tx store.Store) error {
 		txSvc := s.WithStore(tx)
 
-		item, err := txSvc.AddMediaToLibrary(lib, req.Source, req.ExternalID)
-		if err != nil {
-			return err
+		item := &store.MediaItem{
+			LibraryID: lib.ID,
+			Title:     "pending",
+			MediaType: lib.MediaType,
+			Status:    "requested",
+			Source:    "request",
 		}
+		// Populate title/year from the fetched metadata so the item is created
+		// once with its final values (no second update needed).
+		if meta.Title != "" {
+			item.Title = meta.Title
+		}
+		item.Year = meta.Year
 
-		needsUpdate := false
 		if req.Monitored != nil {
 			item.Monitored = *req.Monitored
-			needsUpdate = true
 		}
 		if req.MonitorNewSeasons != nil {
 			item.MonitorNewSeasons = *req.MonitorNewSeasons
-			needsUpdate = true
 		}
 		if req.MediaProfileID != nil {
 			item.MediaProfileID = req.MediaProfileID
-			needsUpdate = true
 		}
-		if needsUpdate {
-			if err := tx.UpdateMediaItem(item); err != nil {
-				return err
-			}
+
+		if err := tx.CreateMediaItem(item); err != nil {
+			return fmt.Errorf("creating media item: %w", err)
+		}
+
+		// Persist metadata + episodes from the in-memory fetch (no network here).
+		if err := txSvc.persistMatch(item, meta, episodes); err != nil {
+			return fmt.Errorf("applying match: %w", err)
 		}
 
 		for _, sm := range req.SeasonMonitors {
@@ -479,43 +521,88 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 		}
 
 		resultItem = item
-		resultMeta, _ = tx.GetMediaMetadataByMediaItem(item.ID)
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// Post-commit side effects on the top-level store: the recalculator now
+	// sees the committed item + episodes, so status is actually recalculated;
+	// the matched event is also published here.
+	s.afterMatch(resultItem, meta, req.Source, req.ExternalID)
+
 	// Download poster outside the transaction to avoid holding a DB write lock during network I/O.
 	s.DownloadPoster(resultItem.ID)
 
-	// Re-read metadata to include poster path.
-	resultMeta, _ = topStore.GetMediaMetadataByMediaItem(resultItem.ID)
+	// Re-read metadata to include poster path and any post-commit changes.
+	resultMeta, _ := topStore.GetMediaMetadataByMediaItem(resultItem.ID)
 
 	slog.Info("matching: media added to library", "media_item_id", resultItem.ID, "title", resultItem.Title, "library_id", lib.ID, "library", lib.Name)
 	return resultItem, resultMeta, nil
 }
 
+// applyMatch fetches external metadata and episodes, persists them, then runs
+// the post-match side effects (status recalc + event). It is used by the
+// NON-transactional match paths (matchSingleItem, ManualMatch,
+// AddMediaToLibrary) where s.store is the top-level store, so performing the
+// network fetch here is safe. The transactional add path
+// (AddMediaToLibraryFull) does NOT use this: it fetches BEFORE opening the
+// transaction, persists inside a short transaction, and runs the side effects
+// AFTER commit (see fetchMatchData / persistMatch / afterMatch).
 func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType string, externalID int, confidence float64) error {
+	meta, episodes, err := s.fetchMatchData(source, apiKey, mediaType, externalID, confidence)
+	if err != nil {
+		return err
+	}
+	if err := s.persistMatch(item, meta, episodes); err != nil {
+		return err
+	}
+	s.afterMatch(item, meta, source, externalID)
+	return nil
+}
+
+// fetchMatchData fetches full metadata and, for series, the episode lists for
+// all seasons from the external source into in-memory structures. It performs
+// NO database writes and NO other side effects, so it is safe to call BEFORE
+// opening a database transaction — this keeps all network I/O out of the
+// SQLite write lock. The returned metadata has no MediaItemID set;
+// persistMatch assigns it.
+func (s *Service) fetchMatchData(source, apiKey, mediaType string, externalID int, confidence float64) (*store.MediaMetadata, []episodeData, error) {
 	meta := &store.MediaMetadata{
-		MediaItemID: item.ID,
-		Source:      source,
-		ExternalID:  externalID,
-		Confidence:  confidence,
-		MatchedAt:   time.Now(),
+		Source:     source,
+		ExternalID: externalID,
+		Confidence: confidence,
+		MatchedAt:  time.Now(),
 	}
 
 	switch source {
 	case "tmdb":
 		if err := s.fetchTMDBDetails(apiKey, mediaType, externalID, meta); err != nil {
-			return err
+			return nil, nil, err
 		}
 	case "tvdb":
 		if err := s.fetchTVDBDetails(apiKey, externalID, meta); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
+	// For series with season info, fetch episode lists into memory.
+	var episodes []episodeData
+	if mediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
+		episodes = s.fetchEpisodesForSeasons(source, apiKey, externalID, *meta.Seasons)
+	}
+
+	return meta, episodes, nil
+}
+
+// persistMatch writes the already-fetched metadata and episodes for item. It
+// performs ONLY database writes (no network I/O), so it is safe to call inside
+// a short transaction. It binds meta to item.ID and, for series, replaces the
+// item's episode records with the fetched set (mirroring the previous
+// fetch-and-store behavior).
+func (s *Service) persistMatch(item *store.MediaItem, meta *store.MediaMetadata, episodes []episodeData) error {
+	meta.MediaItemID = item.ID
 	if err := s.store.CreateMediaMetadata(meta); err != nil {
 		return fmt.Errorf("saving metadata: %w", err)
 	}
@@ -527,11 +614,24 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 		return err
 	}
 
-	// For series with season info, fetch and store episode lists
-	if mediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
-		s.fetchAndStoreEpisodes(item, source, apiKey, externalID, *meta.Seasons)
+	// For series with season info, replace episode records with the fetched set.
+	if item.MediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
+		_ = s.store.DeleteEpisodesByMediaItem(item.ID)
+		for _, ep := range episodes {
+			_ = s.store.CreateEpisode(newEpisodeFromData(item.ID, ep))
+		}
 	}
 
+	return nil
+}
+
+// afterMatch runs the post-persist side effects: recalculating the item's
+// status (now that episodes are stored) and publishing the matched event. It
+// performs NO network I/O. Callers that persisted inside a transaction MUST
+// invoke this AFTER the transaction commits, using a service bound to the
+// top-level store, so the recalculator sees the committed item instead of
+// silently no-op'ing on a "not found" from an uncommitted row.
+func (s *Service) afterMatch(item *store.MediaItem, meta *store.MediaMetadata, source string, externalID int) {
 	// Recalculate status now that episodes are stored — a series with only
 	// some aired episodes on disk should be "partial", not "available".
 	if s.statusRecalc != nil {
@@ -549,8 +649,6 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 			Title:       item.Title,
 		})
 	}
-
-	return nil
 }
 
 // DownloadPoster fetches the poster image for a media item and updates the metadata.
@@ -631,19 +729,22 @@ func (s *Service) FetchExternalEpisodes(source string, externalID, seasonCount i
 	return result, nil
 }
 
-func (s *Service) fetchAndStoreEpisodes(item *store.MediaItem, source, apiKey string, externalID, seasonCount int) {
-	_ = s.store.DeleteEpisodesByMediaItem(item.ID)
-
+// fetchEpisodesForSeasons fetches episode lists for seasons 1..seasonCount from
+// the external source into memory. It performs NO database writes (persistence
+// is handled by persistMatch), so it is safe to call before a transaction is
+// opened. Per-season fetch failures are logged and skipped, matching the
+// previous fetch-and-store behavior.
+func (s *Service) fetchEpisodesForSeasons(source, apiKey string, externalID, seasonCount int) []episodeData {
+	var all []episodeData
 	for season := 1; season <= seasonCount; season++ {
 		episodes, err := s.fetchEpisodesFromSource(source, apiKey, externalID, season)
 		if err != nil {
-			slog.Warn("failed to fetch episodes", "item_id", item.ID, "season", season, "source", source, "error", err)
+			slog.Warn("failed to fetch episodes", "season", season, "source", source, "error", err)
 			continue
 		}
-		for _, ep := range episodes {
-			_ = s.store.CreateEpisode(newEpisodeFromData(item.ID, ep))
-		}
+		all = append(all, episodes...)
 	}
+	return all
 }
 
 func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, season int) ([]episodeData, error) {

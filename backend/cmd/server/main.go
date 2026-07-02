@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"encoding/json"
@@ -58,13 +62,9 @@ func main() {
 	logging.Setup(cfg.Log.Format, cfg.Log.Level)
 
 	// OpenTelemetry tracing — always wired up; Manager controls whether
-	// the global TracerProvider is real or noop.
+	// the global TracerProvider is real or noop. Shut down in the ordered
+	// graceful-shutdown sequence at the end of main (not via defer).
 	otelMgr := telemetry.NewManager(version)
-	defer func() {
-		if err := otelMgr.Shutdown(context.Background()); err != nil {
-			slog.Warn("opentelemetry shutdown error", "error", err)
-		}
-	}()
 
 	// Shared HTTP client for all external integrations.
 	httpClient := &http.Client{
@@ -77,7 +77,6 @@ func main() {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
 
 	if err := db.Ping(); err != nil {
 		slog.Error("database ping failed", "error", err)
@@ -160,11 +159,9 @@ func main() {
 	bus.Subscribe(eventbus.DownloadDeleted, plexRefreshSvc.HandleDownloadDeleted)
 
 	bus.Start()
-	defer bus.Stop()
 
 	queue := jobqueue.New(syncSvc, matchSvc, db, 100, bus)
 	queue.Start()
-	defer queue.Stop()
 
 	indexerSvc, err := indexer.NewService(db, settingsSvc, defCacheDir)
 	if err != nil {
@@ -178,7 +175,6 @@ func main() {
 
 	defRefresher := indexer.NewRefreshWorker(indexerSvc, defCacheDir, settingsSvc)
 	defRefresher.Start()
-	defer defRefresher.Stop()
 
 	// Worker registry for API exposure (only long-interval workers).
 	workerPublisher := worker.MakePublisher(func(evType string, payload any) {
@@ -194,7 +190,6 @@ func main() {
 	downloadSvc := download.NewService(db, settingsSvc, indexerSvc, bus, qbitProvider)
 	downloadSvc.Reconcile()
 	downloadSvc.Start()
-	defer downloadSvc.Stop()
 
 	// Self-update service (Linux only, non-dev builds with GitHub credentials).
 	var updaterSvc *updater.Service
@@ -202,7 +197,6 @@ func main() {
 		updaterSvc = updater.NewService(version, cfg.GitHub.Token, cfg.GitHub.Repo, settingsSvc, bus)
 		if updaterSvc != nil {
 			updaterSvc.Start()
-			defer updaterSvc.Stop()
 			workerReg.Register(updaterSvc.Loop())
 			slog.Info("self-update enabled", "repo", cfg.GitHub.Repo)
 		}
@@ -237,21 +231,36 @@ func main() {
 
 	importerSvc := importer.NewService(db, settingsSvc, syncSvc, bus, qbitProvider)
 	importerSvc.Start()
-	defer importerSvc.Stop()
 
 	monitorSvc := monitor.NewService(db, indexerSvc, settingsSvc, bus)
 	monitorSvc.Start()
-	defer monitorSvc.Stop()
 	workerReg.Register(monitorSvc.Loop())
 
 	metaRefreshSvc := metarefresh.NewService(db, matchSvc, syncSvc, settingsSvc, bus)
 	metaRefreshSvc.Start()
-	defer metaRefreshSvc.Stop()
 	workerReg.Register(metaRefreshSvc.Loop())
 
-	strictHandler := apiv1.NewStrictHandler(handlers, []apiv1.StrictMiddlewareFunc{
+	// Custom strict-handler error handlers: log the real error server-side but
+	// never leak internal error strings (SQL text, filesystem paths, upstream
+	// API bodies) to the client. The generated defaults write err.Error() to the
+	// response body — these replace that with a generic message.
+	strictOpts := apiv1.StrictHTTPServerOptions{
+		// Fires when the request can't be decoded (malformed JSON body, bad path
+		// params) — a client error.
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Warn("api request decode error", "method", r.Method, "path", r.URL.Path, "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+		},
+		// Fires when a handler returns a non-nil error (or a response fails to
+		// serialize) — treated as an internal server error.
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Error("api handler error", "method", r.Method, "path", r.URL.Path, "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		},
+	}
+	strictHandler := apiv1.NewStrictHandlerWithOptions(handlers, []apiv1.StrictMiddlewareFunc{
 		apiv1.AdminMiddleware(authSvc),
-	})
+	}, strictOpts)
 
 	// Build the API mux with all /api/ routes.
 	apiMux := http.NewServeMux()
@@ -265,8 +274,11 @@ func main() {
 	// Database export — serves the SQLite file as download.
 	apiMux.HandleFunc("GET /api/v1/settings/database/export", handlers.DatabaseExportHandler())
 
-	// Rate-limited auth handlers (10 requests per minute per IP).
-	authRL := auth.RateLimitMiddleware(10, time.Minute)
+	// Rate-limited auth handlers (10 requests per minute per IP). By default the
+	// client IP is taken from RemoteAddr (spoof-proof); behind a trusted reverse
+	// proxy set MEDIAGATE_API_TRUSTPROXY=true so X-Forwarded-For is honored and
+	// distinct clients don't all collapse into the proxy's single IP bucket.
+	authRL := auth.RateLimitMiddleware(10, time.Minute, auth.WithTrustProxyHeaders(cfg.API.TrustProxy))
 
 	// Manual auth handlers (need cookie access, not in OpenAPI spec).
 	apiMux.Handle("POST /api/v1/auth/login", authRL(http.HandlerFunc(handlers.LoginHandler())))
@@ -305,11 +317,101 @@ func main() {
 	// OTel HTTP middleware — always registered; noop provider = zero cost when disabled.
 	var handler http.Handler = otelhttp.NewHandler(mux, "media-gate")
 
-	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		slog.Error("server stopped", "error", err)
-		os.Exit(1)
+	// baseCtx is the parent of every request context. Cancelling it at shutdown
+	// makes long-lived handlers (notably the SSE stream, which blocks on
+	// r.Context().Done()) return immediately — otherwise srv.Shutdown would wait
+	// out its full timeout for any open dashboard tab before proceeding.
+	baseCtx, cancelBase := context.WithCancel(context.Background())
+	defer cancelBase()
+	srv := &http.Server{
+		Addr:        addr,
+		Handler:     handler,
+		BaseContext: func(net.Listener) context.Context { return baseCtx },
 	}
+
+	// Listen for termination signals so we can shut down gracefully. Without
+	// this, systemctl restart/stop (SIGTERM) hard-kills the process and none of
+	// the cleanup below runs — stranding mid-copy imports, dropping batched OTel
+	// spans/logs, and losing in-flight job records.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Run the server in the background. Any error other than ErrServerClosed
+	// (returned by srv.Shutdown) means it failed to start (e.g. port in use).
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
+
+	exitCode := 0
+	select {
+	case err := <-serverErr:
+		slog.Error("server failed to start", "error", err)
+		exitCode = 1
+	case <-ctx.Done():
+		slog.Info("shutdown signal received, shutting down gracefully")
+	}
+
+	// Restore default signal handling so a second SIGINT/SIGTERM force-quits if
+	// an operator is impatient while we drain in-flight work.
+	stop()
+
+	// Ordered graceful shutdown. Sequenced explicitly (not via LIFO defers) so
+	// components tear down safely: stop accepting work, quiesce the producers,
+	// drain the in-flight importer/jobs, stop the plumbing, and only then close
+	// the database and flush telemetry — after nothing else can touch them.
+
+	// 1. Stop accepting new HTTP connections and drain in-flight requests.
+	//    Bounded well under systemd's default TimeoutStopSec (90s). Cancel the
+	//    base context first so long-lived handlers (SSE streams) return at once;
+	//    without this, Shutdown would block on them for the full timeout.
+	cancelBase()
+	httpCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	if err := srv.Shutdown(httpCtx); err != nil {
+		slog.Warn("http server shutdown error", "error", err)
+	}
+	cancel()
+
+	// 2. Quiesce the producer workers so no new Process cycle can start. Each
+	//    Stop blocks until the current run (if any) completes.
+	metaRefreshSvc.Stop()
+	monitorSvc.Stop()
+	downloadSvc.Stop()
+	if updaterSvc != nil {
+		updaterSvc.Stop()
+	}
+	defRefresher.Stop()
+
+	// 3. Drain the importer last among the workers — its Stop waits for any
+	//    in-flight file copy to finish so we never leave a half-copied file.
+	importerSvc.Stop()
+
+	// 4. Stop the job queue (library sync/match jobs).
+	queue.Stop()
+
+	// 5. Stop the event bus dispatch goroutine.
+	bus.Stop()
+
+	// 6. Close the database — after every component that writes to it has stopped.
+	if err := db.Close(); err != nil {
+		slog.Warn("database close error", "error", err)
+	}
+
+	// 7. Flush and shut down telemetry last, so spans/logs emitted throughout
+	//    the shutdown (including the steps above) are exported before the
+	//    provider goes noop. Bounded so an unreachable OTLP endpoint can't hang.
+	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := otelMgr.Shutdown(otelCtx); err != nil {
+		slog.Warn("opentelemetry shutdown error", "error", err)
+	}
+	otelCancel()
+
+	slog.Info("shutdown complete")
+	os.Exit(exitCode)
 }
 
 // spaHandler serves the embedded frontend files. For unknown paths it falls

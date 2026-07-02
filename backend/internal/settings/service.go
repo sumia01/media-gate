@@ -198,6 +198,22 @@ func (s *Service) Update(items []KeyValue) error {
 				return err
 			}
 		}
+
+		sensitive := isSensitiveKey(item.Key)
+
+		// A masked placeholder ("****" + last 4 chars, as produced by
+		// List()/maskValue) re-submitted for a sensitive key means the caller
+		// never actually changed the value — e.g. the setup wizard's
+		// SetupTmdb/SetupTvdb steps reload the already-masked value into an
+		// input and re-POST it on Back→Next. Skip persisting it entirely so
+		// the real stored secret is preserved instead of being overwritten
+		// with an encrypted mask. Scoped to sensitive keys only, so a
+		// non-sensitive value that happens to start with "****" is still
+		// saved. Mirrors indexer.Service.mergeSettings's identical guard.
+		if sensitive && strings.HasPrefix(item.Value, "****") {
+			continue
+		}
+
 		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL || item.Key == KeyPlexURL) && item.Value != "" {
 			if err := validateURL(item.Value); err != nil {
 				return fmt.Errorf("invalid URL for %s: %w", item.Key, err)
@@ -212,7 +228,6 @@ func (s *Service) Update(items []KeyValue) error {
 			s.notify(item.Key)
 			continue
 		}
-		sensitive := isSensitiveKey(item.Key)
 		value := item.Value
 		if sensitive && s.cipher != nil {
 			encrypted, err := s.cipher.Encrypt(value)

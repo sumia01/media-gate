@@ -19,6 +19,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV5, // 4→5: subtitles table (AutoMigrate handles creation, this is a no-op placeholder)
 	migrateV6, // 5→6: media_profiles.language_mode — backfill existing rows with 'or'
 	migrateV7, // 6→7: users.is_admin — promote the first-created user to admin
+	migrateV8, // 7→8: download_blocklists table (created here — NOT in AutoMigrate)
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -415,6 +416,7 @@ func cleanupOrphans(db *sql.DB) {
 		{"episodes", `DELETE FROM episodes WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads", `DELETE FROM downloads WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"downloads.episode_id", `UPDATE downloads SET episode_id = NULL WHERE episode_id IS NOT NULL AND episode_id NOT IN (SELECT id FROM episodes)`},
+		{"download_blocklists", `DELETE FROM download_blocklists WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"subtitles", `DELETE FROM subtitles WHERE media_item_id NOT IN (SELECT id FROM media_items)`},
 		{"media_items", `DELETE FROM media_items WHERE library_id NOT IN (SELECT id FROM libraries)`},
 		{"refresh_tokens", `DELETE FROM refresh_tokens WHERE user_id NOT IN (SELECT id FROM users)`},
@@ -445,4 +447,36 @@ func migrateV6(db *sql.DB) error {
 func migrateV7(db *sql.DB) error {
 	_, err := db.Exec(`UPDATE users SET is_admin = true WHERE id = (SELECT MIN(id) FROM users)`)
 	return err
+}
+
+// migrateV8 creates the download_blocklists table. Unlike episode_monitors and
+// subtitles, this model is NOT registered with AutoMigrate (its owning fix does
+// not touch sqlite.go), so the table must be created explicitly here. The FK to
+// media_items uses ON DELETE CASCADE to mirror the GORM constraint tag.
+func migrateV8(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS "download_blocklists" (
+		"id" integer PRIMARY KEY AUTOINCREMENT,
+		"media_item_id" integer NOT NULL REFERENCES "media_items"("id") ON DELETE CASCADE,
+		"download_url" text NOT NULL,
+		"title" text,
+		"fail_count" integer NOT NULL DEFAULT 0,
+		"last_error" text,
+		"last_failed_at" datetime,
+		"created_at" datetime,
+		"updated_at" datetime
+	)`)
+	if err != nil {
+		return fmt.Errorf("creating download_blocklists table: %w", err)
+	}
+
+	indexDDLs := []string{
+		`CREATE INDEX IF NOT EXISTS "idx_download_blocklists_media_item_id" ON "download_blocklists"("media_item_id")`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_blocklist_item_url" ON "download_blocklists"("media_item_id","download_url")`,
+	}
+	for _, ddl := range indexDDLs {
+		if _, err := db.Exec(ddl); err != nil {
+			return fmt.Errorf("creating download_blocklists index: %w", err)
+		}
+	}
+	return nil
 }

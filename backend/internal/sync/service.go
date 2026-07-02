@@ -68,6 +68,11 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 
 	// Phase 1: Scan all top-level directories and their video files
 	folders := make([]folderInfo, 0, len(entries))
+	// scanFailed tracks top-level folders that could NOT be scanned (transient I/O
+	// error — unmounted NAS, EACCES, EIO). Files under these folders must be excluded
+	// from removal: a momentarily-unreadable folder is NOT the same as an empty one,
+	// and treating it as empty would hard-delete the media item and its metadata.
+	scanFailed := make(map[string]struct{})
 
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -76,7 +81,13 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		name := e.Name()
 		fullPath := filepath.Join(lib.Path, name)
 		title, year := parseFolderName(name)
-		scanned := scanMediaFolder(fullPath)
+		scanned, err := scanMediaFolder(fullPath)
+		if err != nil {
+			slog.Warn("sync: could not scan media folder; excluding its files from removal",
+				"library_id", lib.ID, "path", fullPath, "error", err)
+			scanFailed[fullPath] = struct{}{}
+			continue
+		}
 		folders = append(folders, folderInfo{name: name, title: title, year: year, path: fullPath, files: scanned})
 	}
 
@@ -103,9 +114,19 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	var removePaths []string
 	for i := range existingFiles {
 		existingPaths[existingFiles[i].Path] = struct{}{}
-		if _, ok := diskFilePaths[existingFiles[i].Path]; !ok {
-			removePaths = append(removePaths, existingFiles[i].Path)
+		if _, ok := diskFilePaths[existingFiles[i].Path]; ok {
+			continue
 		}
+		// The file was not seen on disk during this scan. If its top-level folder
+		// could not be scanned (transient I/O error), do NOT treat the file as
+		// removed — it is likely still present once the mount/permission issue
+		// clears. Only genuinely-empty folders yield removals.
+		if topDir := topLevelFolder(lib.Path, existingFiles[i].Path); topDir != "" {
+			if _, failed := scanFailed[topDir]; failed {
+				continue
+			}
+		}
+		removePaths = append(removePaths, existingFiles[i].Path)
 	}
 
 	// Remove media files no longer on disk
@@ -131,10 +152,7 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	// A top-level folder maps to a MediaItem if any existing file lives under it.
 	folderToItem := make(map[string]uint)
 	for i := range existingFiles {
-		rel, _ := filepath.Rel(lib.Path, existingFiles[i].Path)
-		parts := strings.SplitN(rel, string(filepath.Separator), 2)
-		if len(parts) > 0 {
-			topDir := filepath.Join(lib.Path, parts[0])
+		if topDir := topLevelFolder(lib.Path, existingFiles[i].Path); topDir != "" {
 			folderToItem[topDir] = existingFiles[i].MediaItemID
 		}
 	}
@@ -244,7 +262,17 @@ func (s *Service) ResyncMediaItem(itemID uint) (updated, added, removed int, err
 		if err != nil || !fi.IsDir() {
 			continue
 		}
-		freshFiles = append(freshFiles, scanMediaFolder(dir)...)
+		scanned, err := scanMediaFolder(dir)
+		if err != nil {
+			// Could not read the folder (transient I/O error). Skip it: the files it
+			// contains are left untouched below (the removal step only deletes files
+			// that os.Stat confirms are gone via os.IsNotExist), so an unreadable
+			// folder never causes a file to be dropped from the item.
+			slog.Warn("resync: could not scan media folder; leaving its files untouched",
+				"media_item_id", itemID, "path", dir, "error", err)
+			continue
+		}
+		freshFiles = append(freshFiles, scanned...)
 	}
 
 	// Deduplicate scanned files by path (multiple root scans may overlap)
@@ -555,10 +583,16 @@ func groupFolders(folders []folderInfo, mediaType string) []mediaGroup {
 // 1. Season subfolders (Season 01, S1, etc.) — descends into them
 // 2. Flat layout — video files directly in the folder
 // 3. Episode wrapper dirs inside season dirs — descends one more level
-func scanMediaFolder(folderPath string) []scannedFile {
+//
+// A non-nil error means the folder (or one of its subfolders) could not be read —
+// e.g. an unmounted NAS, EACCES or EIO. Callers MUST distinguish this from a
+// successful scan that returns zero files (a genuinely empty folder): treating a
+// read error as "no files" would make every file under the folder look removed and
+// could trigger hard-deletion of the media item.
+func scanMediaFolder(folderPath string) ([]scannedFile, error) {
 	entries, err := os.ReadDir(folderPath)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	files := make([]scannedFile, 0, len(entries))
@@ -571,12 +605,18 @@ func scanMediaFolder(folderPath string) []scannedFile {
 			subPath := filepath.Join(folderPath, e.Name())
 			// Check if it's a season subfolder
 			if sn := fileparse.ParseSeasonFromDir(e.Name()); sn != nil {
-				seasonFiles := scanSeasonDir(subPath, sn)
+				seasonFiles, err := scanSeasonDir(subPath, sn)
+				if err != nil {
+					return nil, err
+				}
 				files = append(files, seasonFiles...)
 			} else {
 				// Non-season subdirectory (e.g. release folder, show-name subfolder).
 				// Descend one level to pick up video files inside it.
-				subFiles := scanVideoDir(subPath, nil, true)
+				subFiles, err := scanVideoDir(subPath, nil, true)
+				if err != nil {
+					return nil, err
+				}
 				files = append(files, subFiles...)
 			}
 			continue
@@ -602,29 +642,35 @@ func scanMediaFolder(folderPath string) []scannedFile {
 		})
 	}
 
-	return files
+	return files, nil
 }
 
 // scanSeasonDir scans video files inside a season subfolder.
 // If a file doesn't have S##E## in its name, the subfolder's season number is used.
 // Also descends into episode wrapper directories (e.g. "Episode 01 - Title/video.mkv").
-func scanSeasonDir(dirPath string, seasonNumber *int) []scannedFile {
+// A non-nil error means the directory could not be read (see scanMediaFolder).
+func scanSeasonDir(dirPath string, seasonNumber *int) ([]scannedFile, error) {
 	return scanVideoDir(dirPath, seasonNumber, true)
 }
 
 // scanVideoDir scans video files in a directory.
 // If recurse is true, it descends into subdirectories (one level).
-func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) []scannedFile {
+// A non-nil error means the directory (or a recursed subdirectory) could not be
+// read; the caller must not interpret the returned files as the complete contents.
+func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) ([]scannedFile, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	files := make([]scannedFile, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			if recurse && !fileparse.IsSampleFile(e.Name()) {
-				subFiles := scanVideoDir(filepath.Join(dirPath, e.Name()), fallbackSeason, false)
+				subFiles, err := scanVideoDir(filepath.Join(dirPath, e.Name()), fallbackSeason, false)
+				if err != nil {
+					return nil, err
+				}
 				files = append(files, subFiles...)
 			}
 			continue
@@ -638,7 +684,7 @@ func scanVideoDir(dirPath string, fallbackSeason *int, recurse bool) []scannedFi
 		files = append(files, sf)
 	}
 
-	return files
+	return files, nil
 }
 
 // buildScannedFile creates a scannedFile from a video file path,
@@ -673,7 +719,14 @@ func fileSize(path string) int64 {
 }
 
 // findOrphanedMediaItems returns MediaItem IDs that have no remaining MediaFiles
-// after the given paths were removed.
+// after the given paths were removed and are therefore safe to hard-delete.
+//
+// Two classes of item are deliberately NOT reported as orphans:
+//  1. Items whose media item could not be loaded (skipped defensively — we never
+//     delete something we cannot inspect).
+//  2. Request/pending items (see isRequestOrPending). These legitimately have zero
+//     disk files because they have not been downloaded yet; deleting them would
+//     destroy the user's request together with its metadata and episode records.
 func (s *Service) findOrphanedMediaItems(removedPaths []string, allFiles []store.MediaFile, pathToItem map[string]uint) []uint {
 	removedSet := make(map[string]struct{}, len(removedPaths))
 	for _, p := range removedPaths {
@@ -695,11 +748,60 @@ func (s *Service) findOrphanedMediaItems(removedPaths []string, allFiles []store
 			continue
 		}
 		seen[itemID] = true
-		if fileCounts[itemID] == 0 {
-			orphans = append(orphans, itemID)
+		if fileCounts[itemID] != 0 {
+			continue
 		}
+
+		item, err := s.store.GetMediaItem(itemID)
+		if err != nil {
+			slog.Warn("sync: could not load media item during orphan check; skipping delete",
+				"media_item_id", itemID, "error", err)
+			continue
+		}
+		if isRequestOrPending(item) {
+			slog.Info("sync: skipping orphan delete for request/pending item",
+				"media_item_id", itemID, "source", item.Source, "status", item.Status)
+			continue
+		}
+		orphans = append(orphans, itemID)
 	}
 	return orphans
+}
+
+// isRequestOrPending reports whether a media item legitimately has no disk files
+// yet — a user request that has not been downloaded. Such items must never be
+// treated as orphans during a library sync, regardless of what is on disk.
+func isRequestOrPending(item *store.MediaItem) bool {
+	if item == nil {
+		return false
+	}
+	// Requested items keep Source == "request" for their whole lifecycle (even after
+	// download), so this guards the request no matter its current status.
+	if item.Source == "request" {
+		return true
+	}
+	// "not yet downloaded" statuses: an item in one of these states is expected to
+	// have no files on disk.
+	switch item.Status {
+	case "requested", "pending":
+		return true
+	}
+	return false
+}
+
+// topLevelFolder returns the absolute path of the first directory level below
+// libraryRoot that contains filePath (e.g. for /lib/Show/Season 01/ep.mkv it
+// returns /lib/Show). It returns "" when filePath is not under libraryRoot.
+func topLevelFolder(libraryRoot, filePath string) string {
+	rel, err := filepath.Rel(libraryRoot, filePath)
+	if err != nil {
+		return ""
+	}
+	parts := strings.SplitN(rel, string(filepath.Separator), 2)
+	if len(parts) == 0 || parts[0] == "" || parts[0] == ".." {
+		return ""
+	}
+	return filepath.Join(libraryRoot, parts[0])
 }
 
 func parseFolderName(name string) (title string, year *int) {

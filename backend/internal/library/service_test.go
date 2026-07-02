@@ -17,6 +17,8 @@ type stubStore struct {
 
 func (s *stubStore) Close() error                              { return nil }
 func (s *stubStore) Ping() error                               { return nil }
+func (s *stubStore) IsBlocklisted(uint, string, int) (bool, error) { return false, nil }
+func (s *stubStore) RecordBlocklistFailure(uint, string, string, string, int) error { return nil }
 func (s *stubStore) CreateLibrary(lib *store.Library) error     { s.created = lib; return nil }
 func (s *stubStore) ListLibraries() ([]store.Library, error)    { return nil, nil }
 func (s *stubStore) GetLibrary(uint) (*store.Library, error)    { return nil, store.ErrNotFound }

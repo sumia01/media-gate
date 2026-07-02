@@ -253,7 +253,23 @@ func (s *Service) ChangePassword(userID uint, oldPassword, newPassword string) e
 		return err
 	}
 	user.PasswordHash = hash
-	return s.store.UpdateUser(user)
+	if err := s.store.UpdateUser(user); err != nil {
+		return err
+	}
+
+	// Revoke all existing refresh tokens so a session hijacked before the
+	// password change (e.g. a stolen remember-me cookie, valid up to 30
+	// days) cannot keep minting access tokens after the user has changed
+	// their password specifically to shut such access out.
+	if err := s.store.DeleteRefreshTokensByUser(userID); err != nil {
+		// The password itself was already changed, but the security intent of
+		// this call (locking out sessions opened with the old credentials) was
+		// not met. Surface it rather than reporting silent success, so the user
+		// knows their other sessions may still be live.
+		slog.Error("failed to revoke refresh tokens after password change", "user_id", userID, "error", err)
+		return fmt.Errorf("password changed but revoking existing sessions failed: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) GetUser(id uint) (*store.User, error) {

@@ -55,6 +55,11 @@ type GitHubConfig struct {
 
 type APIConfig struct {
 	Port int `koanf:"port"`
+	// TrustProxy enables honoring X-Forwarded-For / X-Real-IP for client-IP
+	// derivation (e.g. login rate-limiting). Leave false unless media-gate sits
+	// behind a trusted reverse proxy that sets these headers — otherwise clients
+	// could spoof them to evade rate limits. Env: MEDIAGATE_API_TRUSTPROXY=true.
+	TrustProxy bool `koanf:"trustproxy"`
 }
 
 type DBConfig struct {

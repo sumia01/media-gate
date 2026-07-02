@@ -13,8 +13,13 @@ type TorrentSeasonEpisode struct {
 }
 
 var (
-	// S02E01-E10 (episode range)
-	torrentSxExRangeRe = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})-E(\d{1,3})`)
+	// S02E01-E10 (episode range) and S02E01-10 (range without a second "E").
+	// The trailing \b prevents the range-end digits from bleeding into an
+	// adjacent quality/resolution/year token (e.g. "S01E01-1080p" or
+	// "S01E01-1984"): those are contiguous word-char runs (digits followed by
+	// a letter, or a longer digit run) with no internal boundary, so \d{1,3}
+	// can't stop short and still satisfy \b.
+	torrentSxExRangeRe = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})-E?(\d{1,3})\b`)
 	// S02E05 (standard single episode)
 	torrentSxExRe = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})`)
 	// Standalone S02 (word-boundary guarded)

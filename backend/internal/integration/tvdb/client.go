@@ -144,10 +144,39 @@ func (c *Client) GetSeriesEpisodes(seriesID, seasonNumber int) ([]EpisodeEntry, 
 	return resp.Data.Episodes, nil
 }
 
+// get performs a GET request and, if the token has expired (401), transparently
+// re-authenticates once and retries the request before giving up.
 func (c *Client) get(path string, params url.Values) ([]byte, error) {
+	body, status, err := c.doGet(path, params)
+	if err != nil {
+		return nil, err
+	}
+
+	if status == http.StatusUnauthorized {
+		if reauthErr := c.reauthenticate(); reauthErr != nil {
+			return nil, fmt.Errorf("TVDB API returned 401 and re-authentication failed: %w", reauthErr)
+		}
+		body, status, err = c.doGet(path, params)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("TVDB API returned %d: %s", status, string(body))
+	}
+
+	return body, nil
+}
+
+// doGet performs a single GET request against path using the current token
+// and returns the raw body and status code. Non-200 responses are not
+// treated as errors here so get() can inspect the status code (e.g. to
+// detect an expired token) before deciding how to react.
+func (c *Client) doGet(path string, params url.Values) ([]byte, int, error) {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %w", err)
+		return nil, 0, fmt.Errorf("parsing URL: %w", err)
 	}
 	if params != nil {
 		u.RawQuery = params.Encode()
@@ -155,26 +184,40 @@ func (c *Client) get(path string, params url.Values) ([]byte, error) {
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, 0, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, 0, fmt.Errorf("reading response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TVDB API returned %d: %s", resp.StatusCode, string(body))
-	}
+	return body, resp.StatusCode, nil
+}
 
-	return body, nil
+// getToken returns the currently cached token. Guarded by mu since
+// reauthenticate may replace it concurrently.
+func (c *Client) getToken() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.token
+}
+
+// reauthenticate clears the cached token and fetches a fresh one. It takes
+// mu itself (mirroring TestConnection/ensureAuthenticated) and must never be
+// called while the caller already holds the lock, to avoid a deadlock.
+func (c *Client) reauthenticate() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token = ""
+	return c.authenticate()
 }
 
 // Types

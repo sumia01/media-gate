@@ -398,9 +398,9 @@ func MapState(qbitState string) string {
 		return "downloading"
 	case "uploading", "forcedUP", "stalledUP", "queuedUP", "checkingUP":
 		return "seeding"
-	case "pausedUP":
+	case "pausedUP", "stoppedUP":
 		return "completed"
-	case "pausedDL":
+	case "pausedDL", "stoppedDL":
 		return "paused"
 	case "moving":
 		return "moving"

@@ -18,6 +18,13 @@ var ActiveDownloadStatuses = []string{
 	"pending", "downloading", "downloaded", "importing", "seeding", "completed",
 }
 
+// TerminalFailureStatuses are download statuses that indicate a permanent
+// failure — the download will not progress on its own and only a fresh grab
+// could recover. Used to drive the download blocklist so releases that keep
+// failing are not re-grabbed forever. These are intentionally NOT part of
+// ActiveDownloadStatuses.
+var TerminalFailureStatuses = []string{"failed", "import_failed"}
+
 // Store defines the data access interface.
 // Implementations must be safe for concurrent use.
 type Store interface {
@@ -109,6 +116,16 @@ type Store interface {
 	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
 	DeleteDownload(id uint) error
 	HasActiveDownloadByURL(mediaItemID uint, downloadURL string) (bool, error)
+
+	// DownloadBlocklist
+	// IsBlocklisted reports whether the given (mediaItemID, downloadURL) has
+	// failed at least `threshold` times and should not be re-grabbed.
+	IsBlocklisted(mediaItemID uint, downloadURL string, threshold int) (bool, error)
+	// RecordBlocklistFailure upserts a blocklist entry for (mediaItemID,
+	// downloadURL). failCount is the observed number of failed download rows
+	// for that release; the stored count is kept as a high-water mark
+	// (max of existing and failCount) so it survives cleanup of failed rows.
+	RecordBlocklistFailure(mediaItemID uint, downloadURL, title, lastError string, failCount int) error
 
 	// User CRUD
 	CreateUser(user *User) error

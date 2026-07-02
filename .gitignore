@@ -32,6 +32,7 @@ AGENTS.md
 playground.md
 opencode.json
 dbhub.toml
+.mcp.json
 
 # Environment
 .env

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,45 @@ import (
 )
 
 const defaultRateLimit = 3 // requests per second
+
+// subtitleLanguagePattern restricts subtitle language codes to a plausible
+// ISO 639 style code (optionally with a region/script subtag), e.g. "en",
+// "eng", "pt-BR". This value is embedded directly into filenames and paths
+// (see determineSavePath) so it must never contain path separators or ".."
+// traversal sequences.
+var subtitleLanguagePattern = regexp.MustCompile(`^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$`)
+
+// allowedSubtitleFormats is the allowlist of subtitle file extensions we will
+// ever write to disk. The format is derived from a provider-supplied file
+// name (see opensubtitles_adapter.go) and must never be trusted verbatim for
+// path construction.
+var allowedSubtitleFormats = map[string]bool{
+	"srt": true,
+	"ass": true,
+	"ssa": true,
+	"vtt": true,
+	"sub": true,
+}
+
+// sanitizeLanguageCode validates a subtitle language code against a strict
+// allowlist pattern, rejecting anything that isn't a plausible short language
+// code (letters and an optional single hyphenated subtag only).
+func sanitizeLanguageCode(language string) (string, error) {
+	if !subtitleLanguagePattern.MatchString(language) {
+		return "", fmt.Errorf("invalid subtitle language code: %q", language)
+	}
+	return language, nil
+}
+
+// sanitizeSubtitleFormat validates a subtitle file extension against an
+// allowlist of known subtitle formats.
+func sanitizeSubtitleFormat(format string) (string, error) {
+	f := strings.ToLower(strings.TrimSpace(format))
+	if !allowedSubtitleFormats[f] {
+		return "", fmt.Errorf("unsupported subtitle format: %q", format)
+	}
+	return f, nil
+}
 
 // Service coordinates subtitle search, download, and auto-search.
 type Service struct {
@@ -125,6 +165,11 @@ type DownloadOpts struct {
 
 // Download fetches a subtitle file from a provider and saves it to the library.
 func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, providerFileID, language string, seasonNumber, episodeNumber *int, opts *DownloadOpts) (*store.Subtitle, error) {
+	language, err := sanitizeLanguageCode(language)
+	if err != nil {
+		return nil, fmt.Errorf("invalid subtitle language: %w", err)
+	}
+
 	var provider Provider
 	for _, p := range s.providers {
 		if p.Name() == providerName {
@@ -147,7 +192,13 @@ func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, 
 		return nil, fmt.Errorf("downloading subtitle: %w", err)
 	}
 
-	savePath, matchedFile, err := s.determineSavePath(mediaItemID, seasonNumber, episodeNumber, language, dlFile.Format)
+	format, err := sanitizeSubtitleFormat(dlFile.Format)
+	if err != nil {
+		return nil, fmt.Errorf("invalid subtitle format: %w", err)
+	}
+	dlFile.Format = format
+
+	savePath, matchedFile, err := s.determineSavePath(mediaItemID, seasonNumber, episodeNumber, language, format)
 	if err != nil {
 		return nil, fmt.Errorf("determining save path: %w", err)
 	}
@@ -413,6 +464,19 @@ func (s *Service) findReleaseName(mediaItemID uint, seasonNumber *int) string {
 }
 
 func (s *Service) determineSavePath(mediaItemID uint, seasonNumber, episodeNumber *int, language, format string) (string, *store.MediaFile, error) {
+	// Defense-in-depth: language and format are expected to already be
+	// validated by the caller (see sanitizeLanguageCode/sanitizeSubtitleFormat
+	// in Download), but this function builds filesystem paths directly from
+	// them, so re-validate here too in case a future caller forgets to.
+	language, err := sanitizeLanguageCode(language)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid subtitle language: %w", err)
+	}
+	format, err = sanitizeSubtitleFormat(format)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid subtitle format: %w", err)
+	}
+
 	item, err := s.store.GetMediaItem(mediaItemID)
 	if err != nil {
 		return "", nil, err
@@ -426,9 +490,11 @@ func (s *Service) determineSavePath(mediaItemID uint, seasonNumber, episodeNumbe
 
 	// Try to find the matching video file
 	matchedFile := s.findMatchingMediaFile(mediaItemID, seasonNumber, episodeNumber)
+	var savePath string
 	if matchedFile == nil {
 		// Fallback: no video file yet — use old-style placement
 		fallbackName := fmt.Sprintf("subtitle.%s.%s", language, format)
+		savePath = filepath.Join(targetDir, fallbackName)
 		downloads, _ := s.store.ListDownloads(&mediaItemID, nil)
 		for _, dl := range downloads {
 			if dl.LinkedToLibrary && dl.Title != "" {
@@ -436,26 +502,49 @@ func (s *Service) determineSavePath(mediaItemID uint, seasonNumber, episodeNumbe
 					continue
 				}
 				releaseDir := filepath.Join(targetDir, importer.BuildReleaseFolderName(dl.Title))
-				return filepath.Join(releaseDir, fallbackName), nil, nil
+				savePath = filepath.Join(releaseDir, fallbackName)
+				break
 			}
 		}
-		return filepath.Join(targetDir, fallbackName), nil, nil
-	}
-
-	// Build subtitle filename from video file name
-	videoDir := filepath.Dir(matchedFile.Path)
-	videoBase := strings.TrimSuffix(matchedFile.FileName, filepath.Ext(matchedFile.FileName))
-
-	seq := s.countExistingSubtitles(mediaItemID, matchedFile.ID, language)
-
-	var subtitleFileName string
-	if seq == 0 {
-		subtitleFileName = fmt.Sprintf("%s.%s.%s", videoBase, language, format)
 	} else {
-		subtitleFileName = fmt.Sprintf("%s.%s.%02d.%s", videoBase, language, seq, format)
+		// Build subtitle filename from video file name
+		videoDir := filepath.Dir(matchedFile.Path)
+		videoBase := strings.TrimSuffix(matchedFile.FileName, filepath.Ext(matchedFile.FileName))
+
+		seq := s.countExistingSubtitles(mediaItemID, matchedFile.ID, language)
+
+		var subtitleFileName string
+		if seq == 0 {
+			subtitleFileName = fmt.Sprintf("%s.%s.%s", videoBase, language, format)
+		} else {
+			subtitleFileName = fmt.Sprintf("%s.%s.%02d.%s", videoBase, language, seq, format)
+		}
+
+		savePath = filepath.Join(videoDir, subtitleFileName)
 	}
 
-	return filepath.Join(videoDir, subtitleFileName), matchedFile, nil
+	// Final containment guard: regardless of how savePath was constructed,
+	// it must never resolve outside the configured library base path. This
+	// mirrors the filepath.Clean + strings.HasPrefix guard used by the
+	// library and settings services.
+	if err := s.validateWithinLibraryBase(savePath); err != nil {
+		return "", nil, err
+	}
+
+	return savePath, matchedFile, nil
+}
+
+// validateWithinLibraryBase ensures a computed subtitle save path stays
+// within the configured library base path after cleaning, preventing path
+// traversal regardless of which input (language, format, title, file name)
+// might otherwise have caused it to escape.
+func (s *Service) validateWithinLibraryBase(p string) error {
+	base := filepath.Clean(s.settings.BasePath())
+	clean := filepath.Clean(p)
+	if clean != base && !strings.HasPrefix(clean, base+string(filepath.Separator)) {
+		return fmt.Errorf("subtitle save path %q escapes library base path", p)
+	}
+	return nil
 }
 
 func (s *Service) newLimiter() *ratelimit.Limiter {

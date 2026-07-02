@@ -18,10 +18,27 @@ import (
 
 const defaultPollInterval = 15 * time.Minute
 
+// maxBlocklistFailures is the number of failed grab attempts for a single
+// (media item, download URL) after which the monitor stops re-grabbing that
+// release. Policy: hard block (no cooldown) — once a release has produced this
+// many terminally-failed download rows it is considered permanently broken for
+// that item. See recordDownloadFailures and createAutoDownload.
+const maxBlocklistFailures = 3
+
 // activeStatuses is derived from the shared store.ActiveDownloadStatuses list.
 var activeStatuses = func() map[string]bool {
 	m := make(map[string]bool, len(store.ActiveDownloadStatuses))
 	for _, s := range store.ActiveDownloadStatuses {
+		m[s] = true
+	}
+	return m
+}()
+
+// terminalFailureStatuses is derived from store.TerminalFailureStatuses and
+// marks downloads that have permanently failed (not active, will not progress).
+var terminalFailureStatuses = func() map[string]bool {
+	m := make(map[string]bool, len(store.TerminalFailureStatuses))
+	for _, s := range store.TerminalFailureStatuses {
 		m[s] = true
 	}
 	return m
@@ -88,6 +105,10 @@ func (s *Service) processOnce() {
 			slog.Error("monitor: failed to list downloads", "item_id", item.ID, "error", err)
 			continue
 		}
+
+		// Record any terminally-failed releases in the blocklist so we stop
+		// re-grabbing broken torrents on subsequent cycles.
+		s.recordDownloadFailures(item, downloads)
 
 		files, err := s.store.ListMediaFilesByMediaItem(item.ID)
 		if err != nil {
@@ -423,6 +444,21 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 		return
 	}
 
+	// Guard against re-grabbing a release that has already failed repeatedly
+	// (dead URL, qBit error, repeated import failure). Failed downloads are not
+	// "active", so without this the same broken URL would be grabbed every cycle.
+	blocked, err := s.store.IsBlocklisted(item.ID, result.DownloadURL, maxBlocklistFailures)
+	if err != nil {
+		slog.Error("monitor: failed to check download blocklist",
+			"item_id", item.ID, "title", result.Title, "error", err)
+		return
+	}
+	if blocked {
+		slog.Info("monitor: skipping blocklisted release",
+			"item_id", item.ID, "title", result.Title, "url", result.DownloadURL)
+		return
+	}
+
 	dl := &store.Download{
 		MediaItemID:  item.ID,
 		EpisodeID:    episodeID,
@@ -462,6 +498,44 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 	// Clear search started marker
 	item.MonitorSearchStartedAt = nil
 	_ = s.store.UpdateMediaItem(item)
+}
+
+// recordDownloadFailures scans an item's downloads for terminally-failed
+// releases and records them in the persistent blocklist. The fail count for a
+// URL is the number of failed download rows observed for it — each monitor grab
+// that later fails produces one such row, so the count reflects how many times
+// the release has been (re)grabbed and failed. The store keeps this as a
+// high-water mark, so the counting is idempotent across cycles. Once a URL
+// reaches maxBlocklistFailures the monitor stops re-grabbing it (see
+// createAutoDownload).
+func (s *Service) recordDownloadFailures(item *store.MediaItem, downloads []store.Download) {
+	type agg struct {
+		count   int
+		title   string
+		lastErr string
+	}
+	byURL := make(map[string]*agg)
+	for _, dl := range downloads {
+		if dl.DownloadURL == "" || !terminalFailureStatuses[dl.Status] {
+			continue
+		}
+		a := byURL[dl.DownloadURL]
+		if a == nil {
+			a = &agg{}
+			byURL[dl.DownloadURL] = a
+		}
+		a.count++
+		a.title = dl.Title
+		if dl.LastError != "" {
+			a.lastErr = dl.LastError
+		}
+	}
+	for url, a := range byURL {
+		if err := s.store.RecordBlocklistFailure(item.ID, url, a.title, a.lastErr, a.count); err != nil {
+			slog.Error("monitor: failed to record blocklist failure",
+				"item_id", item.ID, "url", url, "error", err)
+		}
+	}
 }
 
 func (s *Service) markSearchStarted(item *store.MediaItem) {
@@ -527,9 +601,24 @@ func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 			// Season pack
 			m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
 		}
-		if parsed.Season != nil && parsed.Episode != nil && dl.EpisodeID == nil {
-			// Single episode without episode_id — track by parsed season+episode
-			m[downloadKey{seasonNumber: *parsed.Season, episodeNumber: *parsed.Episode}] = true
+		if parsed.Season != nil && parsed.Episode != nil {
+			// Determine the episode range this download covers.
+			isRange := parsed.EpisodeEnd != nil && *parsed.EpisodeEnd > *parsed.Episode
+			// Track by parsed season+episode when either:
+			//   - the download lacks an episode_id (e.g. created via the UI, or
+			//     the episode row doesn't exist yet), or
+			//   - the title is a multi-episode range: the episode_id only covers
+			//     the first episode, so E02..EpisodeEnd would otherwise be
+			//     unguarded and the monitor would grab overlapping releases.
+			if dl.EpisodeID == nil || isRange {
+				end := *parsed.Episode
+				if isRange {
+					end = *parsed.EpisodeEnd
+				}
+				for ep := *parsed.Episode; ep <= end; ep++ {
+					m[downloadKey{seasonNumber: *parsed.Season, episodeNumber: ep}] = true
+				}
+			}
 		}
 	}
 	return m

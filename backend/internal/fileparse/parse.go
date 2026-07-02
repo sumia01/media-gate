@@ -15,8 +15,13 @@ type FileInfo struct {
 }
 
 var (
-	seRe  = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})`)
-	sxeRe = regexp.MustCompile(`(?i)(\d{1,2})x(\d{1,3})`)
+	seRe = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})`)
+	// Word-boundary guarded so WxH resolution tokens (e.g. "1920x1080", "1280x720")
+	// aren't misread as season/episode. Since the literal "x" is itself a word
+	// character, a longer digit run like "1920x1080" has no internal \b, so the
+	// boundary can only anchor at the true start/end of the token — mirrors
+	// torrent.go's torrentNxNRe.
+	sxeRe = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
 	resRe = regexp.MustCompile(`(?i)(2160|1080|720|480)p`)
 
 	// Hungarian: "1. évad 02. rész" → season 1, episode 2

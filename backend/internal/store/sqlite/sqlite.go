@@ -89,8 +89,16 @@ func getByID[T any](db *gorm.DB, id uint) (*T, error) {
 	return &result, nil
 }
 
+// save performs a full-column UPDATE of an existing row identified by its
+// primary key. It intentionally does NOT use gorm's Save: Save re-INSERTs
+// (upserts via OnConflict{UpdateAll}) when the UPDATE affects zero rows, which
+// would silently resurrect a concurrently-deleted row. Providing an explicit
+// Select("*") both (a) forces zero-value fields to be written — preserving the
+// full-write semantics of Save so intentional field-clearing keeps working —
+// and (b) disables the Save-only INSERT fallback. A zero RowsAffected therefore
+// unambiguously means the row no longer exists.
 func save(db *gorm.DB, model any) error {
-	result := db.Save(model)
+	result := db.Model(model).Select("*").Updates(model)
 	if result.Error != nil {
 		return result.Error
 	}

@@ -18,6 +18,21 @@ import (
 
 const defaultPollInterval = 10 * time.Second
 
+// maxImportRetries bounds how many times a transient import error (e.g. a
+// failed GetTorrentFiles call) is retried before the download is marked
+// permanently import_failed.
+const maxImportRetries = 5
+
+// importRetryBackoff is the delay before re-attempting import after each
+// transient failure, indexed by (RetryCount-1).
+var importRetryBackoff = [maxImportRetries]time.Duration{
+	30 * time.Second,
+	2 * time.Minute,
+	10 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+}
+
 // Service runs background workers for importing completed downloads into
 // library directories and cleaning up torrents after seeding obligations are met.
 type Service struct {
@@ -61,6 +76,23 @@ func (s *Service) processOnce() {
 		return
 	}
 
+	// Skip the qBit probe entirely when there's nothing to do this tick — avoids
+	// an authenticated round-trip to qBit on every idle poll (the common case).
+	downloadedStatus, seedingStatus := "downloaded", "seeding"
+	downloaded, errD := s.store.ListDownloads(nil, &downloadedStatus)
+	seeding, errS := s.store.ListDownloads(nil, &seedingStatus)
+	if errD == nil && errS == nil && len(downloaded) == 0 && len(seeding) == 0 {
+		return
+	}
+
+	// Health-gate: if qBit is unreachable, skip this tick entirely so a transient
+	// outage doesn't burn import retries or flip downloads to import_failed.
+	// Downloads stay in "downloaded"/"seeding" and are retried next tick.
+	if err := client.TestConnection(); err != nil {
+		slog.Warn("importer: qBittorrent unreachable, skipping import tick", "error", err)
+		return
+	}
+
 	s.importDownloaded(client)
 	s.cleanupSeeding(client)
 }
@@ -75,8 +107,13 @@ func (s *Service) importDownloaded(client *qbittorrent.Client) {
 		return
 	}
 
+	now := time.Now()
 	for i := range downloads {
 		dl := &downloads[i]
+		// Respect the backoff scheduled by a previous transient import failure.
+		if dl.NextRetryAt != nil && dl.NextRetryAt.After(now) {
+			continue
+		}
 		s.importOne(client, dl)
 	}
 }
@@ -134,9 +171,20 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 
 	files, err := client.GetTorrentFiles(dl.ClientTorrentHash)
 	if err != nil {
+		// Transient (qBit hiccup / metadata not ready yet): don't fail permanently.
+		// Revert to "downloaded" with backoff so a later tick retries.
 		slog.Error("importer: failed to get torrent files", "download_id", dl.ID, "error", err)
-		s.failImport(dl, "failed to get torrent files from qBittorrent")
+		s.retryImport(dl, "failed to get torrent files from qBittorrent: "+err.Error())
 		return
+	}
+
+	// Load paths already imported for this item so a re-import (e.g. a download
+	// reset from a crashed "importing" state) doesn't hardlink duplicates.
+	importedPaths := map[string]bool{}
+	if existing, lerr := s.store.ListMediaFilesByMediaItem(dl.MediaItemID); lerr == nil {
+		for _, mf := range existing {
+			importedPaths[mf.Path] = true
+		}
 	}
 
 	// Detect common root folder in torrent (multi-file torrents wrap files in a root dir)
@@ -181,6 +229,14 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		fileName := filepath.Base(relPath)
 
 		if fileparse.IsVideoFile(fileName) {
+			// Idempotent re-import: if this file's deterministic destination is
+			// already a tracked MediaFile, skip it. Re-linking would pick a
+			// numbered unique path and create a duplicate file + record.
+			if importedPaths[dstPath] {
+				slog.Debug("importer: file already imported, skipping", "download_id", dl.ID, "path", dstPath)
+				imported++
+				continue
+			}
 			dstPath = uniquePath(dstPath)
 			if err := hardlinkOrCopy(srcPath, dstPath); err != nil {
 				slog.Error("importer: failed to import video file",
@@ -229,7 +285,14 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 	}
 
 	if imported == 0 {
-		slog.Warn("importer: no video files found in torrent", "download_id", dl.ID, "title", dl.Title)
+		// No video files were imported (archive/RAR-only release, all samples, or
+		// every file rejected by path validation). Do NOT mark completed and do NOT
+		// delete the torrent: "completed" is an active status that would permanently
+		// block the monitor from re-grabbing, and deleting the torrent would destroy
+		// the data. Fail non-destructively — import_failed is non-active, so the
+		// monitor can re-grab, and the payload stays on disk for inspection/retry.
+		s.failImport(dl, "no video files imported (archive-only release, all samples, or files rejected)")
+		return
 	}
 
 	// Mark as linked to library
@@ -293,6 +356,30 @@ func (s *Service) failImport(dl *store.Download, reason string) {
 	s.bus.Publish(eventbus.ImportFailed, eventbus.DownloadPayload{
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "import_failed",
 	})
+}
+
+// retryImport handles a transient import failure (e.g. qBittorrent briefly
+// unreachable while fetching torrent files). It reverts the download to
+// "downloaded" — still an active status, so the monitor won't re-grab — and
+// schedules a backoff so a later importer tick retries. After maxImportRetries
+// it gives up and marks the download import_failed so the monitor can re-grab.
+func (s *Service) retryImport(dl *store.Download, reason string) {
+	dl.LastError = reason
+	if dl.RetryCount >= maxImportRetries {
+		s.failImport(dl, reason+" (max import retries exceeded)")
+		return
+	}
+	dl.RetryCount++
+	next := time.Now().Add(importRetryBackoff[dl.RetryCount-1])
+	dl.NextRetryAt = &next
+	dl.Status = "downloaded"
+	if err := s.store.UpdateDownload(dl); err != nil {
+		slog.Error("importer: failed to schedule import retry", "download_id", dl.ID, "error", err)
+		return
+	}
+	slog.Warn("importer: transient import error, scheduling retry",
+		"download_id", dl.ID, "title", dl.Title,
+		"retry", dl.RetryCount, "next_retry_at", next, "reason", reason)
 }
 
 // cleanupSeeding checks seeding downloads and removes torrents when obligations are met.

@@ -20,6 +20,8 @@ func newSettingsStubStore() *settingsStubStore {
 
 func (s *settingsStubStore) Close() error                              { return nil }
 func (s *settingsStubStore) Ping() error                               { return nil }
+func (s *settingsStubStore) IsBlocklisted(uint, string, int) (bool, error) { return false, nil }
+func (s *settingsStubStore) RecordBlocklistFailure(uint, string, string, string, int) error { return nil }
 func (s *settingsStubStore) CreateLibrary(lib *store.Library) error     { return nil }
 func (s *settingsStubStore) ListLibraries() ([]store.Library, error)    { return s.libraries, nil }
 func (s *settingsStubStore) GetLibrary(uint) (*store.Library, error)    { return nil, store.ErrNotFound }
@@ -442,6 +444,127 @@ func TestListExcludesIndexerSecrets(t *testing.T) {
 	}
 	if !found {
 		t.Error("List() should include regular settings")
+	}
+}
+
+// --- Masked value re-submission guard ---
+
+func TestUpdate_MaskedSensitiveValueDoesNotOverwriteRealSecret(t *testing.T) {
+	st := newSettingsStubStore()
+	svc := NewService(st, "/mnt", nil, "test-secret-key", nil)
+
+	if err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: "my-real-tmdb-key"}}); err != nil {
+		t.Fatalf("Update(real value) = %v", err)
+	}
+	stored := st.settings[KeyTMDBApiKey].Value
+
+	// Simulate the setup wizard reloading the masked value (as returned by
+	// List()) and re-submitting it unchanged.
+	listed, err := svc.List()
+	if err != nil {
+		t.Fatalf("List() = %v", err)
+	}
+	var masked string
+	for _, s := range listed {
+		if s.Key == KeyTMDBApiKey {
+			masked = s.Value
+		}
+	}
+	if !strings.HasPrefix(masked, "****") {
+		t.Fatalf("expected masked value to start with ****, got %q", masked)
+	}
+
+	if err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: masked}}); err != nil {
+		t.Fatalf("Update(masked value) = %v", err)
+	}
+
+	if st.settings[KeyTMDBApiKey].Value != stored {
+		t.Errorf("masked resubmission overwrote stored secret: got %q, want unchanged %q", st.settings[KeyTMDBApiKey].Value, stored)
+	}
+
+	val, err := svc.Get(KeyTMDBApiKey)
+	if err != nil {
+		t.Fatalf("Get() = %v", err)
+	}
+	if val != "my-real-tmdb-key" {
+		t.Errorf("Get() after masked resubmission = %q, want %q", val, "my-real-tmdb-key")
+	}
+}
+
+func TestUpdate_RealNewValueStillOverwritesSensitiveSetting(t *testing.T) {
+	st := newSettingsStubStore()
+	svc := NewService(st, "/mnt", nil, "test-secret-key", nil)
+
+	if err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: "old-tmdb-key"}}); err != nil {
+		t.Fatalf("Update(old value) = %v", err)
+	}
+	if err := svc.Update([]KeyValue{{Key: KeyTMDBApiKey, Value: "new-tmdb-key"}}); err != nil {
+		t.Fatalf("Update(new value) = %v", err)
+	}
+
+	val, err := svc.Get(KeyTMDBApiKey)
+	if err != nil {
+		t.Fatalf("Get() = %v", err)
+	}
+	if val != "new-tmdb-key" {
+		t.Errorf("Get() = %q, want %q", val, "new-tmdb-key")
+	}
+}
+
+func TestUpdate_NonSensitiveValueStartingWithMaskPrefixIsNotDropped(t *testing.T) {
+	st := newSettingsStubStore()
+	svc := NewService(st, "/mnt", nil, "test-secret-key", nil)
+
+	// KeyGlobalExcludeTags is not a sensitive key; a legitimate value that
+	// happens to start with "****" must still be persisted.
+	if err := svc.Update([]KeyValue{{Key: KeyGlobalExcludeTags, Value: "****not-a-mask"}}); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+
+	val, err := svc.Get(KeyGlobalExcludeTags)
+	if err != nil {
+		t.Fatalf("Get() = %v", err)
+	}
+	if val != "****not-a-mask" {
+		t.Errorf("Get() = %q, want %q", val, "****not-a-mask")
+	}
+}
+
+func TestUpdate_MaskedDiscordWebhookDoesNotOverwriteOrErrorOnURLValidation(t *testing.T) {
+	st := newSettingsStubStore()
+	svc := NewService(st, "/mnt", nil, "test-secret-key", nil)
+
+	realURL := "https://discord.com/api/webhooks/123/abcd"
+	if err := svc.Update([]KeyValue{{Key: KeyDiscordWebhookURL, Value: realURL}}); err != nil {
+		t.Fatalf("Update(real webhook) = %v", err)
+	}
+
+	listed, err := svc.List()
+	if err != nil {
+		t.Fatalf("List() = %v", err)
+	}
+	var masked string
+	for _, s := range listed {
+		if s.Key == KeyDiscordWebhookURL {
+			masked = s.Value
+		}
+	}
+	if !strings.HasPrefix(masked, "****") {
+		t.Fatalf("expected masked webhook value, got %q", masked)
+	}
+
+	// Re-submitting the masked value must not fail URL validation and must
+	// not overwrite the stored secret.
+	if err := svc.Update([]KeyValue{{Key: KeyDiscordWebhookURL, Value: masked}}); err != nil {
+		t.Fatalf("Update(masked webhook) = %v, want nil", err)
+	}
+
+	val, err := svc.Get(KeyDiscordWebhookURL)
+	if err != nil {
+		t.Fatalf("Get() = %v", err)
+	}
+	if val != realURL {
+		t.Errorf("Get() after masked resubmission = %q, want %q", val, realURL)
 	}
 }
 

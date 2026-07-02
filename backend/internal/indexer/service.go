@@ -411,6 +411,11 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 	for _, idx := range targets {
 		wg.Add(1)
 		go func(idx store.Indexer) {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("indexer search panicked", "indexer", idx.Name, "panic", r)
+				}
+			}()
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()

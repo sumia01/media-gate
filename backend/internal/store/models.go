@@ -169,8 +169,27 @@ type Download struct {
 	UpdatedAt         time.Time
 	CompletedAt       *time.Time
 
-	// Populated by JOIN in ListDownloads, not a DB column.
-	MediaItemTitle string `gorm:"-"`
+	// Populated by JOIN in ListDownloads (media_item_title alias), not a real
+	// DB column. `->` makes it read-only (scanned from the aliased column) and
+	// `-:migration` keeps AutoMigrate from ever creating a column for it.
+	MediaItemTitle string `gorm:"->;-:migration"`
+}
+
+// DownloadBlocklist tracks releases that have repeatedly failed to download or
+// import for a given media item. Keyed by (MediaItemID, DownloadURL). The
+// monitor consults it before re-grabbing a release so a permanently-broken
+// torrent (dead URL, qBit error, repeated import failure) is not re-grabbed
+// forever. Created by migration V8 — NOT part of AutoMigrate.
+type DownloadBlocklist struct {
+	ID           uint      `gorm:"primarykey"`
+	MediaItemID  uint      `gorm:"not null;index;uniqueIndex:idx_blocklist_item_url;constraint:OnDelete:CASCADE"`
+	DownloadURL  string    `gorm:"not null;uniqueIndex:idx_blocklist_item_url"`
+	Title        string
+	FailCount    int    `gorm:"not null;default:0"`
+	LastError    string
+	LastFailedAt time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type User struct {
