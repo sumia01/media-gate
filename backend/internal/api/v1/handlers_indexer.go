@@ -209,12 +209,21 @@ func (h *Handlers) SearchIndexers(ctx context.Context, req SearchIndexersRequest
 		criteria = &c
 	}
 
+	preferredRelease := ""
+	if req.Params.PreferredRelease != nil {
+		preferredRelease = *req.Params.PreferredRelease
+	}
+
 	apiResults := make([]TorrentResult, len(results))
 	for i, r := range results {
 		apiResults[i] = torrentResultToAPI(&r)
 		if criteria != nil {
 			match := indexer.MatchesCriteria(&r, criteria)
 			apiResults[i].ProfileMatch = &match
+		}
+		if preferredRelease != "" {
+			rm := indexer.MatchesPreferredRelease(r.Title, preferredRelease)
+			apiResults[i].ReleaseMatch = &rm
 		}
 	}
 

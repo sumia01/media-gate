@@ -168,6 +168,17 @@ func PreferReleases(results []TorrentResult, preferred string) []TorrentResult {
 	return append(preferredResults, rest...)
 }
 
+// MatchesPreferredRelease reports whether a torrent title matches any of the
+// comma-separated preferred-release keywords (case-insensitive substring).
+// Mirrors the matching PreferReleases uses, exposed for per-result annotation.
+func MatchesPreferredRelease(title, preferred string) bool {
+	keywords := parsePreferredKeywords(preferred)
+	if len(keywords) == 0 {
+		return false
+	}
+	return fileparse.ContainsExcludedTagLower(title, keywords)
+}
+
 // parsePreferredKeywords splits a comma-separated preferred-release string into
 // lowercased, trimmed, non-empty keywords.
 func parsePreferredKeywords(preferred string) []string {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Download, ExternalLink, Plus, Star, X } from 'lucide-vue-next'
+import { Check, Download, ExternalLink, Plus, Star, Tag, X } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
@@ -17,6 +17,7 @@ const props = defineProps<{
   episodeNumber?: number
   episodeId?: number
   profileId?: number
+  preferredRelease?: string
   // For "Add & Download" flow (preview page — no mediaItemId yet)
   source?: 'tmdb' | 'tvdb'
   externalId?: number
@@ -58,6 +59,7 @@ const sortedResults = computed(() => {
         ? classifyMatch(parseTitleSeasonEpisode(r.title), userSeason, userEpisode)
         : ('none' as MatchLevel),
     profileMatch: r.profileMatch ?? false,
+    releaseMatch: r.releaseMatch ?? false,
     originalIndex: i,
   })
 
@@ -87,6 +89,8 @@ function matchRowClass(level: MatchLevel): string {
 const hasMatches = computed(() => sortedResults.value.some((i) => i.matchLevel !== 'none'))
 
 const hasProfileMatches = computed(() => sortedResults.value.some((i) => i.profileMatch))
+
+const hasReleaseMatches = computed(() => sortedResults.value.some((i) => i.releaseMatch))
 
 // --- Lifecycle ---
 onMounted(async () => {
@@ -142,6 +146,7 @@ async function search() {
         episode: episode.value || undefined,
         limit: 100,
         profileId: props.profileId || undefined,
+        preferredRelease: props.preferredRelease || undefined,
       } as any,
     },
   })
@@ -319,7 +324,7 @@ function formatDate(unix: number): string {
     <ErrorBanner :message="error" />
 
     <!-- Match legend -->
-    <div v-if="hasMatches || hasProfileMatches" class="flex items-center gap-4 mb-3 text-xs text-gray-500">
+    <div v-if="hasMatches || hasProfileMatches || hasReleaseMatches" class="flex items-center gap-4 mb-3 text-xs text-gray-500">
       <div v-if="hasMatches" class="flex items-center gap-1.5">
         <span class="inline-block w-3 h-3 rounded-sm bg-emerald-500/40"></span>
         <span>Season + Episode match</span>
@@ -331,6 +336,10 @@ function formatDate(unix: number): string {
       <div v-if="hasProfileMatches" class="flex items-center gap-1.5">
         <Star class="w-3 h-3 text-amber-400" fill="currentColor" />
         <span>Profile match</span>
+      </div>
+      <div v-if="hasReleaseMatches" class="flex items-center gap-1.5">
+        <Tag class="w-3 h-3 text-violet-400" />
+        <span>Release match</span>
       </div>
     </div>
 
@@ -352,7 +361,7 @@ function formatDate(unix: number): string {
       <table class="hidden md:table w-full text-sm">
         <thead class="sticky top-0 bg-[#0f1225]">
           <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-violet-900/20">
-            <th v-if="props.profileId" class="w-8 px-0 py-2.5"></th>
+            <th v-if="props.profileId || props.preferredRelease" class="px-1 py-2.5 whitespace-nowrap"></th>
             <th class="px-3 py-2.5">Title</th>
             <th class="px-3 py-2.5 whitespace-nowrap">Size</th>
             <th class="px-3 py-2.5 text-center whitespace-nowrap">S</th>
@@ -372,13 +381,21 @@ function formatDate(unix: number): string {
               matchRowClass(item.matchLevel),
             ]"
           >
-            <!-- Profile match star -->
-            <td v-if="props.profileId" class="w-8 px-0 py-2.5 text-center">
-              <Star
-                v-if="item.profileMatch"
-                class="w-4 h-4 inline-block text-amber-400"
-                fill="currentColor"
-              />
+            <!-- Match indicators (profile + preferred release) -->
+            <td v-if="props.profileId || props.preferredRelease" class="px-1 py-2.5 text-center whitespace-nowrap">
+              <div class="flex items-center justify-center gap-1">
+                <Star
+                  v-if="props.profileId && item.profileMatch"
+                  class="w-4 h-4 text-amber-400"
+                  fill="currentColor"
+                  title="Profile match"
+                />
+                <Tag
+                  v-if="props.preferredRelease && item.releaseMatch"
+                  class="w-4 h-4 text-violet-400"
+                  title="Preferred release match"
+                />
+              </div>
             </td>
 
             <!-- Title -->
@@ -489,6 +506,10 @@ function formatDate(unix: number): string {
               v-if="props.profileId && item.profileMatch"
               class="w-3.5 h-3.5 flex-shrink-0 text-amber-400"
               fill="currentColor"
+            />
+            <Tag
+              v-if="props.preferredRelease && item.releaseMatch"
+              class="w-3.5 h-3.5 flex-shrink-0 text-violet-400"
             />
             <span class="text-xs text-gray-200 truncate" :title="item.result.title">{{ item.result.title }}</span>
           </div>

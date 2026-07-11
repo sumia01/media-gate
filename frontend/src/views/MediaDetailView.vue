@@ -922,6 +922,7 @@ watch(() => route.params.id, loadAll)
       :episodeNumber="indexerSearchEpisode"
       :episodeId="indexerSearchEpisodeId"
       :profileId="activeProfile?.id"
+      :preferredRelease="item.preferredRelease"
       @close="closeIndexerSearch"
     />
 

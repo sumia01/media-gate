@@ -1695,6 +1695,12 @@ paths:
             type: integer
             format: int64
           description: Media profile ID for annotating results with profile match status
+        - name: preferredRelease
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated preferred-release keywords for annotating results with release match status
       responses:
         "200":
           description: Search results
@@ -3323,6 +3329,9 @@ components:
         profileMatch:
           type: boolean
           description: Whether this result matches the specified media profile (only present when profileId query param is provided)
+        releaseMatch:
+          type: boolean
+          description: Whether this result's title matches the preferred-release keywords (only present when preferredRelease query param is provided)
 
     Download:
       type: object

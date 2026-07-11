@@ -246,6 +246,29 @@ func TestPreferReleases(t *testing.T) {
 	})
 }
 
+func TestMatchesPreferredRelease(t *testing.T) {
+	tests := []struct {
+		name      string
+		title     string
+		preferred string
+		want      bool
+	}{
+		{"single match", "Silo.S01E01.1080p.WEB.H264-ETHEL", "ETHEL", true},
+		{"case-insensitive", "Silo.S01E01-ethel", "ETHEL", true},
+		{"one of multiple keywords", "Silo.S01E01-FLUX", "ETHEL, FLUX", true},
+		{"no match", "Silo.S01E01-NTb", "ETHEL, FLUX", false},
+		{"empty preference", "Silo.S01E01-ETHEL", "", false},
+		{"whitespace-only preference", "Silo.S01E01-ETHEL", "  ,  ", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MatchesPreferredRelease(tt.title, tt.preferred); got != tt.want {
+				t.Errorf("MatchesPreferredRelease(%q, %q) = %v, want %v", tt.title, tt.preferred, got, tt.want)
+			}
+		})
+	}
+}
+
 func assertTitles(t *testing.T, got []TorrentResult, want []string) {
 	t.Helper()
 	gotTitles := titles(got)
