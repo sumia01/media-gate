@@ -8,12 +8,12 @@ import DownloadList from '@/components/media/DownloadList.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
-import MonitorSettingsModal from '@/components/media/MonitorSettingsModal.vue'
+import MonitorSettingsModal, { type MonitorSettingsPayload } from '@/components/media/MonitorSettingsModal.vue'
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 import SubtitleList from '@/components/media/SubtitleList.vue'
 import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
 import { useEventStream } from '@/composables/useEventStream'
-import type { Library, MediaFile, MediaItem, MediaProfile, SeasonSummary } from '@/types/api'
+import type { Library, MediaFile, MediaItem, MediaItemUpdate, MediaProfile, SeasonSummary } from '@/types/api'
 import { formatBytes, parseGenres, posterUrl, profileImageUrl } from '@/utils/media'
 
 const route = useRoute()
@@ -39,7 +39,12 @@ const subtitleRefreshKey = ref(0)
 const replacingDownloadId = ref<number | null>(null)
 const showSeasonMonitorModal = ref(false)
 const seasonMonitorSeasons = ref<SeasonSummary[]>([])
+const seasonMonitorRespectState = ref(false)
+const seasonMonitorNewSeasons = ref(true)
 const showMonitorSettings = ref(false)
+// Settings carried from the edit dialog into the season-selection step, merged
+// into the single PATCH the season modal's confirm sends.
+const pendingMonitorSettings = ref<{ mediaProfileId?: number; preferredRelease: string } | null>(null)
 const showSubtitleSearch = ref(false)
 const subtitleSearchSeason = ref<number | undefined>()
 const subtitleSearchEpisode = ref<number | undefined>()
@@ -170,13 +175,7 @@ async function toggleWatched() {
   watchedLoading.value = false
 }
 
-async function updateMediaItem(update: {
-  mediaProfileId?: number
-  monitored?: boolean
-  monitorNewSeasons?: boolean
-  preferredRelease?: string
-  seasonMonitors?: { seasonNumber: number; monitored: boolean }[]
-}) {
+async function updateMediaItem(update: MediaItemUpdate) {
   if (!item.value) return
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: item.value.id } },
@@ -185,35 +184,39 @@ async function updateMediaItem(update: {
   if (data) item.value = data
 }
 
-async function onMonitorSettingsSave(payload: {
-  monitored: boolean
-  monitorNewSeasons: boolean
-  mediaProfileId?: number
-  preferredRelease: string
-}) {
+// Direct save: movie, or a series with monitoring turned off — no season step.
+async function onMonitorSettingsSave(payload: MonitorSettingsPayload) {
+  showMonitorSettings.value = false
+  await updateMediaItem(payload)
+  episodeRefreshKey.value++
+}
+
+// Monitored series: continue to the season-selection step (like the add flow).
+async function onMonitorSettingsNext(payload: MonitorSettingsPayload) {
   showMonitorSettings.value = false
   if (!item.value) return
 
-  // Enabling monitoring on a series needs season selection (like the main
-  // toggle), otherwise nothing would be monitored. Route through that flow.
-  const enablingSeries = payload.monitored && !(item.value.monitored ?? false) && item.value.mediaType === 'series'
-
-  await updateMediaItem({
-    mediaProfileId: payload.mediaProfileId,
-    monitorNewSeasons: payload.monitorNewSeasons,
-    preferredRelease: payload.preferredRelease,
-    ...(enablingSeries ? {} : { monitored: payload.monitored }),
+  const alreadyMonitored = item.value.monitored ?? false
+  const { data } = await client.GET('/media/{id}/episodes', {
+    params: { path: { id: item.value.id } },
   })
+  const seasons = data?.seasons ?? []
 
-  if (enablingSeries) {
-    const { data } = await client.GET('/media/{id}/episodes', {
-      params: { path: { id: item.value.id } },
-    })
-    seasonMonitorSeasons.value = data?.seasons ?? []
-    showSeasonMonitorModal.value = true
+  // Nothing to choose from — persist settings directly.
+  if (!seasons.length) {
+    await onMonitorSettingsSave(payload)
     return
   }
-  episodeRefreshKey.value++
+
+  pendingMonitorSettings.value = {
+    mediaProfileId: payload.mediaProfileId,
+    preferredRelease: payload.preferredRelease,
+  }
+  seasonMonitorSeasons.value = seasons
+  seasonMonitorNewSeasons.value = payload.monitorNewSeasons
+  // Edit of an already-monitored series → seed toggles from current state.
+  seasonMonitorRespectState.value = alreadyMonitored
+  showSeasonMonitorModal.value = true
 }
 
 async function onProfileChange(event: Event) {
@@ -223,6 +226,8 @@ async function onProfileChange(event: Event) {
 
 async function onMonitoredToggle() {
   if (!item.value) return
+  // Main-toggle enable never carries edit-dialog settings.
+  pendingMonitorSettings.value = null
   const newVal = !(item.value.monitored ?? false)
   if (newVal && item.value.mediaType === 'series') {
     // Fetch seasons to show in modal
@@ -230,6 +235,9 @@ async function onMonitoredToggle() {
       params: { path: { id: item.value.id } },
     })
     seasonMonitorSeasons.value = data?.seasons ?? []
+    seasonMonitorNewSeasons.value = item.value.monitorNewSeasons ?? true
+    // Enabling from scratch → default everything on.
+    seasonMonitorRespectState.value = false
     showSeasonMonitorModal.value = true
     return
   }
@@ -243,12 +251,7 @@ async function onSeasonMonitorConfirm(
   episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[],
 ) {
   showSeasonMonitorModal.value = false
-  const update: {
-    monitored: boolean
-    seasonMonitors: { seasonNumber: number; monitored: boolean }[]
-    monitorNewSeasons: boolean
-    episodeMonitors?: { seasonNumber: number; episodeNumber: number; monitored: boolean }[]
-  } = {
+  const update: MediaItemUpdate = {
     monitored: true,
     seasonMonitors: monitors,
     monitorNewSeasons,
@@ -256,12 +259,19 @@ async function onSeasonMonitorConfirm(
   if (episodeMonitors.length) {
     update.episodeMonitors = episodeMonitors
   }
+  // Merge settings carried over from the edit dialog (profile / preferred release).
+  if (pendingMonitorSettings.value) {
+    update.mediaProfileId = pendingMonitorSettings.value.mediaProfileId
+    update.preferredRelease = pendingMonitorSettings.value.preferredRelease
+    pendingMonitorSettings.value = null
+  }
   await updateMediaItem(update)
   episodeRefreshKey.value++
 }
 
 function onSeasonMonitorCancel() {
   showSeasonMonitorModal.value = false
+  pendingMonitorSettings.value = null
 }
 
 const searchDaysAgo = computed(() => {
@@ -720,6 +730,18 @@ watch(() => route.params.id, loadAll)
 
       <!-- Download settings bar -->
       <div v-if="metadata" class="mt-8 flex items-center gap-4 flex-wrap px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
+        <!-- Edit auto-download settings -->
+        <button
+          class="flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200 cursor-pointer"
+          :class="item.preferredRelease
+            ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          title="Edit auto-download settings"
+          @click="showMonitorSettings = true"
+        >
+          <Pencil class="w-3.5 h-3.5" />
+        </button>
+
         <!-- Auto-download toggle -->
         <button
           class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
@@ -738,18 +760,6 @@ watch(() => route.params.id, loadAll)
             />
           </span>
           <span>Auto-download</span>
-        </button>
-
-        <!-- Edit auto-download settings -->
-        <button
-          class="flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200 cursor-pointer"
-          :class="item.preferredRelease
-            ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
-            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
-          title="Edit auto-download settings"
-          @click="showMonitorSettings = true"
-        >
-          <Pencil class="w-3.5 h-3.5" />
         </button>
 
         <!-- Monitor new seasons toggle (series only) -->
@@ -941,7 +951,8 @@ watch(() => route.params.id, loadAll)
     <SeasonMonitorModal
       v-if="showSeasonMonitorModal"
       :seasons="seasonMonitorSeasons"
-      :monitorNewSeasons="item?.monitorNewSeasons ?? true"
+      :monitorNewSeasons="seasonMonitorNewSeasons"
+      :respectCurrentState="seasonMonitorRespectState"
       @confirm="onSeasonMonitorConfirm"
       @cancel="onSeasonMonitorCancel"
     />
@@ -952,6 +963,7 @@ watch(() => route.params.id, loadAll)
       :item="item"
       :profiles="profiles"
       @save="onMonitorSettingsSave"
+      @next="onMonitorSettingsNext"
       @close="showMonitorSettings = false"
     />
   </div>

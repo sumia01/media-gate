@@ -6,11 +6,18 @@ const props = withDefaults(
   defineProps<{
     seasons: SeasonSummary[]
     monitorNewSeasons?: boolean
+    // When true, initialize toggles from each season/episode's current monitored
+    // state (edit flow) instead of defaulting everything to on (enable flow).
+    respectCurrentState?: boolean
   }>(),
   {
     monitorNewSeasons: true,
+    respectCurrentState: false,
   },
 )
+
+// Editing existing monitoring reads as "Save"; a first-time enable reads as the action.
+const confirmLabel = computed(() => (props.respectCurrentState ? 'Save' : 'Enable Monitoring'))
 
 const emit = defineEmits<{
   confirm: [
@@ -33,10 +40,12 @@ watch(
     const sm = new Map<number, boolean>()
     const em = new Map<string, boolean>()
     for (const s of seasons) {
-      sm.set(s.seasonNumber, true)
+      const seasonDefault = props.respectCurrentState ? (s.monitored ?? true) : true
+      sm.set(s.seasonNumber, seasonDefault)
       if (s.episodes) {
         for (const ep of s.episodes) {
-          em.set(`${s.seasonNumber}-${ep.episodeNumber}`, true)
+          const epDefault = props.respectCurrentState ? (ep.monitored ?? seasonDefault) : true
+          em.set(`${s.seasonNumber}-${ep.episodeNumber}`, epDefault)
         }
       }
     }
@@ -243,7 +252,7 @@ function handleConfirm() {
           class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
           @click="handleConfirm"
         >
-          Enable Monitoring
+          {{ confirmLabel }}
         </button>
       </div>
     </div>

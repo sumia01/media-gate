@@ -1,5 +1,15 @@
+<script lang="ts">
+// Exported so the parent's handlers stay in lockstep with what this modal emits.
+export type MonitorSettingsPayload = {
+  monitored: boolean
+  monitorNewSeasons: boolean
+  mediaProfileId?: number
+  preferredRelease: string
+}
+</script>
+
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import type { MediaItem, MediaProfile } from '@/types/api'
 
@@ -10,14 +20,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  save: [
-    payload: {
-      monitored: boolean
-      monitorNewSeasons: boolean
-      mediaProfileId?: number
-      preferredRelease: string
-    },
-  ]
+  save: [payload: MonitorSettingsPayload]
+  // Emitted instead of `save` when a season-selection step should follow
+  // (monitored series): the parent opens the season monitor modal.
+  next: [payload: MonitorSettingsPayload]
 }>()
 
 const isSeries = props.item.mediaType === 'series'
@@ -27,13 +33,21 @@ const monitorNewSeasons = ref(props.item.monitorNewSeasons ?? true)
 const mediaProfileId = ref<number | null>(props.item.mediaProfileId ?? null)
 const preferredRelease = ref(props.item.preferredRelease ?? '')
 
+// A monitored series continues to a season-selection step, mirroring the add flow.
+const needsSeasonStep = computed(() => monitored.value && isSeries)
+
 function onSave() {
-  emit('save', {
+  const payload: MonitorSettingsPayload = {
     monitored: monitored.value,
     monitorNewSeasons: monitorNewSeasons.value,
     mediaProfileId: mediaProfileId.value ?? undefined,
     preferredRelease: preferredRelease.value.trim(),
-  })
+  }
+  if (needsSeasonStep.value) {
+    emit('next', payload)
+  } else {
+    emit('save', payload)
+  }
 }
 </script>
 
@@ -114,7 +128,7 @@ function onSave() {
         class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
         @click="onSave"
       >
-        Save
+        {{ needsSeasonStep ? 'Next: seasons' : 'Save' }}
       </button>
       <button
         type="button"

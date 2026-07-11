@@ -525,6 +525,7 @@
 - [x] Migration V9 re-adds the column that the V1 FK rebuild drops on fresh installs (mirrors V3's `monitor_new_seasons` handling)
 - [x] Frontend: pencil button in the media-detail download bar opens `MonitorSettingsModal` to edit `monitored` / `mediaProfileId` / `monitorNewSeasons` / `preferredRelease`; enabling a series routes through the season-selection flow
 - [x] Manual indexer-search modal annotates results matching the preferred release with a violet tag (mirrors the profile-match star), via a `preferredRelease` query param + per-result `releaseMatch` flag on `/indexers/search`
+- [x] Auto-download edit dialog gained a second step (like the add flow) to re-select monitored seasons/episodes — reuses `SeasonMonitorModal`, seeded from current state via a new `respectCurrentState` prop; pencil button moved to the left of the toggle
 
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

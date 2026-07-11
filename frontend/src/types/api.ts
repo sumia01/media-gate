@@ -3,6 +3,7 @@ import type { components } from '@/api/schema'
 export type Library = components['schemas']['Library']
 export type LibraryCreate = components['schemas']['LibraryCreate']
 export type MediaItem = components['schemas']['MediaItem']
+export type MediaItemUpdate = components['schemas']['MediaItemUpdate']
 export type MediaFile = components['schemas']['MediaFile']
 export type MediaProfile = components['schemas']['MediaProfile']
 export type MediaProfileCreate = components['schemas']['MediaProfileCreate']
