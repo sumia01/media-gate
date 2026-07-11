@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ChevronRight, ExternalLink, Eye, EyeOff, Play } from 'lucide-vue-next'
+import { ArrowLeft, ChevronRight, ExternalLink, Eye, EyeOff, Pencil, Play } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -8,6 +8,7 @@ import DownloadList from '@/components/media/DownloadList.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
+import MonitorSettingsModal from '@/components/media/MonitorSettingsModal.vue'
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 import SubtitleList from '@/components/media/SubtitleList.vue'
 import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
@@ -38,6 +39,7 @@ const subtitleRefreshKey = ref(0)
 const replacingDownloadId = ref<number | null>(null)
 const showSeasonMonitorModal = ref(false)
 const seasonMonitorSeasons = ref<SeasonSummary[]>([])
+const showMonitorSettings = ref(false)
 const showSubtitleSearch = ref(false)
 const subtitleSearchSeason = ref<number | undefined>()
 const subtitleSearchEpisode = ref<number | undefined>()
@@ -172,6 +174,7 @@ async function updateMediaItem(update: {
   mediaProfileId?: number
   monitored?: boolean
   monitorNewSeasons?: boolean
+  preferredRelease?: string
   seasonMonitors?: { seasonNumber: number; monitored: boolean }[]
 }) {
   if (!item.value) return
@@ -180,6 +183,37 @@ async function updateMediaItem(update: {
     body: update,
   })
   if (data) item.value = data
+}
+
+async function onMonitorSettingsSave(payload: {
+  monitored: boolean
+  monitorNewSeasons: boolean
+  mediaProfileId?: number
+  preferredRelease: string
+}) {
+  showMonitorSettings.value = false
+  if (!item.value) return
+
+  // Enabling monitoring on a series needs season selection (like the main
+  // toggle), otherwise nothing would be monitored. Route through that flow.
+  const enablingSeries = payload.monitored && !(item.value.monitored ?? false) && item.value.mediaType === 'series'
+
+  await updateMediaItem({
+    mediaProfileId: payload.mediaProfileId,
+    monitorNewSeasons: payload.monitorNewSeasons,
+    preferredRelease: payload.preferredRelease,
+    ...(enablingSeries ? {} : { monitored: payload.monitored }),
+  })
+
+  if (enablingSeries) {
+    const { data } = await client.GET('/media/{id}/episodes', {
+      params: { path: { id: item.value.id } },
+    })
+    seasonMonitorSeasons.value = data?.seasons ?? []
+    showSeasonMonitorModal.value = true
+    return
+  }
+  episodeRefreshKey.value++
 }
 
 async function onProfileChange(event: Event) {
@@ -706,6 +740,18 @@ watch(() => route.params.id, loadAll)
           <span>Auto-download</span>
         </button>
 
+        <!-- Edit auto-download settings -->
+        <button
+          class="flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200 cursor-pointer"
+          :class="item.preferredRelease
+            ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
+            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+          title="Edit auto-download settings"
+          @click="showMonitorSettings = true"
+        >
+          <Pencil class="w-3.5 h-3.5" />
+        </button>
+
         <!-- Monitor new seasons toggle (series only) -->
         <button
           v-if="item.mediaType === 'series' && item.monitored"
@@ -897,6 +943,15 @@ watch(() => route.params.id, loadAll)
       :monitorNewSeasons="item?.monitorNewSeasons ?? true"
       @confirm="onSeasonMonitorConfirm"
       @cancel="onSeasonMonitorCancel"
+    />
+
+    <!-- Auto-download settings edit modal -->
+    <MonitorSettingsModal
+      v-if="showMonitorSettings && item"
+      :item="item"
+      :profiles="profiles"
+      @save="onMonitorSettingsSave"
+      @close="showMonitorSettings = false"
     />
   </div>
 </template>

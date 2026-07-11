@@ -64,6 +64,11 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 		item.MonitorNewSeasons = *req.Body.MonitorNewSeasons
 	}
 
+	// Empty string intentionally clears the preferred-release keywords.
+	if req.Body.PreferredRelease != nil {
+		item.PreferredRelease = *req.Body.PreferredRelease
+	}
+
 	if err := h.store.UpdateMediaItem(item); err != nil {
 		return nil, err
 	}

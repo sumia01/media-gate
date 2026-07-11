@@ -20,6 +20,7 @@ var migrations = []func(*sql.DB) error{
 	migrateV6, // 5→6: media_profiles.language_mode — backfill existing rows with 'or'
 	migrateV7, // 6→7: users.is_admin — promote the first-created user to admin
 	migrateV8, // 7→8: download_blocklists table (created here — NOT in AutoMigrate)
+	migrateV9, // 8→9: media_items.preferred_release — re-add column dropped by V1 FK rebuild on fresh installs
 }
 
 func getSchemaVersion(db *sql.DB) int {
@@ -269,27 +270,10 @@ func migrateV2(db *sql.DB) error {
 // migrateV3 adds the monitor_new_seasons column to media_items and backfills
 // explicit SeasonMonitor rows for all monitored series.
 func migrateV3(db *sql.DB) error {
-	var hasColumn bool
-	rows, err := db.Query("PRAGMA table_info('media_items')")
+	hasColumn, err := columnExists(db, "media_items", "monitor_new_seasons")
 	if err != nil {
-		return fmt.Errorf("checking media_items columns: %w", err)
+		return err
 	}
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notnull int
-		var dfltValue *string
-		var pk int
-		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
-			continue
-		}
-		if name == "monitor_new_seasons" {
-			hasColumn = true
-			break
-		}
-	}
-	rows.Close()
-
 	if !hasColumn {
 		if _, err := db.Exec("ALTER TABLE media_items ADD COLUMN monitor_new_seasons BOOLEAN NOT NULL DEFAULT 1"); err != nil {
 			return fmt.Errorf("adding monitor_new_seasons column: %w", err)
@@ -479,4 +463,43 @@ func migrateV8(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// migrateV9 adds the preferred_release column to media_items. Like
+// monitor_new_seasons (migrateV3), this column must be re-added via ALTER TABLE:
+// the V1 FK rebuild recreates media_items from a fixed DDL that predates it, so
+// on fresh installs AutoMigrate's column is dropped again by that rebuild.
+func migrateV9(db *sql.DB) error {
+	hasColumn, err := columnExists(db, "media_items", "preferred_release")
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	if _, err := db.Exec("ALTER TABLE media_items ADD COLUMN preferred_release TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("adding preferred_release column: %w", err)
+	}
+	return nil
+}
+
+// columnExists reports whether the given table has a column with the given name.
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info('%s')", table))
+	if err != nil {
+		return false, fmt.Errorf("checking %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dfltValue *string
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, nil
 }

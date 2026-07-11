@@ -516,6 +516,15 @@
 - [x] Dynamic library-type icons in sidebar (Clapperboard for movies, Tv for series)
 - [x] ~20+ frontend files converted to use Lucide components
 
+## Phase 9.0: Preferred release & auto-download editing ✅
+→ See ADR-123
+- [x] Per-item `PreferredRelease` field (comma-separated keywords) on media items
+- [x] Soft preference: `indexer.PreferReleases` stably floats title-substring matches to the front of the already-profile-ranked list; when nothing matches, the normal best-ranked release is still grabbed (never blocks a download)
+- [x] Applied in `monitor.filterByProfile` so both movie (`filtered[0]`) and series (`findBestForEpisode`) auto-grab pick it up; runs even when no quality profile is set
+- [x] Empty string clears the preference; matching is case-insensitive substring (reuses `fileparse.ContainsExcludedTagLower`)
+- [x] Migration V9 re-adds the column that the V1 FK rebuild drops on fresh installs (mirrors V3's `monitor_new_seasons` handling)
+- [x] Frontend: pencil button in the media-detail download bar opens `MonitorSettingsModal` to edit `monitored` / `mediaProfileId` / `monitorNewSeasons` / `preferredRelease`; enabling a series routes through the season-selection flow
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

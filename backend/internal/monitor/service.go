@@ -389,12 +389,15 @@ func (s *Service) findBestForEpisode(results []indexer.TorrentResult, ep store.E
 }
 
 func (s *Service) filterByProfile(results []indexer.TorrentResult, item *store.MediaItem) []indexer.TorrentResult {
-	profile := s.resolveProfile(item)
-	if profile == nil {
-		return results
+	filtered := results
+	if profile := s.resolveProfile(item); profile != nil {
+		globalTags := s.loadGlobalExcludeTags()
+		filtered = indexer.FilterByMediaProfile(results, profile, globalTags...)
 	}
-	globalTags := s.loadGlobalExcludeTags()
-	return indexer.FilterByMediaProfile(results, profile, globalTags...)
+	// Soft per-item preferred-release boost: stably float matching releases to
+	// the top so the picker (first match) grabs them, without blocking grabs
+	// when nothing matches. Runs even when no profile is set.
+	return indexer.PreferReleases(filtered, item.PreferredRelease)
 }
 
 func (s *Service) loadGlobalExcludeTags() []string {

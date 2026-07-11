@@ -3,6 +3,7 @@ package indexer
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/store"
@@ -139,6 +140,49 @@ func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile, 
 	c := ParseProfileCriteria(profile, globalExcludeTags...)
 	filtered := FilterByProfile(results, c.Resolutions, c.Sources, c.Languages, c.ExcludeTags, c.LanguageMode)
 	return RankResults(filtered, c.Resolutions, c.Sources, c.Languages, c.LanguageMode)
+}
+
+// PreferReleases stably moves results whose title contains any of the preferred
+// keywords to the front of the list, so the auto-grab picker (which takes the
+// first matching result) selects them first. Matching is case-insensitive
+// substring. preferred is a comma-separated keyword list (e.g. "ETHEL, FLUX");
+// an empty string is a no-op. This is a soft preference: when nothing matches,
+// the original (already profile-ranked) order is returned unchanged.
+func PreferReleases(results []TorrentResult, preferred string) []TorrentResult {
+	keywords := parsePreferredKeywords(preferred)
+	if len(keywords) == 0 || len(results) < 2 {
+		return results
+	}
+	preferredResults := make([]TorrentResult, 0, len(results))
+	rest := make([]TorrentResult, 0, len(results))
+	for _, r := range results {
+		if fileparse.ContainsExcludedTagLower(r.Title, keywords) {
+			preferredResults = append(preferredResults, r)
+		} else {
+			rest = append(rest, r)
+		}
+	}
+	if len(preferredResults) == 0 {
+		return results
+	}
+	return append(preferredResults, rest...)
+}
+
+// parsePreferredKeywords splits a comma-separated preferred-release string into
+// lowercased, trimmed, non-empty keywords.
+func parsePreferredKeywords(preferred string) []string {
+	if strings.TrimSpace(preferred) == "" {
+		return nil
+	}
+	parts := strings.Split(preferred, ",")
+	keywords := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			keywords = append(keywords, p)
+		}
+	}
+	return keywords
 }
 
 // MatchesMediaProfile checks if a single torrent result matches the given media profile.

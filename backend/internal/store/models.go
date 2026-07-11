@@ -24,6 +24,7 @@ type MediaItem struct {
 	Monitored              bool       `gorm:"not null;default:false"`
 	MonitorNewSeasons      bool       `gorm:"not null;default:true"`
 	MonitorSearchStartedAt *time.Time
+	PreferredRelease       string // comma-separated keywords preferred when auto-grabbing releases
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }

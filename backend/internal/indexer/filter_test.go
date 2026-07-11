@@ -193,6 +193,72 @@ func TestFilterByMediaProfile(t *testing.T) {
 	}
 }
 
+func TestPreferReleases(t *testing.T) {
+	results := []TorrentResult{
+		{Title: "Silo.S01E01.1080p.WEB.H264-FLUX", Seeders: 500},
+		{Title: "Silo.S01E01.1080p.WEB.H264-ETHEL", Seeders: 100},
+		{Title: "Silo.S01E01.2160p.WEB.H264-NTb", Seeders: 300},
+		{Title: "Silo.S01E01.1080p.WEB.H264-ethel.PROPER", Seeders: 50},
+	}
+
+	t.Run("floats a single matching keyword to the front, stable", func(t *testing.T) {
+		got := PreferReleases(copyResults(results), "ETHEL")
+		// Both ETHEL releases float up, preserving their relative order;
+		// non-matching releases keep their relative order below.
+		want := []string{results[1].Title, results[3].Title, results[0].Title, results[2].Title}
+		assertTitles(t, got, want)
+	})
+
+	t.Run("case-insensitive substring match", func(t *testing.T) {
+		got := PreferReleases(copyResults(results), "ethel")
+		if got[0].Title != results[1].Title {
+			t.Errorf("expected an ETHEL release first, got %q", got[0].Title)
+		}
+	})
+
+	t.Run("multiple comma-separated keywords with whitespace", func(t *testing.T) {
+		got := PreferReleases(copyResults(results), "  NTb , FLUX ")
+		// FLUX (idx 0) and NTb (idx 2) float up preserving original order.
+		want := []string{results[0].Title, results[2].Title, results[1].Title, results[3].Title}
+		assertTitles(t, got, want)
+	})
+
+	t.Run("empty preference is a no-op", func(t *testing.T) {
+		got := PreferReleases(copyResults(results), "")
+		assertTitles(t, got, titles(results))
+		got = PreferReleases(copyResults(results), "  ,  ")
+		assertTitles(t, got, titles(results))
+	})
+
+	t.Run("no match leaves order unchanged", func(t *testing.T) {
+		got := PreferReleases(copyResults(results), "NONEXISTENT")
+		assertTitles(t, got, titles(results))
+	})
+
+	t.Run("handles empty and single-element input", func(t *testing.T) {
+		if got := PreferReleases(nil, "ETHEL"); len(got) != 0 {
+			t.Errorf("expected empty result, got %v", titles(got))
+		}
+		single := []TorrentResult{{Title: "Silo.S01E01-ETHEL"}}
+		if got := PreferReleases(single, "ETHEL"); len(got) != 1 {
+			t.Errorf("expected single result preserved, got %v", titles(got))
+		}
+	})
+}
+
+func assertTitles(t *testing.T, got []TorrentResult, want []string) {
+	t.Helper()
+	gotTitles := titles(got)
+	if len(gotTitles) != len(want) {
+		t.Fatalf("length mismatch: got %v, want %v", gotTitles, want)
+	}
+	for i := range want {
+		if gotTitles[i] != want[i] {
+			t.Fatalf("pos %d: got %q, want %q (full: %v)", i, gotTitles[i], want[i], gotTitles)
+		}
+	}
+}
+
 func titles(results []TorrentResult) []string {
 	t := make([]string, len(results))
 	for i, r := range results {
