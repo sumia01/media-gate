@@ -39,6 +39,11 @@ func New(dbPath string) (*SQLiteStore, error) {
 		_, _ = sqlDB.Exec("ALTER TABLE libraries RENAME COLUMN quality_profile_id TO media_profile_id")
 		_, _ = sqlDB.Exec("ALTER TABLE media_items RENAME COLUMN quality_profile_id TO media_profile_id")
 		_, _ = sqlDB.Exec("UPDATE media_items SET status = 'available' WHERE status = 'matched'")
+
+		// Must run BEFORE AutoMigrate: rebuild media_items into a canonical DDL so
+		// glebarez's AutoMigrate rebuild doesn't silently drop ALTER-added columns
+		// (monitor_new_seasons, preferred_release) and lose their data on restart.
+		normalizeMediaItemsSchema(sqlDB)
 	}
 
 	if err := db.AutoMigrate(

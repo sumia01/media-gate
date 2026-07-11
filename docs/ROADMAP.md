@@ -537,6 +537,7 @@
 - [x] Cardigann text field rendering order non-deterministic — Go map iteration causes inter-field `.Result` references (e.g. Milkie `_apikey` → `download`) to resolve as raw template literals intermittently
 - [x] Duplicate download records created for same media item + URL — no dedup at creation, monitor `buildDownloadMap` ignored NULL `episode_id` single-episode downloads, frontend tracked download state by unstable array index
 - [x] Episode download status bleed — single-episode downloads without `episode_id` (created via season search) treated as season packs in `AssembleEpisodes`, causing "seeding" status to propagate to all episodes in the season including unaired ones
+- [x] `preferred_release` (and `monitor_new_seasons`) lost on every service restart — glebarez AutoMigrate rebuilds `media_items` and its `parseDDL` treats TAB as a quote char, dropping ALTER-added columns from the copy; fixed by `normalizeMediaItemsSchema` (single-line canonical DDL before AutoMigrate) — see ADR-124
 
 ---
 

@@ -322,6 +322,57 @@ func migrateV5(_ *sql.DB) error {
 	return nil
 }
 
+// normalizeMediaItemsSchema rebuilds media_items into a canonical DDL that has
+// every column in the CREATE body (not appended via ALTER TABLE ADD COLUMN).
+//
+// Why: migrateV3 (monitor_new_seasons) and migrateV9 (preferred_release) added
+// their columns with ALTER TABLE ADD COLUMN. glebarez's AutoMigrate rebuild
+// (recreateTable → parseDDL) does NOT parse ALTER-appended columns, so its
+// INSERT ... SELECT omits them — dropping their DATA to the column default on
+// every restart (monitor_new_seasons survived only because its default happens
+// to be true). This runs in New() BEFORE AutoMigrate, so the table AutoMigrate
+// inspects is already clean and any later rebuild preserves the data.
+//
+// Idempotent: keyed on monitor_new_seasons still being declared BOOLEAN (the V3
+// ALTER type); after the rebuild it is numeric, so subsequent boots no-op.
+func normalizeMediaItemsSchema(db *sql.DB) {
+	var mnsType string
+	if err := db.QueryRow(
+		`SELECT type FROM pragma_table_info('media_items') WHERE name = 'monitor_new_seasons'`,
+	).Scan(&mnsType); err != nil {
+		return // table or column absent (fresh/very old DB) — nothing to normalize
+	}
+	if !strings.EqualFold(mnsType, "boolean") {
+		return // already canonical
+	}
+
+	// MUST be single-line with NO tabs: glebarez's parseDDL treats TAB as a quote
+	// character (sqliteSeparator = "`|\"|'|\t"), so a tab-indented multi-line DDL
+	// parses wrong (drops every other column) when AutoMigrate later rebuilds.
+	const canonicalDDL = `CREATE TABLE "media_items" (` +
+		`"id" integer PRIMARY KEY AUTOINCREMENT,` +
+		`"library_id" integer NOT NULL REFERENCES "libraries"("id") ON DELETE CASCADE,` +
+		`"title" text NOT NULL,` +
+		`"media_type" text NOT NULL,` +
+		`"status" text NOT NULL DEFAULT "new",` +
+		`"source" text NOT NULL DEFAULT "disk",` +
+		`"year" integer,` +
+		`"media_profile_id" integer,` +
+		`"monitored" numeric NOT NULL DEFAULT false,` +
+		`"monitor_new_seasons" numeric NOT NULL DEFAULT true,` +
+		`"monitor_search_started_at" datetime,` +
+		`"preferred_release" text NOT NULL DEFAULT '',` +
+		`"created_at" datetime,` +
+		`"updated_at" datetime)`
+	const columns = "id,library_id,title,media_type,status,source,year,media_profile_id,monitored,monitor_new_seasons,monitor_search_started_at,preferred_release,created_at,updated_at"
+
+	if err := rebuildTable(db, "media_items", canonicalDDL, columns); err != nil {
+		slog.Error("normalizeMediaItemsSchema: rebuild failed", "error", err)
+		return
+	}
+	slog.Info("normalized media_items schema to canonical DDL (prevents AutoMigrate column-drop on restart)")
+}
+
 // rebuildTable recreates a table using SQLite's 12-step ALTER TABLE procedure.
 func rebuildTable(db *sql.DB, table, newDDL, columns string) error {
 	slog.Info("rebuilding table", "table", table)
