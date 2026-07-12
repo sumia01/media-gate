@@ -527,6 +527,16 @@
 - [x] Manual indexer-search modal annotates results matching the preferred release with a violet tag (mirrors the profile-match star), via a `preferredRelease` query param + per-result `releaseMatch` flag on `/indexers/search`
 - [x] Auto-download edit dialog gained a second step (like the add flow) to re-select monitored seasons/episodes — reuses `SeasonMonitorModal`, seeded from current state via a new `respectCurrentState` prop; pencil button moved to the left of the toggle
 
+## Phase 9.1: Migration system overhaul — golang-migrate ✅
+→ See ADR-125 (supersedes ADR-124)
+- [x] Removed GORM AutoMigrate entirely — its per-boot `media_items` rebuild was the root cause of columns/data being dropped on restart (ADR-124 was a workaround)
+- [x] Schema now managed by **golang-migrate** with embedded SQL files (`store/sqlite/migrations/NNNN_name.up.sql`/`.down.sql`), version tracked in `schema_migrations`
+- [x] `0001_baseline.up.sql` reproduces the exact `schema_version 9` schema (+ the `media_metadata.trailer_url` column the old rebuild dropped)
+- [x] Custom `database.Driver` (`migrator.go`) over the existing glebarez `*sql.DB` — golang-migrate's stock modernc driver panics alongside glebarez (double `"sqlite"` registration); no second driver, no CGO
+- [x] Zero-data-loss adoption: existing DBs at `schema_version >= 9` are `Force`-stamped without running the baseline; below-v9 DBs are refused loudly (never silently stamped)
+- [x] Deleted `migrateV1..V9`, `normalizeMediaItemsSchema`, `rebuildTable`, and the single-line/TAB-free DDL rule — all obsolete once nothing rebuilds tables
+- [x] Verified end-to-end against a copy of the real production DB (145 media_items, 1933 episodes) — every row preserved; guards `TestAdoptExistingDatabasePreservesData`, `TestAdoptBelowBaselineRefusesWithoutDataLoss`, `TestFreshInstallSchema`, `TestMediaItemFieldsSurviveRestart`
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
@@ -537,7 +547,7 @@
 - [x] Cardigann text field rendering order non-deterministic — Go map iteration causes inter-field `.Result` references (e.g. Milkie `_apikey` → `download`) to resolve as raw template literals intermittently
 - [x] Duplicate download records created for same media item + URL — no dedup at creation, monitor `buildDownloadMap` ignored NULL `episode_id` single-episode downloads, frontend tracked download state by unstable array index
 - [x] Episode download status bleed — single-episode downloads without `episode_id` (created via season search) treated as season packs in `AssembleEpisodes`, causing "seeding" status to propagate to all episodes in the season including unaired ones
-- [x] `preferred_release` (and `monitor_new_seasons`) lost on every service restart — glebarez AutoMigrate rebuilds `media_items` and its `parseDDL` treats TAB as a quote char, dropping ALTER-added columns from the copy; fixed by `normalizeMediaItemsSchema` (single-line canonical DDL before AutoMigrate) — see ADR-124
+- [x] `preferred_release` (and `monitor_new_seasons`) lost on every service restart — glebarez AutoMigrate rebuilds `media_items` and its `parseDDL` treats TAB as a quote char, dropping ALTER-added columns from the copy. Worked around by `normalizeMediaItemsSchema` (ADR-124), then **fixed at the root** by removing AutoMigrate and switching to golang-migrate — see ADR-125 / Phase 9.1
 
 ---
 

@@ -30,52 +30,29 @@ func New(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("registering gorm opentelemetry plugin: %w", err)
 	}
 
-	sqlDB, _ := db.DB()
-
-	// Pre-migration renames for existing databases (ignore errors for fresh installs).
-	if sqlDB != nil {
-		_, _ = sqlDB.Exec("ALTER TABLE quality_profiles RENAME TO media_profiles")
-		_, _ = sqlDB.Exec("ALTER TABLE media_profiles ADD COLUMN languages TEXT DEFAULT ''")
-		_, _ = sqlDB.Exec("ALTER TABLE libraries RENAME COLUMN quality_profile_id TO media_profile_id")
-		_, _ = sqlDB.Exec("ALTER TABLE media_items RENAME COLUMN quality_profile_id TO media_profile_id")
-		_, _ = sqlDB.Exec("UPDATE media_items SET status = 'available' WHERE status = 'matched'")
-
-		// Must run BEFORE AutoMigrate: rebuild media_items into a canonical DDL so
-		// glebarez's AutoMigrate rebuild doesn't silently drop ALTER-added columns
-		// (monitor_new_seasons, preferred_release) and lose their data on restart.
-		normalizeMediaItemsSchema(sqlDB)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("obtaining sql.DB handle: %w", err)
 	}
 
-	if err := db.AutoMigrate(
-		&store.Library{},
-		&store.MediaItem{},
-		&store.MediaMetadata{},
-		&store.MediaProfile{},
-		&store.MediaFile{},
-		&store.SeasonMonitor{},
-		&store.EpisodeMonitor{},
-		&store.Episode{},
-		&store.Setting{},
-		&store.JobRecord{},
-		&store.Indexer{},
-		&store.Download{},
-		&store.User{},
-		&store.RefreshToken{},
-		&store.WatchedItem{},
-		&store.Subtitle{},
-	); err != nil {
-		return nil, fmt.Errorf("auto-migrating database: %w", err)
+	// Idempotent pre-baseline fixups for very old databases (no-ops on fresh /
+	// already-migrated installs). Must run before schema migrations.
+	applyLegacyRenames(sqlDB)
+
+	// Schema is managed entirely by golang-migrate (embedded SQL under
+	// migrations/). No GORM AutoMigrate — AutoMigrate's per-boot table rebuilds
+	// were what silently dropped ALTER-added columns. See migrator.go.
+	if err := runSchemaMigrations(sqlDB); err != nil {
+		return nil, fmt.Errorf("running schema migrations: %w", err)
 	}
 
-	// Run versioned schema migrations (FK rebuilds, etc.).
-	if sqlDB != nil {
-		runMigrations(sqlDB)
-		cleanupOrphans(sqlDB)
-	}
+	// Safety net: prune orphaned rows. Also the cascade mechanism for
+	// episode_monitors and subtitles, which (matching the historical schema)
+	// carry no foreign key.
+	cleanupOrphans(sqlDB)
 
-	// Re-enable foreign keys — AutoMigrate and rebuildTable both disable
-	// this pragma during table alterations, and the deferred restore may
-	// land on a different pooled connection than the one GORM uses.
+	// Re-enable foreign keys — migrations may toggle this pragma, and the
+	// restore may land on a different pooled connection than the one GORM uses.
 	db.Exec("PRAGMA foreign_keys = ON")
 
 	return &SQLiteStore{db: db}, nil
