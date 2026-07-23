@@ -68,14 +68,15 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 		t.Errorf("preferred_release changed on adoption: got %q, want %q", got.PreferredRelease, "ETHEL")
 	}
 
-	// The version must now be stamped at the baseline.
+	// The version must now be stamped at the latest migration: Force(baseline)
+	// skips re-running 0001's SQL, but Up() still applies everything after it.
 	sqlDB2, _ := s2.db.DB()
 	var v int
 	if err := sqlDB2.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&v); err != nil {
 		t.Fatalf("reading schema_migrations after adoption: %v", err)
 	}
-	if v != baselineVersion {
-		t.Errorf("adopted version = %d, want %d", v, baselineVersion)
+	if v != latestMigrationVersion {
+		t.Errorf("adopted version = %d, want %d", v, latestMigrationVersion)
 	}
 }
 
@@ -145,13 +146,94 @@ func TestFreshInstallSchema(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&v); err != nil {
 		t.Fatalf("reading schema_migrations: %v", err)
 	}
-	if v != baselineVersion {
-		t.Errorf("fresh install version = %d, want %d", v, baselineVersion)
+	if v != latestMigrationVersion {
+		t.Errorf("fresh install version = %d, want %d", v, latestMigrationVersion)
 	}
 
 	mustHaveColumn(t, sqlDB, "media_metadata", "trailer_url")
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
+}
+
+// TestCleanupRaceOrphanedDownloads_0002 exercises the actual embedded 0002
+// migration SQL (not a reimplementation of its logic) against a seeded
+// "buggy" downloads table. It proves the DELETE removes only a row with
+// positive proof of a successful replacement for the same episode, and
+// leaves everything else alone: a genuinely failed episode with no
+// replacement, a movie (no episode_id), and a failure that carries a real
+// error message.
+func TestCleanupRaceOrphanedDownloads_0002(t *testing.T) {
+	s := newTestStore(t)
+	sqlDB, _ := s.db.DB()
+
+	lib := &store.Library{Name: "lib", Path: t.TempDir(), MediaType: "series"}
+	if err := s.CreateLibrary(lib); err != nil {
+		t.Fatalf("CreateLibrary: %v", err)
+	}
+	item := &store.MediaItem{LibraryID: lib.ID, Title: "Show", MediaType: "series", Status: "available", Source: "disk"}
+	if err := s.CreateMediaItem(item); err != nil {
+		t.Fatalf("CreateMediaItem: %v", err)
+	}
+
+	// episode_id has a real FK to episodes(id), so seed actual rows rather
+	// than arbitrary numbers.
+	epSuperseded := &store.Episode{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 1}
+	epNoReplacement := &store.Episode{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 2}
+	epGenuineFailure := &store.Episode{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 3}
+	for _, ep := range []*store.Episode{epSuperseded, epNoReplacement, epGenuineFailure} {
+		if err := s.CreateEpisode(ep); err != nil {
+			t.Fatalf("CreateEpisode: %v", err)
+		}
+	}
+
+	insert := func(id uint, episodeID any, status, hash, lastError string, retryCount, linked int) {
+		if _, err := sqlDB.Exec(
+			`INSERT INTO downloads (id, media_item_id, episode_id, indexer_id, indexer_name, title, download_url, status, client_torrent_hash, last_error, retry_count, linked_to_library, created_at, updated_at)
+			 VALUES (?, ?, ?, 1, 'idx', 'title', 'url', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+			id, item.ID, episodeID, status, hash, lastError, retryCount, linked,
+		); err != nil {
+			t.Fatalf("seed download %d: %v", id, err)
+		}
+	}
+
+	insert(1, epSuperseded.ID, "failed", "", "", 0, 0)                    // race-orphaned, superseded by 2 -> DELETE
+	insert(2, epSuperseded.ID, "completed", "abc", "", 0, 1)              // the successful replacement
+	insert(3, epNoReplacement.ID, "failed", "", "", 0, 0)                 // failed, no replacement -> KEEP
+	insert(4, nil, "failed", "", "", 0, 0)                                // movie (no episode_id) -> KEEP
+	insert(5, epGenuineFailure.ID, "failed", "", "some real error", 0, 0) // genuine failure -> KEEP
+	insert(6, epGenuineFailure.ID, "completed", "def", "", 0, 1)
+
+	script, err := migrationsFS.ReadFile(migrationsDir + "/0002_cleanup_race_orphaned_downloads.up.sql")
+	if err != nil {
+		t.Fatalf("reading 0002 migration: %v", err)
+	}
+	if _, err := sqlDB.Exec(string(script)); err != nil {
+		t.Fatalf("running 0002 migration: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id FROM downloads ORDER BY id`)
+	if err != nil {
+		t.Fatalf("query remaining: %v", err)
+	}
+	defer rows.Close()
+	var remaining []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		remaining = append(remaining, id)
+	}
+
+	want := map[int]bool{2: true, 3: true, 4: true, 5: true, 6: true}
+	if len(remaining) != len(want) {
+		t.Fatalf("remaining download IDs = %v, want the 5 IDs in %v (only row 1 should be deleted)", remaining, want)
+	}
+	for _, id := range remaining {
+		if !want[id] {
+			t.Errorf("unexpected survivor id=%d", id)
+		}
+	}
 }
 
 // openRawForTest opens a bare *sql.DB against a DB file (bypassing New()), so a

@@ -31,6 +31,11 @@ const (
 	// below it the DB is missing schema that the (now-removed) old migrations
 	// would have added, so we refuse rather than silently stamp it complete.
 	baselineSchemaVersion = 9
+	// latestMigrationVersion is the golang-migrate version of the newest embedded
+	// migration file. Bump this whenever a new NNNN_*.up.sql is added — tests
+	// assert Up() lands here (fresh installs and adopted legacy databases alike,
+	// since Up() always runs to the newest migration after baseline handling).
+	latestMigrationVersion = 2
 )
 
 // glebarezDriver is a golang-migrate database.Driver implemented directly over

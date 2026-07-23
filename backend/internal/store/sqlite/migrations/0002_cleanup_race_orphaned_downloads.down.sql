@@ -1,0 +1,5 @@
+-- Down is intentionally a no-op: 0002 only deletes rows already confirmed to
+-- be redundant (a "failed" download superseded by another download for the
+-- same episode that actually completed and linked into the library). Deleted
+-- rows cannot be reconstructed. Provided for completeness — the app never
+-- runs Down() automatically.

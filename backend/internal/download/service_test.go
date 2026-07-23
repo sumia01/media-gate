@@ -114,6 +114,27 @@ func TestHandleMissingTorrent_Linked(t *testing.T) {
 	}
 }
 
+// TestPollActive_SkipsJustSentThisTick covers the same-tick race: a download
+// sendPending just handed to qBittorrent must not be polled again before the
+// next tick, since qBittorrent registers a newly added torrent asynchronously
+// and GetTorrent can spuriously report it missing. client is nil here — if
+// pollActive failed to skip the ID it would panic on the nil dereference,
+// making this test self-verifying.
+func TestPollActive_SkipsJustSentThisTick(t *testing.T) {
+	st := &stubStore{byStatus: map[string][]store.Download{
+		"downloading": {
+			{ID: 42, MediaItemID: 1, Title: "Fresh", Status: "downloading", ClientTorrentHash: "hash42"},
+		},
+	}}
+	svc := &Service{store: st, bus: eventbus.New(4)}
+
+	svc.pollActive(nil, map[uint]bool{42: true})
+
+	if len(st.updated) != 0 {
+		t.Fatalf("pollActive updated %d downloads, want 0 (ID 42 was just sent this tick)", len(st.updated))
+	}
+}
+
 type recorder struct {
 	mu     sync.Mutex
 	events []eventbus.Event

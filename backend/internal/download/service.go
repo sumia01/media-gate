@@ -78,21 +78,24 @@ func (s *Service) processOnce() {
 		return
 	}
 
-	s.sendPending(client)
-	s.pollActive(client)
+	justSent := s.sendPending(client)
+	s.pollActive(client, justSent)
 }
 
-// sendPending picks up downloads in "pending" status and sends them to qBittorrent.
-func (s *Service) sendPending(client *qbittorrent.Client) {
+// sendPending picks up downloads in "pending" status and sends them to
+// qBittorrent. It returns the IDs of downloads transitioned to "downloading"
+// in this call, so the caller can exclude them from the same-tick poll pass
+// below (see pollActive).
+func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 	status := "pending"
 	downloads, err := s.store.ListDownloads(nil, &status)
 	if err != nil {
 		slog.Error("download worker: failed to list pending downloads", "error", err)
-		return
+		return nil
 	}
 
 	if len(downloads) == 0 {
-		return
+		return nil
 	}
 
 	now := time.Now()
@@ -109,6 +112,8 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 			slog.Error("download worker: failed to ensure category", "category", category, "error", err)
 		}
 	}
+
+	justSent := make(map[uint]bool)
 
 	for i := range downloads {
 		dl := &downloads[i]
@@ -167,7 +172,10 @@ func (s *Service) sendPending(client *qbittorrent.Client) {
 		s.bus.Publish(eventbus.DownloadSentToClient, eventbus.DownloadPayload{
 			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Hash: hash, Status: "downloading",
 		})
+		justSent[dl.ID] = true
 	}
+
+	return justSent
 }
 
 // handleRetry increments retry count and schedules backoff, or fails permanently.
@@ -194,7 +202,13 @@ func (s *Service) handleRetry(dl *store.Download, lastErr error) {
 }
 
 // pollActive checks downloads in "downloading" status against qBittorrent.
-func (s *Service) pollActive(client *qbittorrent.Client) {
+// justSent holds IDs that sendPending handed to qBittorrent earlier in this
+// same tick — they're skipped here because qBittorrent registers a newly
+// added torrent asynchronously (observed lag: single-digit milliseconds to
+// a few dozen ms), so GetTorrent can spuriously return "not found" for a
+// torrent that in fact was just accepted. Waiting for the next tick (default
+// 5s) gives qBittorrent ample time to register it before it's polled.
+func (s *Service) pollActive(client *qbittorrent.Client, justSent map[uint]bool) {
 	status := "downloading"
 	downloads, err := s.store.ListDownloads(nil, &status)
 	if err != nil {
@@ -204,7 +218,7 @@ func (s *Service) pollActive(client *qbittorrent.Client) {
 
 	for i := range downloads {
 		dl := &downloads[i]
-		if dl.ClientTorrentHash == "" {
+		if dl.ClientTorrentHash == "" || justSent[dl.ID] {
 			continue
 		}
 

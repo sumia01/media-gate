@@ -548,6 +548,7 @@
 - [x] Duplicate download records created for same media item + URL — no dedup at creation, monitor `buildDownloadMap` ignored NULL `episode_id` single-episode downloads, frontend tracked download state by unstable array index
 - [x] Episode download status bleed — single-episode downloads without `episode_id` (created via season search) treated as season packs in `AssembleEpisodes`, causing "seeding" status to propagate to all episodes in the season including unaired ones
 - [x] `preferred_release` (and `monitor_new_seasons`) lost on every service restart — glebarez AutoMigrate rebuilds `media_items` and its `parseDDL` treats TAB as a quote char, dropping ALTER-added columns from the copy. Worked around by `normalizeMediaItemsSchema` (ADR-124), then **fixed at the root** by removing AutoMigrate and switching to golang-migrate — see ADR-125 / Phase 9.1
+- [x] Download worker same-tick race — a torrent just handed to qBittorrent could be polled before qBittorrent finished registering it, spuriously marking it `failed` and clearing its hash; monitored series self-healed via re-grab (leaving an orphan row), unmonitored movies silently stalled at `requested` until manually retried. Fixed by deferring same-tick sends from the poll pass to the next tick; orphaned rows cleaned up via migration `0002` — see ADR-126
 
 ---
 
