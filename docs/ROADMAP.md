@@ -537,6 +537,12 @@
 - [x] Deleted `migrateV1..V9`, `normalizeMediaItemsSchema`, `rebuildTable`, and the single-line/TAB-free DDL rule — all obsolete once nothing rebuilds tables
 - [x] Verified end-to-end against a copy of the real production DB (145 media_items, 1933 episodes) — every row preserved; guards `TestAdoptExistingDatabasePreservesData`, `TestAdoptBelowBaselineRefusesWithoutDataLoss`, `TestFreshInstallSchema`, `TestMediaItemFieldsSurviveRestart`
 
+## Phase 9.2: Import timestamp on in-progress downloads ✅
+→ See ADR-127
+- [x] Media-detail Downloads section rows now show `Updated at: <date time>`, mirroring where Library Copies renders its `Imported <date>` line
+- [x] Uses the existing `download.updatedAt` — for a `seeding` row that IS the import moment, since nothing writes to the row between the importer's hardlink step and the end of seeding
+- [x] No schema change: a new `imported_at` column was implemented then reverted, and deriving from `media_files.addedAt` was rejected (no `DownloadID` on `MediaFile`, so the join would be heuristic and wrong for season packs and replaced movies)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

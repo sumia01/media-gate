@@ -202,6 +202,21 @@ function formatSpeed(bytesPerSec?: number): string {
   return `${mb.toFixed(1)} MB/s`
 }
 
+// updatedAt is the timestamp of the last write to the download row. For a
+// seeding row that IS the moment the importer hardlinked the files into the
+// library: nothing writes to the row between the import and the end of seeding
+// (pollActive only lists "downloading" rows, and progress/speed are read live
+// from qBittorrent per request, never persisted).
+function formatUpdatedAt(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('hu-HU', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function formatRetryTime(dateStr: string): string {
   const target = new Date(dateStr)
   const now = new Date()
@@ -302,6 +317,11 @@ watch(() => props.refreshKey, fetchDownloads)
                 </div>
 
                 <p class="text-sm font-medium text-gray-200 truncate mt-1">{{ dl.title }}</p>
+
+                <!-- Last state change — for a seeding row this is the import time -->
+                <p class="text-[10px] text-gray-500 mt-1">
+                  Updated at: {{ formatUpdatedAt(dl.updatedAt) }}
+                </p>
 
                 <!-- Last error message -->
                 <p
