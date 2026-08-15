@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { WatchedItem } from '@/types/api'
+import { posterUrl } from '@/utils/media'
 
 const router = useRouter()
 const items = ref<WatchedItem[]>([])
@@ -14,7 +15,7 @@ const error = ref('')
 function itemPosterUrl(item: WatchedItem): string | null {
   // Library item with cached poster — use the media poster endpoint
   if (item.mediaItemId) {
-    return `/api/v1/media/${item.mediaItemId}/poster`
+    return posterUrl({ id: item.mediaItemId })
   }
   // Fallback to external poster URL
   return externalPosterUrl(item.posterPath)

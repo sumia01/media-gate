@@ -179,11 +179,8 @@ func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaTy
 	}
 
 	// Fetch full details and save metadata
-	if err := s.applyMatch(item, source, apiKey, mediaType, best.ExternalID, best.Confidence); err != nil {
-		return err
-	}
-	s.DownloadPoster(item.ID)
-	return nil
+	// applyMatch downloads the poster before publishing the matched event.
+	return s.applyMatch(item, source, apiKey, mediaType, best.ExternalID, best.Confidence)
 }
 
 func (s *Service) SearchCandidates(query, mediaType string, year *int, source string) ([]Candidate, error) {
@@ -275,10 +272,10 @@ func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) (
 	// Delete existing episodes
 	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
 
+	// applyMatch downloads the poster before publishing the matched event.
 	if err := s.applyMatch(item, source, apiKey, item.MediaType, externalID, 1.0); err != nil {
 		return nil, nil, err
 	}
-	s.DownloadPoster(item.ID)
 
 	// Re-fetch updated item and metadata to return current state.
 	item, err = s.store.GetMediaItem(mediaItemID)
@@ -358,6 +355,10 @@ func (s *Service) SearchForLibrary(lib *store.Library, query string) ([]Candidat
 }
 
 // AddMediaToLibrary creates a new requested media item with full metadata from an external source.
+//
+// Deprecated: unused. The add-to-library HTTP handler calls AddMediaToLibraryFull,
+// which fetches before opening a short write transaction. This variant remains a
+// second, diverging copy of that flow and should be removed once confirmed dead.
 func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalID int) (*store.MediaItem, error) {
 	// Check for duplicates
 	exists, err := s.store.MediaItemExistsByExternalID(lib.ID, source, externalID)
@@ -385,7 +386,7 @@ func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalI
 		return nil, fmt.Errorf("creating media item: %w", err)
 	}
 
-	// Apply match (fetches details, creates metadata — poster downloaded separately after tx commit)
+	// Apply match (fetches details, creates metadata, downloads the poster)
 	if err := s.applyMatch(item, source, apiKey, lib.MediaType, externalID, 1.0); err != nil {
 		// Clean up on failure
 		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
@@ -535,13 +536,15 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 		return nil, nil, err
 	}
 
-	// Post-commit side effects on the top-level store: the recalculator now
-	// sees the committed item + episodes, so status is actually recalculated;
-	// the matched event is also published here.
-	s.afterMatch(resultItem, meta, req.Source, req.ExternalID)
-
-	// Download poster outside the transaction to avoid holding a DB write lock during network I/O.
+	// Post-commit side effects on the top-level store. The poster is fetched
+	// outside the transaction (no DB write lock held during network I/O) and
+	// before afterMatch, which publishes MediaItemMatched: that event makes the
+	// frontend re-request the poster, so the file has to be in place first.
 	s.DownloadPoster(resultItem.ID)
+
+	// The recalculator now sees the committed item + episodes, so status is
+	// actually recalculated; the matched event is also published here.
+	s.afterMatch(resultItem, meta, req.Source, req.ExternalID)
 
 	// Re-read metadata to include poster path and any post-commit changes.
 	resultMeta, _ := topStore.GetMediaMetadataByMediaItem(resultItem.ID)
@@ -563,6 +566,14 @@ func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType st
 	if err != nil {
 		return err
 	}
+	// Ahead of persistMatch, using the in-memory metadata: persistMatch bumps
+	// media_items.updated_at, which is the frontend's poster cache-buster, and
+	// afterMatch then publishes MediaItemMatched to trigger a refetch. Both the
+	// new URL and the event must become visible only once the new image is
+	// already on disk, or a refetch caches the old poster under the new URL for
+	// the endpoint's full max-age.
+	s.downloadPosterFor(item.ID, meta)
+
 	if err := s.persistMatch(item, meta, episodes); err != nil {
 		return err
 	}
@@ -659,14 +670,25 @@ func (s *Service) afterMatch(item *store.MediaItem, meta *store.MediaMetadata, s
 	}
 }
 
-// DownloadPoster fetches the poster image for a media item and updates the metadata.
-// This is intentionally separate from applyMatch so it can run outside a DB transaction.
+// DownloadPoster fetches the poster image for a media item by loading its
+// stored metadata first. This is intentionally separate from applyMatch so it
+// can run outside a DB transaction.
 func (s *Service) DownloadPoster(itemID uint) {
 	meta, err := s.store.GetMediaMetadataByMediaItem(itemID)
 	if err != nil || meta == nil {
 		return
 	}
+	s.downloadPosterFor(itemID, meta)
+}
 
+// downloadPosterFor fetches the poster described by meta, which the caller may
+// hold in memory before it has been persisted. applyMatch relies on that: the
+// poster has to land on disk BEFORE persistMatch bumps media_items.updated_at,
+// because that timestamp is the frontend's cache-busting key. Writing the file
+// afterwards leaves a window where the new URL is already visible while the old
+// image is still on disk — a refetch in that window pins the stale poster for
+// the endpoint's full max-age.
+func (s *Service) downloadPosterFor(itemID uint, meta *store.MediaMetadata) {
 	posterURL := s.posterURL(meta.Source, meta)
 	if posterURL == "" {
 		return

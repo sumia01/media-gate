@@ -69,6 +69,14 @@ func (h *Handlers) PosterHandler() http.HandlerFunc {
 			http.Error(w, "poster not found", http.StatusNotFound)
 			return
 		}
+		// A zero-byte file is a leftover from the pre-atomic-write era, when a
+		// failed download could truncate the destination and leave nothing.
+		// Serving it would return a cacheable 200 for a broken image; 404 lets
+		// the next match replace it.
+		if info.Size() == 0 {
+			http.Error(w, "poster not found", http.StatusNotFound)
+			return
+		}
 
 		f, err := os.Open(posterPath)
 		if err != nil {
@@ -77,10 +85,31 @@ func (h *Handlers) PosterHandler() http.HandlerFunc {
 		}
 		defer f.Close()
 
+		// Validator-based caching. A poster is a mutable resource served from a
+		// stable URL, so a long max-age let the browser pin whatever bytes it
+		// stored first — including, before the write became atomic, a partially
+		// served image — with no way to invalidate it. "no-cache" still lets the
+		// browser store the image; it just has to revalidate first, which costs
+		// a 304 and makes every consumer correct without needing a per-caller
+		// cache-busting query param.
+		//
+		// downloadPoster installs posters via os.Rename, so mtime advances on
+		// every successful replacement and the ETag changes with it.
 		w.Header().Set("Content-Type", "image/jpeg")
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", posterETag(info))
+
+		// ServeContent evaluates If-None-Match against the ETag set above (and
+		// If-Modified-Since against modtime), returning 304 on a match.
 		http.ServeContent(w, r, posterPath, info.ModTime(), f)
 	}
+}
+
+// posterETag derives a strong validator from the file's identity. Content is
+// byte-identical for a given (mtime, size), and the atomic rename in
+// downloadPoster guarantees mtime moves whenever the bytes change.
+func posterETag(info os.FileInfo) string {
+	return fmt.Sprintf(`"%x-%x"`, info.ModTime().UnixNano(), info.Size())
 }
 
 func (h *Handlers) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {

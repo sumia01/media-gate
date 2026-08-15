@@ -30,11 +30,25 @@ export function profileImageUrl(person: { image?: string }): string | null {
 }
 
 /**
- * Build a cache-busted poster URL for a media item.
+ * Build the cached-poster URL for a media item.
+ *
+ * Correctness comes from the endpoint, not from here: it serves
+ * `Cache-Control: no-cache` with an ETag, so the browser revalidates on every
+ * use and can never pin a stale or partially-served image. Callers that omit
+ * `updatedAt` are still correct.
+ *
+ * `updatedAt` is a liveness hint. An open tab that re-matches an item keeps
+ * rendering the same `<img src>`, and Vue does not patch an attribute whose
+ * value is unchanged — so without a differing URL the browser never re-asks and
+ * the old artwork stays on screen until a reload. Feeding the timestamp in
+ * changes the URL exactly when the item changed, forcing that re-request. It is
+ * free for media items, which already carry the field.
  */
-export function posterUrl(mediaItem: { id: number; updatedAt: string }): string {
+export function posterUrl(mediaItem: { id: number; updatedAt?: string }): string {
+  const base = `/api/v1/media/${mediaItem.id}/poster`
+  if (!mediaItem.updatedAt) return base
   const ts = new Date(mediaItem.updatedAt).getTime()
-  return `/api/v1/media/${mediaItem.id}/poster?t=${ts}`
+  return Number.isNaN(ts) ? base : `${base}?t=${ts}`
 }
 
 /**

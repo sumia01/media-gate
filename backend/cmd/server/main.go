@@ -84,6 +84,9 @@ func main() {
 	}
 
 	posterDir := ".cache/posters"
+	// Sweep scratch files left by a poster download that died mid-write (SIGKILL
+	// / OOM), which the in-process deferred cleanup cannot reach.
+	matching.CleanupPosterTemps(posterDir)
 	defCacheDir := ".cache/definitions"
 	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
 		settings.KeyTMDBApiKey:      cfg.TMDB.ApiKey,
