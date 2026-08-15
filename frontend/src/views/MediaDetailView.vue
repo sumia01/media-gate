@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight, ExternalLink, Eye, EyeOff, Pencil, Play } from
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
+import ContentRatingTile from '@/components/ContentRatingTile.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import DownloadList from '@/components/media/DownloadList.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
@@ -56,6 +57,12 @@ const subtitleAutoSearch = ref(false)
 const metadata = computed(() => item.value?.metadata ?? null)
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
+
+// Already filtered and ordered by the backend to the countries chosen in
+// settings. An absent field means no countries are selected at all, and the
+// tile is hidden; an empty array means none of the selected countries rate this
+// title (or it was matched before ratings were fetched), which is reported.
+const contentRatings = computed(() => metadata.value?.contentRatings ?? [])
 
 const activeProfile = computed(() => {
   if (!item.value?.mediaProfileId) return undefined
@@ -616,6 +623,7 @@ watch(() => route.params.id, loadAll)
               <p class="text-xs text-gray-500 mb-1">{{ item.mediaType === 'movie' ? 'Release Date' : 'First Aired' }}</p>
               <p class="text-sm font-medium text-gray-200">{{ metadata.releaseDate }}</p>
             </div>
+            <ContentRatingTile v-if="metadata.contentRatings" :ratings="contentRatings" />
           </div>
 
           <!-- Cast -->

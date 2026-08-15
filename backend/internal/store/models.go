@@ -46,7 +46,13 @@ type MediaMetadata struct {
 	Runtime     *int
 	Seasons     *int
 	ReleaseDate string // ISO "YYYY-MM-DD" from TMDB/TVDB
-	TrailerURL  string
+	// ContentRatings is the full provider certification list as JSON:
+	// [{"country":"US","rating":"TV-MA"},…]. Country is ISO 3166-1 alpha-2
+	// upper case. Not to be confused with Rating above, which is a numeric
+	// vote average. The display filter is applied at response time, so every
+	// country the provider returns is kept here.
+	ContentRatings string
+	TrailerURL     string
 	Confidence  float64
 	MatchedAt   time.Time
 	CreatedAt   time.Time

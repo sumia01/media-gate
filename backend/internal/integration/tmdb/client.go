@@ -70,7 +70,7 @@ func (c *Client) SearchTV(query string, year *int) ([]TVResult, error) {
 }
 
 func (c *Client) GetMovie(id int) (*MovieDetails, error) {
-	body, err := c.getWithParams(fmt.Sprintf("/movie/%d", id), url.Values{"append_to_response": {"credits,videos"}})
+	body, err := c.getWithParams(fmt.Sprintf("/movie/%d", id), url.Values{"append_to_response": {"credits,videos,release_dates"}})
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (c *Client) GetMovie(id int) (*MovieDetails, error) {
 }
 
 func (c *Client) GetTV(id int) (*TVDetails, error) {
-	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits,external_ids,videos"}})
+	body, err := c.getWithParams(fmt.Sprintf("/tv/%d", id), url.Values{"append_to_response": {"credits,external_ids,videos,content_ratings"}})
 	if err != nil {
 		return nil, err
 	}
@@ -283,12 +283,13 @@ type Credits struct {
 
 type MovieDetails struct {
 	MovieResult
-	ImdbID  string        `json:"imdb_id"`
-	Genres  []Genre       `json:"genres"`
-	Runtime int           `json:"runtime"`
-	Status  string        `json:"status"`
-	Credits *Credits      `json:"credits,omitempty"`
-	Videos  *VideosResult `json:"videos,omitempty"`
+	ImdbID       string              `json:"imdb_id"`
+	Genres       []Genre             `json:"genres"`
+	Runtime      int                 `json:"runtime"`
+	Status       string              `json:"status"`
+	Credits      *Credits            `json:"credits,omitempty"`
+	Videos       *VideosResult       `json:"videos,omitempty"`
+	ReleaseDates *ReleaseDatesResult `json:"release_dates,omitempty"`
 }
 
 type ExternalIds struct {
@@ -298,12 +299,13 @@ type ExternalIds struct {
 
 type TVDetails struct {
 	TVResult
-	Genres          []Genre       `json:"genres"`
-	NumberOfSeasons int           `json:"number_of_seasons"`
-	Status          string        `json:"status"`
-	Credits         *Credits      `json:"credits,omitempty"`
-	ExternalIds     *ExternalIds  `json:"external_ids,omitempty"`
-	Videos          *VideosResult `json:"videos,omitempty"`
+	Genres          []Genre               `json:"genres"`
+	NumberOfSeasons int                   `json:"number_of_seasons"`
+	Status          string                `json:"status"`
+	Credits         *Credits              `json:"credits,omitempty"`
+	ExternalIds     *ExternalIds          `json:"external_ids,omitempty"`
+	Videos          *VideosResult         `json:"videos,omitempty"`
+	ContentRatings  *ContentRatingsResult `json:"content_ratings,omitempty"`
 }
 
 type TVEpisode struct {
@@ -333,6 +335,102 @@ type VideoResult struct {
 
 type VideosResult struct {
 	Results []VideoResult `json:"results"`
+}
+
+// --- content / age certifications ---
+//
+// Movies and TV use different TMDB shapes: movies nest certifications under
+// per-country release events (/movie/{id}?append_to_response=release_dates),
+// TV exposes a flat per-country rating
+// (/tv/{id}?append_to_response=content_ratings). Both are keyed by ISO 3166-1
+// alpha-2 country codes.
+
+type ReleaseDateEntry struct {
+	Certification string `json:"certification"`
+	// Type is the TMDB release type: 1 premiere, 2 limited theatrical,
+	// 3 theatrical, 4 digital, 5 physical, 6 TV.
+	Type int `json:"type"`
+}
+
+type ReleaseDateCountry struct {
+	Iso3166_1    string             `json:"iso_3166_1"`
+	ReleaseDates []ReleaseDateEntry `json:"release_dates"`
+}
+
+type ReleaseDatesResult struct {
+	Results []ReleaseDateCountry `json:"results"`
+}
+
+type ContentRatingEntry struct {
+	Iso3166_1 string `json:"iso_3166_1"`
+	Rating    string `json:"rating"`
+}
+
+type ContentRatingsResult struct {
+	Results []ContentRatingEntry `json:"results"`
+}
+
+// releaseTypePriority ranks which release event's certification best represents
+// a movie. TMDB frequently records the same country several times (premiere,
+// theatrical, digital, …) and only some entries carry a certification.
+var releaseTypePriority = []int{3, 2, 4, 5, 6, 1}
+
+// MovieCertifications flattens TMDB movie release dates into country -> rating.
+// Countries whose release events carry no certification at all are omitted
+// rather than stored as an empty rating.
+func MovieCertifications(rd *ReleaseDatesResult) map[string]string {
+	if rd == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for _, c := range rd.Results {
+		country := strings.ToUpper(strings.TrimSpace(c.Iso3166_1))
+		if country == "" {
+			continue
+		}
+		if cert := bestCertification(c.ReleaseDates); cert != "" {
+			out[country] = cert
+		}
+	}
+	return out
+}
+
+// bestCertification picks the most representative non-empty certification for
+// one country, preferring theatrical over digital/physical/TV releases.
+func bestCertification(entries []ReleaseDateEntry) string {
+	for _, want := range releaseTypePriority {
+		for _, e := range entries {
+			if e.Type == want {
+				if cert := strings.TrimSpace(e.Certification); cert != "" {
+					return cert
+				}
+			}
+		}
+	}
+	// Unknown/absent release types still carry usable certifications.
+	for _, e := range entries {
+		if cert := strings.TrimSpace(e.Certification); cert != "" {
+			return cert
+		}
+	}
+	return ""
+}
+
+// TVCertifications flattens TMDB TV content ratings into country -> rating.
+func TVCertifications(cr *ContentRatingsResult) map[string]string {
+	if cr == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for _, r := range cr.Results {
+		country := strings.ToUpper(strings.TrimSpace(r.Iso3166_1))
+		rating := strings.TrimSpace(r.Rating)
+		if country == "" || rating == "" {
+			continue
+		}
+		out[country] = rating
+	}
+	return out
 }
 
 // BestTrailerURL selects the best YouTube trailer URL from TMDB video results.

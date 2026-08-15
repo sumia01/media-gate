@@ -34,6 +34,16 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	if err := s1.CreateMediaItem(item); err != nil {
 		t.Fatalf("CreateMediaItem: %v", err)
 	}
+	// media_metadata is seeded too: adoption manipulates that table's schema, so
+	// without a row here a rebuild that wiped every metadata row (the exact
+	// failure ADR-125 exists to prevent) would still leave this test green.
+	meta := &store.MediaMetadata{
+		MediaItemID: item.ID, Source: "tvdb", ExternalID: 1234,
+		Title: "Silo", TrailerURL: "https://youtu.be/abc",
+	}
+	if err := s1.CreateMediaMetadata(meta); err != nil {
+		t.Fatalf("CreateMediaMetadata: %v", err)
+	}
 
 	// Simulate a real pre-golang-migrate v9 database: it carries the old
 	// schema_version marker (9) and has no golang-migrate tracking table, but
@@ -47,6 +57,22 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	}
 	if _, err := sqlDB.Exec(`DROP TABLE schema_migrations`); err != nil {
 		t.Fatalf("dropping schema_migrations: %v", err)
+	}
+	// Boot 1 created a *current* schema, but a genuine v9 database predates every
+	// post-baseline migration and therefore carries none of their columns. Strip
+	// them back off so the fixture is a faithful legacy database; without this the
+	// test would assert that adoption survives re-applying a DDL migration onto a
+	// column that already exists — a situation no real legacy database can reach,
+	// since the AutoMigrate era that produced un-stamped databases ended before
+	// any of these columns existed in the model.
+	//
+	// Extend this list whenever a post-baseline migration adds a column.
+	for _, stmt := range []string{
+		`ALTER TABLE media_metadata DROP COLUMN content_ratings`,
+	} {
+		if _, err := sqlDB.Exec(stmt); err != nil {
+			t.Fatalf("stripping post-baseline schema (%s): %v", stmt, err)
+		}
 	}
 	_ = s1.Close()
 
@@ -66,6 +92,17 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	}
 	if got.PreferredRelease != "ETHEL" {
 		t.Errorf("preferred_release changed on adoption: got %q, want %q", got.PreferredRelease, "ETHEL")
+	}
+
+	gotMeta, err := s2.GetMediaMetadataByMediaItem(item.ID)
+	if err != nil {
+		t.Fatalf("GetMediaMetadataByMediaItem after adoption: %v", err)
+	}
+	if gotMeta.Title != "Silo" || gotMeta.ExternalID != 1234 {
+		t.Errorf("metadata changed on adoption: got title %q external %d", gotMeta.Title, gotMeta.ExternalID)
+	}
+	if gotMeta.TrailerURL != "https://youtu.be/abc" {
+		t.Errorf("trailer_url changed on adoption: got %q", gotMeta.TrailerURL)
 	}
 
 	// The version must now be stamped at the latest migration: Force(baseline)
@@ -151,6 +188,7 @@ func TestFreshInstallSchema(t *testing.T) {
 	}
 
 	mustHaveColumn(t, sqlDB, "media_metadata", "trailer_url")
+	mustHaveColumn(t, sqlDB, "media_metadata", "content_ratings")
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
 }

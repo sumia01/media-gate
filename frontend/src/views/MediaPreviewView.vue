@@ -3,6 +3,7 @@ import { ArrowLeft, ExternalLink, Eye, EyeOff, Play, Plus, Search } from 'lucide
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
+import ContentRatingTile from '@/components/ContentRatingTile.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
@@ -43,6 +44,12 @@ const imdbUrl = computed(() => {
 })
 
 const trailerUrl = computed(() => detail.value?.trailerUrl ?? null)
+
+// Already filtered and ordered by the backend to the countries chosen in
+// settings. An absent field means no countries are selected at all, and the
+// tile is hidden; an empty array means none of the selected countries rate this
+// title, which is reported.
+const contentRatings = computed(() => detail.value?.contentRatings ?? [])
 
 const credits = computed(() => detail.value?.credits ?? [])
 const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
@@ -252,6 +259,7 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
               <p class="text-xs text-gray-500 mb-1">Status</p>
               <p class="text-sm font-medium text-gray-200">{{ detail.status }}</p>
             </div>
+            <ContentRatingTile v-if="detail.contentRatings" :ratings="contentRatings" />
           </div>
 
           <!-- Cast -->

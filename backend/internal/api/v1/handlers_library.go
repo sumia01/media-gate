@@ -321,7 +321,7 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		return nil, err
 	}
 
-	return AddMediaToLibrary201JSONResponse(mediaItemToAPI(item, meta)), nil
+	return AddMediaToLibrary201JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
 }
 
 func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject) (GlobalSearchResponseObject, error) {
@@ -378,6 +378,7 @@ func (h *Handlers) GetExternalMediaDetail(_ context.Context, req GetExternalMedi
 			apiDetail.Credits = &credits
 		}
 	}
+	apiDetail.ContentRatings = filterContentRatings(detail.ContentRatings, h.settings.ContentRatingCountries())
 
 	return GetExternalMediaDetail200JSONResponse(apiDetail), nil
 }

@@ -1,12 +1,14 @@
 package settings
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +48,13 @@ const (
 	KeyWorkerMetadataRefreshInterval = "worker_metadata_refresh_interval"
 
 	KeyGlobalExcludeTags = "global_exclude_tags"
+
+	// KeyContentRatingCountries is a JSON array of ISO 3166-1 alpha-2 codes
+	// selecting which countries' content/age certifications are shown on the
+	// media detail page. It is a display filter only — the full provider list
+	// is stored per item, so changing this takes effect immediately without
+	// re-fetching metadata.
+	KeyContentRatingCountries = "content_rating_countries"
 
 	KeyWatchedListMode = "watched_list_mode"
 
@@ -288,6 +297,59 @@ func (s *Service) GetWithDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return val
+}
+
+// defaultContentRatingCountries applies when the user has not chosen any
+// countries yet. US is the most consistently populated certification on both
+// providers; HU is included so the local rating shows up where available.
+//
+// Unexported and only ever returned through a copy: handing the package-level
+// slice out directly would let any caller that sorts or rewrites the response
+// mutate the process-wide default for every subsequent request.
+var defaultContentRatingCountries = []string{"HU", "US"}
+
+// DefaultContentRatingCountries returns a fresh copy of the built-in default.
+func DefaultContentRatingCountries() []string {
+	return slices.Clone(defaultContentRatingCountries)
+}
+
+// NormalizeContentRatingCountries upper-cases, trims and de-duplicates country
+// codes while preserving order.
+//
+// Every reader must go through this: the value can be written by any API
+// client, and a stored ["hu"] that the media pages match as "HU" but the
+// settings picker compares against "HU" would make the picker claim nothing is
+// selected while ratings are visibly rendering.
+func NormalizeContentRatingCountries(countries []string) []string {
+	out := make([]string, 0, len(countries))
+	seen := make(map[string]bool, len(countries))
+	for _, c := range countries {
+		c = strings.ToUpper(strings.TrimSpace(c))
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	return out
+}
+
+// ContentRatingCountries returns the ISO 3166-1 alpha-2 country codes whose
+// certifications should be displayed, in the user's chosen order.
+//
+// An explicitly saved empty list is honoured as "show nothing" — only an unset
+// or unparseable value falls back to the default, so a user who clears every
+// country keeps the tile hidden instead of silently getting HU/US back.
+func (s *Service) ContentRatingCountries() []string {
+	raw, err := s.Get(KeyContentRatingCountries)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return DefaultContentRatingCountries()
+	}
+	var countries []string
+	if err := json.Unmarshal([]byte(raw), &countries); err != nil {
+		return DefaultContentRatingCountries()
+	}
+	return NormalizeContentRatingCountries(countries)
 }
 
 func (s *Service) GetDurationWithDefault(key string, defaultVal time.Duration) time.Duration {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, X } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   tmdbKey: string
   tvdbKey: string
   showTmdbKey: boolean
@@ -15,9 +15,10 @@ defineProps<{
   primarySource: string
   tmdbRateLimit: string
   tvdbRateLimit: string
+  contentRatingCountries: string[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:tmdbKey': [value: string]
   'update:tvdbKey': [value: string]
   'update:showTmdbKey': [value: boolean]
@@ -25,10 +26,64 @@ defineEmits<{
   'update:primarySource': [value: string]
   'update:tmdbRateLimit': [value: string]
   'update:tvdbRateLimit': [value: string]
+  'update:contentRatingCountries': [value: string[]]
   dirty: [field: string]
   testTmdb: []
   testTvdb: []
 }>()
+
+// Countries offered for content/age certifications. Codes are ISO 3166-1
+// alpha-2 to match TMDB; TVDB's alpha-3 codes are normalized backend-side.
+const RATING_COUNTRIES: { code: string; name: string }[] = [
+  { code: 'HU', name: 'Hungary' },
+  { code: 'US', name: 'United States' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'FR', name: 'France' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'DK', name: 'Denmark' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'NO', name: 'Norway' },
+  { code: 'FI', name: 'Finland' },
+  { code: 'PL', name: 'Poland' },
+  { code: 'CZ', name: 'Czechia' },
+  { code: 'SK', name: 'Slovakia' },
+  { code: 'RO', name: 'Romania' },
+  { code: 'BG', name: 'Bulgaria' },
+  { code: 'HR', name: 'Croatia' },
+  { code: 'RS', name: 'Serbia' },
+  { code: 'SI', name: 'Slovenia' },
+  { code: 'GR', name: 'Greece' },
+  { code: 'TR', name: 'Turkey' },
+  { code: 'UA', name: 'Ukraine' },
+  { code: 'RU', name: 'Russia' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'BR', name: 'Brazil' },
+  { code: 'AR', name: 'Argentina' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'NZ', name: 'New Zealand' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'KR', name: 'South Korea' },
+  { code: 'IN', name: 'India' },
+  { code: 'ZA', name: 'South Africa' },
+]
+
+// Selection order is display order: newly picked countries append, so the
+// first one chosen stays first on the media detail page.
+function toggleRatingCountry(code: string) {
+  const current = props.contentRatingCountries
+  const next = current.includes(code) ? current.filter((c) => c !== code) : [...current, code]
+  emit('update:contentRatingCountries', next)
+  emit('dirty', 'contentRatingCountries')
+}
 </script>
 
 <template>
@@ -183,6 +238,38 @@ defineEmits<{
           />
         </div>
       </div>
+    </div>
+
+    <!-- Content ratings -->
+    <div class="px-5 py-4 rounded-lg bg-[#161b2e] border border-violet-900/20">
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">Age Rating Countries</label>
+      <p class="text-[11px] text-gray-500 mb-3">
+        Certifications shown on media detail pages, in the order you pick them. Countries without a
+        rating for a title are skipped. Applies immediately — no re-scan needed.
+      </p>
+
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="c in RATING_COUNTRIES"
+          :key="c.code"
+          type="button"
+          :title="c.name"
+          class="px-2.5 py-1 rounded-md text-xs font-medium border transition-colors duration-200"
+          :class="contentRatingCountries.includes(c.code)
+            ? 'bg-violet-600/25 border-violet-500/50 text-violet-200'
+            : 'bg-[#0c0f1a] border-violet-800/30 text-gray-400 hover:text-gray-200 hover:border-violet-700/50'"
+          @click="toggleRatingCountry(c.code)"
+        >
+          <span
+            v-if="contentRatingCountries.includes(c.code)"
+            class="text-[10px] text-violet-400 mr-1"
+          >{{ contentRatingCountries.indexOf(c.code) + 1 }}</span>{{ c.code }}
+        </button>
+      </div>
+
+      <p v-if="contentRatingCountries.length === 0" class="text-[11px] text-amber-400/80 mt-3">
+        No countries selected — age ratings stay hidden on media detail pages.
+      </p>
     </div>
   </div>
 </template>

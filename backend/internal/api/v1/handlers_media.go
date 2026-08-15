@@ -23,7 +23,7 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 	}
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
 
-	return GetMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
+	return GetMediaItem200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
 }
 
 func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {
@@ -100,7 +100,7 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 	}
 
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
-	return UpdateMediaItem200JSONResponse(mediaItemToAPI(item, meta)), nil
+	return UpdateMediaItem200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
 }
 
 func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
@@ -163,7 +163,7 @@ func (h *Handlers) ManualMatch(_ context.Context, req ManualMatchRequestObject) 
 		return nil, err
 	}
 
-	return ManualMatch200JSONResponse(mediaItemToAPI(item, meta)), nil
+	return ManualMatch200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
 }
 
 func (h *Handlers) UnmatchMedia(_ context.Context, req UnmatchMediaRequestObject) (UnmatchMediaResponseObject, error) {

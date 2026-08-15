@@ -2482,6 +2482,17 @@ components:
         trailerUrl:
           type: string
           description: YouTube trailer URL
+        contentRatings:
+          type: array
+          description: >-
+            Content/age certifications, already filtered to the countries
+            selected in settings (contentRatingCountries) and returned in that
+            order. Only present on single-item responses; list endpoints omit
+            it. An empty array means none of the selected countries rate this
+            title; the field is absent entirely when no countries are selected
+            (feature switched off).
+          items:
+            $ref: "#/components/schemas/ContentRating"
         credits:
           type: array
           items:
@@ -2489,6 +2500,23 @@ components:
         confidence:
           type: number
           format: float
+
+    ContentRating:
+      type: object
+      description: A content/age certification for one country.
+      required:
+        - country
+        - rating
+      properties:
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code, upper case.
+        rating:
+          type: string
+          description: >-
+            Raw provider certification, meaningful within its country's own
+            system (e.g. "PG-13" US, "16" HU, "TV-MA" US TV). Not normalized
+            to a common scale.
 
     MediaItemUpdate:
       type: object
@@ -2896,6 +2924,16 @@ components:
         trailerUrl:
           type: string
           description: YouTube trailer URL
+        contentRatings:
+          type: array
+          description: >-
+            Content/age certifications, already filtered to the countries
+            selected in settings (contentRatingCountries) and returned in that
+            order. An empty array means none of the selected countries rate this
+            title; the field is absent entirely when no countries are selected
+            (feature switched off).
+          items:
+            $ref: "#/components/schemas/ContentRating"
         credits:
           type: array
           items:
@@ -3100,6 +3138,16 @@ components:
           items:
             type: string
           description: Preferred subtitle languages in priority order (ISO 639-1 codes, e.g. ["hu", "en"])
+        contentRatingCountries:
+          type: array
+          items:
+            type: string
+          description: >-
+            Countries whose content/age certifications are shown on media
+            detail pages, in display order (ISO 3166-1 alpha-2, e.g.
+            ["HU", "US"]). Selected countries without a rating for a given
+            title are skipped. Display filter only — changing it takes effect
+            immediately without re-fetching metadata.
         subtitleAutoSearch:
           type: boolean
           description: Automatically search and download subtitles after media import

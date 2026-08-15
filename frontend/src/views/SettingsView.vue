@@ -90,6 +90,8 @@ const subtitleLanguages = ref('')
 const subtitleLanguagesDirty = ref(false)
 const subtitleAutoSearch = ref(false)
 const subtitleAutoSearchDirty = ref(false)
+const contentRatingCountries = ref<string[]>([])
+const contentRatingCountriesDirty = ref(false)
 
 const monitorInterval = ref('900')
 const downloadInterval = ref('5')
@@ -132,6 +134,7 @@ const dirtyMap: Record<string, { ref: { value: boolean } }> = {
   osRateLimit: { ref: osRateLimitDirty },
   subtitleLanguages: { ref: subtitleLanguagesDirty },
   subtitleAutoSearch: { ref: subtitleAutoSearchDirty },
+  contentRatingCountries: { ref: contentRatingCountriesDirty },
   monitorInterval: { ref: monitorIntervalDirty },
   downloadInterval: { ref: downloadIntervalDirty },
   importerInterval: { ref: importerIntervalDirty },
@@ -171,6 +174,7 @@ const anyDirty = computed(
     osRateLimitDirty.value ||
     subtitleLanguagesDirty.value ||
     subtitleAutoSearchDirty.value ||
+    contentRatingCountriesDirty.value ||
     monitorIntervalDirty.value ||
     downloadIntervalDirty.value ||
     importerIntervalDirty.value ||
@@ -211,6 +215,9 @@ function applySettings(s: Record<string, unknown>) {
   osPassword.value = (s.opensubtitlesPassword as string) ?? ''
   osRateLimit.value = String(s.opensubtitlesRateLimit ?? 3)
   subtitleLanguages.value = ((s.subtitleLanguages as string[]) ?? []).join(', ')
+  // The API always reports the effective list (falling back to the backend
+  // default when unset), so this mirrors what media pages actually render.
+  contentRatingCountries.value = (s.contentRatingCountries as string[]) ?? []
   subtitleAutoSearch.value = (s.subtitleAutoSearch as boolean) ?? false
   monitorInterval.value = String(s.workerMonitorInterval ?? 900)
   downloadInterval.value = String(s.workerDownloadInterval ?? 5)
@@ -271,6 +278,7 @@ async function saveSettings() {
       .map((s: string) => s.trim())
       .filter(Boolean)
   if (subtitleAutoSearchDirty.value) body.subtitleAutoSearch = subtitleAutoSearch.value
+  if (contentRatingCountriesDirty.value) body.contentRatingCountries = contentRatingCountries.value
   if (monitorIntervalDirty.value) body.workerMonitorInterval = Number(monitorInterval.value)
   if (downloadIntervalDirty.value) body.workerDownloadInterval = Number(downloadInterval.value)
   if (importerIntervalDirty.value) body.workerImporterInterval = Number(importerInterval.value)
@@ -441,6 +449,7 @@ onMounted(fetchSettings)
         v-model:primary-source="primarySource"
         v-model:tmdb-rate-limit="tmdbRateLimit"
         v-model:tvdb-rate-limit="tvdbRateLimit"
+        v-model:content-rating-countries="contentRatingCountries"
         :tmdb-from-env="tmdbFromEnv"
         :tvdb-from-env="tvdbFromEnv"
         :tmdb-testing="tmdbTesting"

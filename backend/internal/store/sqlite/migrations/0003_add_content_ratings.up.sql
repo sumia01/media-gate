@@ -1,0 +1,16 @@
+-- Adds provider-supplied content/age certifications (MPAA, BBFC, FSK, US TV
+-- ratings, Hungarian korhatár, …) to media_metadata.
+--
+-- Stored as a JSON array of {"country","rating"} objects with country
+-- normalized to ISO 3166-1 alpha-2 upper case across both providers (TMDB
+-- reports alpha-2, TVDB lowercase alpha-3).
+--
+-- The FULL provider list is persisted, not just the countries the user
+-- currently displays: the country preference (settings key
+-- content_rating_countries) is a display filter applied at response time, so
+-- changing it takes effect immediately on already-matched items instead of
+-- requiring a metadata re-fetch across the whole library.
+--
+-- Nullable with no default: existing rows keep NULL and simply render no
+-- rating until the item is re-matched (agreed backfill policy).
+ALTER TABLE "media_metadata" ADD COLUMN "content_ratings" text;

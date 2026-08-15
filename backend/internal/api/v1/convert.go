@@ -133,6 +133,84 @@ func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {
 	return m
 }
 
+// withRatings attaches the user's selected content ratings to a single-item
+// response. Read on each request rather than cached so a settings change is
+// reflected immediately.
+func (h *Handlers) withRatings(item MediaItem, meta *store.MediaMetadata) MediaItem {
+	return withContentRatings(item, meta, h.settings.ContentRatingCountries())
+}
+
+// withContentRatings returns item with metadata.contentRatings populated from
+// meta, filtered to countries and ordered to match the user's preference.
+//
+// Kept out of mediaItemToAPI on purpose: providers return certifications for
+// 30+ countries per title, and library list endpoints return many items at
+// once, so the field is attached only on the single-item responses that
+// actually render it.
+//
+// Filtering happens here rather than in the frontend because listSettings is
+// admin-gated while the media detail page is not — a non-admin user's browser
+// cannot read the country preference.
+//
+// Presence of the field distinguishes the three states the UI must tell apart:
+//
+//	nil      — no countries selected; the user turned the feature off and the
+//	           tile is hidden entirely.
+//	[]       — countries selected but none of them rate this title (including
+//	           items matched before ratings were fetched) → "No rating data
+//	           found".
+//	[…]      — the ratings to display, in the user's chosen order.
+func withContentRatings(item MediaItem, meta *store.MediaMetadata, countries []string) MediaItem {
+	if item.Metadata == nil {
+		return item
+	}
+	var raw string
+	if meta != nil {
+		raw = meta.ContentRatings
+	}
+	item.Metadata.ContentRatings = filterContentRatings(raw, countries)
+	return item
+}
+
+// filterContentRatings selects the user's countries out of a stored provider
+// certification list, preserving their chosen order. Shared by library items
+// and the (non-persisted) external preview, which store the same JSON shape.
+//
+// Returns nil when no countries are selected, so callers omit the field
+// entirely rather than reporting missing data.
+func filterContentRatings(stored string, countries []string) *[]ContentRating {
+	if len(countries) == 0 {
+		return nil
+	}
+	// Decoded into a locally-owned struct rather than the codegen'd
+	// ContentRating: the persisted column's format is defined by the matching
+	// service, and reusing an api/openapi.yaml-derived type would let a schema
+	// rename silently redefine how existing rows are read (every item would
+	// quietly report "no rating data" with no compile error).
+	type storedContentRating struct {
+		Country string `json:"country"`
+		Rating  string `json:"rating"`
+	}
+	byCountry := map[string]string{}
+	if stored != "" {
+		var list []storedContentRating
+		// A malformed value is treated as "no ratings" rather than an error:
+		// the rest of the page is still worth rendering.
+		if err := json.Unmarshal([]byte(stored), &list); err == nil {
+			for _, r := range list {
+				byCountry[r.Country] = r.Rating
+			}
+		}
+	}
+	filtered := make([]ContentRating, 0, len(countries))
+	for _, c := range countries {
+		if rating, ok := byCountry[c]; ok {
+			filtered = append(filtered, ContentRating{Country: c, Rating: rating})
+		}
+	}
+	return &filtered
+}
+
 func mediaProfileToAPI(p *store.MediaProfile) MediaProfile {
 	api := MediaProfile{
 		Id:        int64(p.ID),
@@ -297,6 +375,14 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			if err := json.Unmarshal([]byte(v), &langs); err == nil {
 				s.SubtitleLanguages = &langs
 			}
+		case settings.KeyContentRatingCountries:
+			var countries []string
+			if err := json.Unmarshal([]byte(v), &countries); err == nil {
+				// Normalized so the settings picker sees exactly the codes the
+				// media pages match against, whatever an API client stored.
+				normalized := settings.NormalizeContentRatingCountries(countries)
+				s.ContentRatingCountries = &normalized
+			}
 		case settings.KeySubtitleAutoSearch:
 			b := v == "true"
 			s.SubtitleAutoSearch = &b
@@ -315,6 +401,14 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 		case settings.KeyPlexToken:
 			s.PlexToken = &v
 		}
+	}
+	// Report the *effective* country list, not just a stored one. Without this
+	// an unconfigured install would show an empty picker while media pages were
+	// actually rendering the HU/US default — and the first save would then
+	// silently write that empty list back as an explicit "show nothing".
+	if s.ContentRatingCountries == nil {
+		countries := svc.ContentRatingCountries()
+		s.ContentRatingCountries = &countries
 	}
 	if svc.HasEnvFallback(settings.KeyTMDBApiKey) {
 		t := true
@@ -423,6 +517,14 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.OpensubtitlesRateLimit != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyOpenSubtitlesRateLimit, Value: strconv.Itoa(*s.OpensubtitlesRateLimit)})
+	}
+	if s.ContentRatingCountries != nil {
+		// Normalized on write so the stored value is canonical rather than
+		// whatever casing the client happened to send.
+		kvs = append(kvs, settings.KeyValue{
+			Key:   settings.KeyContentRatingCountries,
+			Value: marshalJSON(settings.NormalizeContentRatingCountries(*s.ContentRatingCountries)),
+		})
 	}
 	if s.SubtitleLanguages != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeySubtitleLanguages, Value: marshalJSON(*s.SubtitleLanguages)})

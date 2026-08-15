@@ -543,6 +543,17 @@
 - [x] Uses the existing `download.updatedAt` — for a `seeding` row that IS the import moment, since nothing writes to the row between the importer's hardlink step and the end of seeding
 - [x] No schema change: a new `imported_at` column was implemented then reverted, and deriving from `media_files.addedAt` was rejected (no `DownloadID` on `MediaFile`, so the join would be heuristic and wrong for season packs and replaced movies)
 
+## Phase 9.3: Content / age ratings on media pages ✅
+→ See ADR-128
+- [x] "Age Rating" tile on the media-detail stats grid (next to Runtime / Status / First Aired) and on the external preview page, via a shared `ContentRatingTile.vue`
+- [x] Certifications fetched with **zero extra HTTP calls**: TMDB rides the existing `append_to_response` (`release_dates` for movies, `content_ratings` for TV); TVDB's `/series/{id}/extended` already returned `contentRatings` and simply wasn't decoded
+- [x] Full provider list persisted in `media_metadata.content_ratings` (migration `0003`); the country preference is a **display filter applied at response time**, so changing it takes effect immediately with no metadata re-fetch
+- [x] Multi-select country picker in Settings → Media DB (selection order = display order); selected countries with no rating are skipped, none matching shows "No rating data found", and deselecting all hides the tile
+- [x] Filtering is server-side by necessity — `listSettings` is admin-gated while media pages are not, so the frontend can't read the preference
+- [x] TVDB's lower-case alpha-3 country codes normalized to TMDB's alpha-2, or an `HU` filter would silently never match a TVDB series
+- [x] Multiple ratings for one country resolve series-level `contentType` first, then strictest `Order` — TVDB leaves `order` undocumented, so the tie-break errs strict rather than advertising a TV-MA series as TV-Y
+- [x] Not backfilled by design: existing items pick ratings up on re-match only
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

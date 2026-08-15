@@ -257,16 +257,31 @@ type RemoteID struct {
 	SourceName string `json:"sourceName"`
 }
 
+// ContentRating is a content/age certification as returned on the extended
+// series record. Country is an ISO 3166-1 *alpha-3* code in lower case
+// ("usa", "hun", "deu") — unlike TMDB, which uses alpha-2 — so callers must
+// normalize before comparing the two sources. Name is the rating itself
+// ("TV-MA", "16"). ContentType distinguishes e.g. episode vs series ratings.
+type ContentRating struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Country     string `json:"country"`
+	Description string `json:"description"`
+	ContentType string `json:"contentType"`
+	Order       int    `json:"order"`
+}
+
 type SeriesDetails struct {
-	ID         int           `json:"id"`
-	Name       string        `json:"name"`
-	Overview   string        `json:"overview"`
-	FirstAired string        `json:"firstAired"`
-	Image      string        `json:"image"`
-	Seasons    []SeasonEntry `json:"seasons"`
-	Characters []Character   `json:"characters"`
-	Status     Status        `json:"status"`
-	RemoteIds  []RemoteID    `json:"remoteIds"`
+	ID             int             `json:"id"`
+	Name           string          `json:"name"`
+	Overview       string          `json:"overview"`
+	FirstAired     string          `json:"firstAired"`
+	Image          string          `json:"image"`
+	Seasons        []SeasonEntry   `json:"seasons"`
+	Characters     []Character     `json:"characters"`
+	Status         Status          `json:"status"`
+	RemoteIds      []RemoteID      `json:"remoteIds"`
+	ContentRatings []ContentRating `json:"contentRatings"`
 }
 
 // ImdbID extracts the IMDb ID from the RemoteIds list, if present.
