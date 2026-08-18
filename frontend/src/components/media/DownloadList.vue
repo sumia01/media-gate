@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, ChevronRight } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ChevronRight, ExternalLink } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import { useEventStream } from '@/composables/useEventStream'
@@ -193,6 +193,13 @@ function statusColor(status: string) {
   }
 }
 
+// Only http(s) links are safe to render as an href — details_url originates
+// from indexer-provided (potentially untrusted) content and could otherwise
+// carry a javascript: URI.
+function isSafeTrackerUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
 function formatSpeed(bytesPerSec?: number): string {
   if (!bytesPerSec || bytesPerSec <= 0) return ''
   if (bytesPerSec < 1024) return `${bytesPerSec} B/s`
@@ -368,6 +375,19 @@ watch(() => props.refreshKey, fetchDownloads)
               <div class="flex items-center gap-2 flex-shrink-0">
                 <span v-if="dl.size" class="text-xs text-gray-500">{{ formatSize(dl.size) }}</span>
 
+                <!-- Tracker link -->
+                <a
+                  v-if="dl.detailsUrl && isSafeTrackerUrl(dl.detailsUrl)"
+                  :href="dl.detailsUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-[10px] px-2 py-1 rounded border border-violet-800/30 text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200"
+                  title="Open on tracker"
+                  aria-label="Open on tracker"
+                >
+                  <ExternalLink class="w-3.5 h-3.5 inline-block" />
+                </a>
+
                 <!-- Files button -->
                 <button
                   v-if="dl.clientTorrentHash"
@@ -502,6 +522,19 @@ watch(() => props.refreshKey, fetchDownloads)
             <!-- Right side: size + delete -->
             <div class="flex items-center gap-2 flex-shrink-0">
               <span v-if="dl.size" class="text-xs text-gray-500">{{ formatSize(dl.size) }}</span>
+
+              <!-- Tracker link -->
+              <a
+                v-if="dl.detailsUrl && isSafeTrackerUrl(dl.detailsUrl)"
+                :href="dl.detailsUrl"
+                target="_blank"
+                rel="noopener"
+                class="text-[10px] px-2 py-1 rounded border border-violet-800/30 text-gray-400 hover:text-violet-300 hover:border-violet-500/50 transition-colors duration-200"
+                title="Open on tracker"
+                aria-label="Open on tracker"
+              >
+                <ExternalLink class="w-3.5 h-3.5 inline-block" />
+              </a>
 
               <button
                 v-if="confirmDeleteId !== dl.id"

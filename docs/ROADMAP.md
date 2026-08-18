@@ -554,6 +554,10 @@
 - [x] Multiple ratings for one country resolve series-level `contentType` first, then strictest `Order` — TVDB leaves `order` undocumented, so the tie-break errs strict rather than advertising a TV-MA series as TV-Y
 - [x] Not backfilled by design: existing items pick ratings up on re-match only
 
+## Phase 9.4: Tracker link on Downloads / Library Copies ✅
+- [x] `Download.detailsUrl` (already stored end-to-end — model, both creation paths, OpenAPI schema — since it mirrors the "Open on tracker" link shown on indexer search results) was never rendered anywhere; `DownloadList.vue` now shows an "Open on tracker" icon link on both active Downloads rows and Library Copies rows
+- [x] `:href` bindings on indexer-supplied URLs aren't covered by the existing HTML sanitizer (`sanitize.ts` only handles `v-html`), so the new link is gated on a local `isSafeTrackerUrl` (http(s) scheme only) to block a `javascript:` URI from a malicious indexer definition — pre-existing unchecked occurrences of `detailsUrl` in `IndexerSearchModal.vue`/`IndexerTryModal.vue`/`TestProfileModal.vue`/`IndexerSearchView.vue` were left as-is (out of scope for this pass)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
