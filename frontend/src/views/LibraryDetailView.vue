@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Eye, Plus, RefreshCw, Sparkles } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -89,15 +89,25 @@ async function fetchLibrary(id: number) {
   if (data) library.value = data
 }
 
-async function fetchMedia(id: number) {
-  loading.value = true
-  error.value = ''
+// Monotonic sequence so a slow response never overwrites a newer one.
+let fetchSeq = 0
+
+async function fetchMedia(id: number, opts: { background?: boolean } = {}) {
+  const seq = ++fetchSeq
+  // Background refreshes (SSE-driven) keep the grid mounted: toggling
+  // `loading` would swap in the "Loading..." branch, unmounting the grid,
+  // collapsing page height and resetting scroll on every matched item.
+  if (!opts.background) {
+    loading.value = true
+    error.value = ''
+  }
   const { data, error: err } = await client.GET('/libraries/{id}/media', {
     params: { path: { id } },
   })
+  if (seq !== fetchSeq) return
   loading.value = false
   if (err) {
-    error.value = 'Failed to load media items'
+    if (!opts.background) error.value = 'Failed to load media items'
     return
   }
   items.value = data?.items ?? []
@@ -148,10 +158,28 @@ function navigateToMedia(item: MediaItem) {
   router.push({ name: 'media-detail', params: { id: item.id } })
 }
 
-// SSE: real-time refresh when items are synced or matched in this library
+// SSE: real-time refresh when items are synced or matched in this library.
+// A full re-match fires media.item_matched once per item; refetching per
+// event hammered the API and churned the grid. Throttle to at most one
+// background refetch per second, always with a trailing call so the final
+// event's state is never missed.
+const REFETCH_THROTTLE_MS = 1000
+let refetchTimer: ReturnType<typeof setTimeout> | null = null
+let lastRefetchAt = 0
+
+function scheduleRefetch() {
+  if (refetchTimer) return
+  const delay = Math.max(0, REFETCH_THROTTLE_MS - (Date.now() - lastRefetchAt))
+  refetchTimer = setTimeout(() => {
+    refetchTimer = null
+    lastRefetchAt = Date.now()
+    if (library.value) fetchMedia(library.value.id, { background: true })
+  }, delay)
+}
+
 function handleLibraryEvent(data: any) {
   if (library.value && data.libraryId === library.value.id) {
-    fetchMedia(library.value.id)
+    scheduleRefetch()
   }
 }
 
@@ -173,8 +201,21 @@ onUnmounted(() => {
   for (const type of libraryEvents) {
     off(type, handleLibraryEvent)
   }
+  if (refetchTimer) {
+    clearTimeout(refetchTimer)
+    refetchTimer = null
+  }
 })
 watch(() => route.params.id, loadAll)
+
+// The match job runs on the backend and keeps going regardless of
+// navigation — this only warns that live progress won't be visible.
+onBeforeRouteLeave(() => {
+  if (!isMatchingThisLibrary.value) return true
+  return confirm(
+    `A re-match is still running for "${library.value?.name}". It will keep running in the background, but you won't see its progress here. Leave anyway?`,
+  )
+})
 </script>
 
 <template>
@@ -269,6 +310,7 @@ watch(() => route.params.id, loadAll)
               :src="posterUrl(item)"
               :alt="item.title"
               class="w-full h-full object-cover"
+              @load="($event.target as HTMLImageElement).style.display = ''"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span v-if="item.status === 'new'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
