@@ -558,6 +558,15 @@
 - [x] `Download.detailsUrl` (already stored end-to-end — model, both creation paths, OpenAPI schema — since it mirrors the "Open on tracker" link shown on indexer search results) was never rendered anywhere; `DownloadList.vue` now shows an "Open on tracker" icon link on both active Downloads rows and Library Copies rows
 - [x] `:href` bindings on indexer-supplied URLs aren't covered by the existing HTML sanitizer (`sanitize.ts` only handles `v-html`), so the new link is gated on a local `isSafeTrackerUrl` (http(s) scheme only) to block a `javascript:` URI from a malicious indexer definition — pre-existing unchecked occurrences of `detailsUrl` in `IndexerSearchModal.vue`/`IndexerTryModal.vue`/`TestProfileModal.vue`/`IndexerSearchView.vue` were left as-is (out of scope for this pass)
 
+## Phase 9.5: Similar-titles discovery from the media detail page ✅
+→ See ADR-130
+- [x] "Discover Similar" button on matched media-detail items opens `/discover/similar/:source/:externalId` — a paged DiscoverCard grid of titles like the current one (movies suggest movies, series suggest series), with the usual in-library/watched badges and preview navigation
+- [x] New `GET /discover/similar/{source}/{externalId}?mediaType=&page=` endpoint returning the standard discover envelope; degrades to empty like trending/popular when no TMDB key is configured
+- [x] TMDB-only by necessity: TVDB v4 has no similar/recommendations API, so TVDB series ids are resolved to TMDB ids via TMDB `/find` (memoized per process; TV branch forced regardless of `mediaType` — TMDB movie and TV ids are separate namespaces)
+- [x] `MovieSuggestions`/`TVSuggestions` prefer TMDB's behavior-based recommendations and fall back to the genre-based "similar" list, keyed on `total_results == 0` so pages of the two datasets can never mix
+- [x] Discover grid machinery extracted into shared `usePagedDiscover` + `useWatchedLibrary` composables (SimilarMediaView, DiscoverCategoryView, HomeView) — fixing unhandled fetch rejections that froze infinite scroll, an IntersectionObserver stall on tall viewports, a stale-response race on route change, duplicate cards across TMDB page snapshots, and the `totalPages: 0` latch on swallowed provider errors
+- [x] Known gap (deferred): similar/trending/popular cards are always `source=tmdb`, so TVDB-matched library items show no in-library badge there and route to the preview page instead of the library item
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
