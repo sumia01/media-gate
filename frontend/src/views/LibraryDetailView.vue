@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Eye, Plus, RefreshCw, Sparkles } from 'lucide-vue-next'
+import { Eye, Loader2, Plus, RefreshCw, Sparkles } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
@@ -183,6 +183,30 @@ function handleLibraryEvent(data: any) {
   }
 }
 
+// The item the matcher is working on right now (match_progress reports it
+// before matching starts). Drives the per-card blur + spinner treatment.
+const matchingItemId = ref<number | null>(null)
+
+function handleMatchProgress(data: any) {
+  if (library.value && data.libraryId === library.value.id) {
+    matchingItemId.value = data.mediaItemId ?? null
+  }
+}
+
+function handleMatchEnded(data: any) {
+  if (library.value && data.libraryId === library.value.id) {
+    matchingItemId.value = null
+  }
+}
+
+// An item's own match finishing clears its spinner immediately — the next
+// progress event may lag behind it by a rate-limiter wait.
+function handleItemMatched(data: any) {
+  if (data.mediaItemId === matchingItemId.value) {
+    matchingItemId.value = null
+  }
+}
+
 const libraryEvents = [
   'library.sync_completed',
   'library.match_completed',
@@ -196,17 +220,31 @@ onMounted(() => {
   for (const type of libraryEvents) {
     on(type, handleLibraryEvent)
   }
+  on('library.match_progress', handleMatchProgress)
+  on('library.match_completed', handleMatchEnded)
+  on('library.match_failed', handleMatchEnded)
+  on('media.item_matched', handleItemMatched)
 })
 onUnmounted(() => {
   for (const type of libraryEvents) {
     off(type, handleLibraryEvent)
   }
+  off('library.match_progress', handleMatchProgress)
+  off('library.match_completed', handleMatchEnded)
+  off('library.match_failed', handleMatchEnded)
+  off('media.item_matched', handleItemMatched)
   if (refetchTimer) {
     clearTimeout(refetchTimer)
     refetchTimer = null
   }
 })
-watch(() => route.params.id, loadAll)
+watch(
+  () => route.params.id,
+  () => {
+    matchingItemId.value = null
+    loadAll()
+  },
+)
 
 // The match job runs on the backend and keeps going regardless of
 // navigation — this only warns that live progress won't be visible.
@@ -300,20 +338,30 @@ onBeforeRouteLeave(() => {
         <div
           v-for="item in items"
           :key="item.id"
-          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/30 transition-colors duration-200 cursor-pointer"
+          class="group relative rounded-lg overflow-hidden bg-[#161b2e] border transition-colors duration-200 cursor-pointer"
+          :class="item.id === matchingItemId
+            ? 'border-violet-500/30'
+            : 'border-violet-900/20 hover:border-violet-500/30'"
           @click="navigateToMedia(item)"
         >
           <!-- Poster -->
-          <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
+          <div class="relative aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden">
             <img
               v-if="item.status !== 'new'"
               :src="posterUrl(item)"
               :alt="item.title"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover transition-all duration-300"
+              :class="item.id === matchingItemId ? 'blur-[2px] scale-105' : ''"
               @load="($event.target as HTMLImageElement).style.display = ''"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
             />
             <span v-if="item.status === 'new'" class="text-3xl text-gray-600">{{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}</span>
+            <div
+              v-if="item.id === matchingItemId"
+              class="absolute inset-0 flex items-center justify-center"
+            >
+              <Loader2 class="w-8 h-8 text-violet-300 animate-spin drop-shadow-lg" />
+            </div>
           </div>
           <!-- Info -->
           <div class="p-3">

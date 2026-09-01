@@ -101,7 +101,7 @@ func (s *Service) WithStore(st store.Store) *Service {
 	}
 }
 
-func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn func(current, total int)) error {
+func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn func(current, total int, itemID uint)) error {
 	source := s.settings.GetWithDefault(settings.KeyMetadataPrimarySource, "tmdb")
 	apiKey, err := s.resolveAPIKey(source)
 	if err != nil {
@@ -126,7 +126,7 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 
 	if len(items) == 0 {
 		if progressFn != nil {
-			progressFn(0, 0)
+			progressFn(0, 0, 0)
 		}
 		return nil
 	}
@@ -142,14 +142,16 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 			return err
 		}
 
+		// Report BEFORE matching so subscribers can indicate which item is
+		// being worked on right now; "current" means "working on the Nth".
+		if progressFn != nil {
+			progressFn(i+1, len(items), items[i].ID)
+		}
+
 		if err := s.matchSingleItem(&items[i], source, apiKey, lib.MediaType, fullRematch); err != nil {
 			slog.Warn("match failed for item", "item_id", items[i].ID, "title", items[i].Title, "error", err)
 		} else if items[i].Status == "available" {
 			matched++
-		}
-
-		if progressFn != nil {
-			progressFn(i+1, len(items))
 		}
 	}
 

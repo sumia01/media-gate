@@ -93,12 +93,14 @@ type LibrarySyncPayload struct {
 	Removed     int    `json:"removed,omitempty"`
 }
 
-// LibraryMatchPayload carries library match event data.
+// LibraryMatchPayload carries library match event data. MediaItemID is set
+// on progress events only: the item the matcher is currently working on.
 type LibraryMatchPayload struct {
 	LibraryID   uint   `json:"libraryId"`
 	LibraryName string `json:"libraryName"`
 	Current     int    `json:"current,omitempty"`
 	Total       int    `json:"total,omitempty"`
+	MediaItemID uint   `json:"mediaItemId,omitempty"`
 }
 
 // MediaItemPayload carries media item event data.

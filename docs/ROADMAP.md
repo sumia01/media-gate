@@ -567,6 +567,12 @@
 - [x] Discover grid machinery extracted into shared `usePagedDiscover` + `useWatchedLibrary` composables (SimilarMediaView, DiscoverCategoryView, HomeView) — fixing unhandled fetch rejections that froze infinite scroll, an IntersectionObserver stall on tall viewports, a stale-response race on route change, duplicate cards across TMDB page snapshots, and the `totalPages: 0` latch on swallowed provider errors
 - [x] Known gap (deferred): similar/trending/popular cards are always `source=tmdb`, so TVDB-matched library items show no in-library badge there and route to the preview page instead of the library item
 
+## Phase 9.6: Per-item re-match indicator in the library grid ✅
+→ See ADR-132
+- [x] While a library match job runs, the card of the item currently being matched shows a slight poster blur (`blur-[2px]` + `scale-105` to hide the edge fringe), a centered violet `Loader2` spinner, and the hover border color — driven by a new `mediaItemId` field on the `library.match_progress` SSE payload
+- [x] `MatchLibrary` now reports progress BEFORE matching each item (with the item's ID), so `current/total` means "working on the Nth of M" rather than "N done" — the button label reads more truthfully mid-item
+- [x] Indicator clears on that item's `media.item_matched` (the next progress event can lag by a rate-limiter wait), on `match_completed`/`match_failed`, and on library switch; unmatched items simply hand the spinner to the next item
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

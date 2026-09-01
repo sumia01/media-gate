@@ -202,7 +202,7 @@ func (q *Queue) execute(job *Job) {
 		q.bus.Publish(eventbus.LibraryMatchStarted, eventbus.LibraryMatchPayload{
 			LibraryID: lib.ID, LibraryName: lib.Name,
 		})
-		progressFn := func(current, total int) {
+		progressFn := func(current, total int, itemID uint) {
 			q.mu.Lock()
 			job.Progress = &JobProgress{
 				Current: current,
@@ -211,7 +211,7 @@ func (q *Queue) execute(job *Job) {
 			}
 			q.mu.Unlock()
 			q.bus.Publish(eventbus.LibraryMatchProgress, eventbus.LibraryMatchPayload{
-				LibraryID: lib.ID, LibraryName: lib.Name, Current: current, Total: total,
+				LibraryID: lib.ID, LibraryName: lib.Name, Current: current, Total: total, MediaItemID: itemID,
 			})
 		}
 		matchErr := q.matchSvc.MatchLibrary(lib, job.FullRematch, progressFn)
