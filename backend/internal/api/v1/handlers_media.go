@@ -3,12 +3,22 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"sort"
 
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
+
+// recalcStatusAfterMonitorChange refreshes the item's persisted status after a
+// monitoring change (the status state machine is monitoring-aware). Failures
+// are logged, not returned — the monitor update itself already succeeded.
+func (h *Handlers) recalcStatusAfterMonitorChange(itemID uint) {
+	if err := h.syncSvc.RecalcMediaItemStatus(itemID); err != nil {
+		slog.Warn("monitor update: status recalc failed", "media_item_id", itemID, "error", err)
+	}
+}
 
 func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject) (GetMediaItemResponseObject, error) {
 	item, err := h.store.GetMediaItem(uint(req.Id))
@@ -96,6 +106,15 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 		}
 		if err := h.syncSvc.UpsertEpisodeMonitors(item.ID, epMonitors); err != nil {
 			return nil, err
+		}
+	}
+
+	// Monitoring feeds the status state machine — recalculate and reload so
+	// the response carries the fresh status.
+	if req.Body.Monitored != nil || req.Body.SeasonMonitors != nil || req.Body.EpisodeMonitors != nil {
+		h.recalcStatusAfterMonitorChange(item.ID)
+		if fresh, err := h.store.GetMediaItem(item.ID); err == nil {
+			item = fresh
 		}
 	}
 
@@ -381,6 +400,7 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 		}
 		// Clear episode-level overrides — episodes now inherit from the season setting.
 		_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
+		h.recalcStatusAfterMonitorChange(uint(req.Id))
 		return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 			Id:           int64(existing.ID),
 			MediaItemId:  int64(existing.MediaItemID),
@@ -400,6 +420,7 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 	}
 	// Clear episode-level overrides — episodes now inherit from the season setting.
 	_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
+	h.recalcStatusAfterMonitorChange(uint(req.Id))
 
 	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 		Id:           int64(sm.ID),
@@ -428,6 +449,7 @@ func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMoni
 	}); err != nil {
 		return nil, err
 	}
+	h.recalcStatusAfterMonitorChange(uint(req.Id))
 
 	return UpdateEpisodeMonitor200JSONResponse{Monitored: req.Body.Monitored}, nil
 }

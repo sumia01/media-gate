@@ -14,8 +14,12 @@ import (
 type fakeStore struct {
 	store.Store
 
-	items map[uint]*store.MediaItem
-	files []store.MediaFile
+	items           map[uint]*store.MediaItem
+	files           []store.MediaFile
+	metas           map[uint]*store.MediaMetadata
+	episodes        []store.Episode
+	seasonMonitors  []store.SeasonMonitor
+	episodeMonitors []store.EpisodeMonitor
 
 	deletedItems     []uint
 	deletedMeta      []uint
@@ -29,6 +33,61 @@ func (f *fakeStore) GetMediaItem(id uint) (*store.MediaItem, error) {
 		return it, nil
 	}
 	return nil, store.ErrNotFound
+}
+
+func (f *fakeStore) UpdateMediaItem(item *store.MediaItem) error {
+	if _, ok := f.items[item.ID]; !ok {
+		return store.ErrNotFound
+	}
+	f.items[item.ID] = item
+	return nil
+}
+
+func (f *fakeStore) GetMediaMetadataByMediaItem(itemID uint) (*store.MediaMetadata, error) {
+	if m, ok := f.metas[itemID]; ok {
+		return m, nil
+	}
+	return nil, store.ErrNotFound
+}
+
+func (f *fakeStore) ListMediaFilesByMediaItem(itemID uint) ([]store.MediaFile, error) {
+	var out []store.MediaFile
+	for _, mf := range f.files {
+		if mf.MediaItemID == itemID {
+			out = append(out, mf)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) ListEpisodesByMediaItem(itemID uint) ([]store.Episode, error) {
+	var out []store.Episode
+	for _, ep := range f.episodes {
+		if ep.MediaItemID == itemID {
+			out = append(out, ep)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) ListSeasonMonitorsByMediaItem(itemID uint) ([]store.SeasonMonitor, error) {
+	var out []store.SeasonMonitor
+	for _, m := range f.seasonMonitors {
+		if m.MediaItemID == itemID {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) ListEpisodeMonitorsByMediaItem(itemID uint) ([]store.EpisodeMonitor, error) {
+	var out []store.EpisodeMonitor
+	for _, m := range f.episodeMonitors {
+		if m.MediaItemID == itemID {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) ListMediaFilesByLibrary(uint) ([]store.MediaFile, error) {

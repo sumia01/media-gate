@@ -847,6 +847,7 @@ watch(() => route.params.id, loadAll)
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
         @search-season-subtitles="(sn: number) => openSubtitleSearch(sn)"
         @search-episode-subtitles="(sn: number, en: number) => openSubtitleSearch(sn, en)"
+        @monitors-changed="item && fetchItem(item.id)"
         class="mt-8"
       />
 

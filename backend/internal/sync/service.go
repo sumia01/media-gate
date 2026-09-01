@@ -129,6 +129,11 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		removePaths = append(removePaths, existingFiles[i].Path)
 	}
 
+	// affectedItems collects items whose file set changed during this sync so
+	// their status can be recalculated once at the end (recalc no-ops on items
+	// that were orphan-deleted in the meantime).
+	affectedItems := make(map[uint]struct{})
+
 	// Remove media files no longer on disk
 	if len(removePaths) > 0 {
 		if err := s.store.DeleteMediaFilesByPaths(removePaths); err != nil {
@@ -139,6 +144,11 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		pathToItem := make(map[string]uint, len(existingFiles))
 		for i := range existingFiles {
 			pathToItem[existingFiles[i].Path] = existingFiles[i].MediaItemID
+		}
+		for _, p := range removePaths {
+			if id, ok := pathToItem[p]; ok {
+				affectedItems[id] = struct{}{}
+			}
 		}
 		orphanIDs := s.findOrphanedMediaItems(removePaths, existingFiles, pathToItem)
 		for _, id := range orphanIDs {
@@ -212,7 +222,16 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 			if err := s.store.CreateMediaFile(mf); err != nil {
 				return added, removed, fmt.Errorf("creating media file %q: %w", sf.fileName, err)
 			}
+			affectedItems[mediaItemID] = struct{}{}
 			added++
+		}
+	}
+
+	// Recalculate statuses for items whose files were added or removed —
+	// a full library scan must keep statuses as fresh as a single-item resync.
+	for id := range affectedItems {
+		if err := s.RecalcMediaItemStatus(id); err != nil {
+			slog.Warn("sync: status recalc failed", "media_item_id", id, "error", err)
 		}
 	}
 
@@ -416,8 +435,29 @@ func intPtrEqual(a, b *int) bool {
 	return *a == *b
 }
 
-// RecalcMediaItemStatus recalculates and persists the media item's status
-// based on the current MediaFile and Episode records in the database.
+// RecalcMediaItemStatus recalculates and persists the media item's status from
+// the current DB state. It is the single authority for the status state machine:
+//
+//	unmatched (no MediaMetadata)      → status untouched: "new" marks the
+//	                                    auto-match queue (ListNewMediaItemsByLibrary)
+//	                                    and belongs to the matching service
+//	movie:   has files                → "available"
+//	         no files, source=request → "requested"
+//	         no files                 → "missing"
+//	series:  no files, source=request → "requested"
+//	         otherwise, coverage of the WANTED aired episodes decides. Wanted =
+//	         monitored aired episodes (EpisodeMonitor > SeasonMonitor > not
+//	         monitored — the same hierarchy the monitor worker uses) when the
+//	         item is monitored; ALL aired episodes when it is not (informational
+//	         disk completeness for unmonitored items).
+//	         wanted empty → "available" when files exist or the item is monitored
+//	                        (nothing wanted is absent — e.g. only future seasons
+//	                        are monitored), "missing" otherwise
+//	         all covered  → "available"
+//	         some covered → "partial"
+//	         none covered → "partial" when any files exist (files whose names
+//	                        failed S/E parsing still count as presence), else
+//	                        "missing"
 func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 	item, err := s.store.GetMediaItem(itemID)
 	if err != nil {
@@ -425,6 +465,16 @@ func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 			return nil // item was deleted, nothing to recalculate
 		}
 		return fmt.Errorf("recalc status: get item: %w", err)
+	}
+
+	// Unmatched items keep their status untouched: "new" is the auto-match
+	// queue marker and overwriting it would silently exclude the item from
+	// MatchLibrary forever.
+	if _, err := s.store.GetMediaMetadataByMediaItem(itemID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("recalc status: get metadata: %w", err)
 	}
 
 	files, err := s.store.ListMediaFilesByMediaItem(itemID)
@@ -443,29 +493,40 @@ func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 		} else {
 			newStatus = "missing"
 		}
+	} else if !hasFiles && item.Source == "request" {
+		// A requested series with nothing imported yet stays "requested"
+		// regardless of monitoring configuration.
+		newStatus = "requested"
 	} else {
-		// series
-		if !hasFiles {
-			if item.Source == "request" {
-				newStatus = "requested"
+		episodes, err := s.store.ListEpisodesByMediaItem(itemID)
+		if err != nil {
+			return fmt.Errorf("recalc status: list episodes: %w", err)
+		}
+
+		wanted := filterAiredEpisodes(episodes)
+		if item.Monitored {
+			wanted, err = s.filterMonitoredEpisodes(itemID, wanted)
+			if err != nil {
+				return fmt.Errorf("recalc status: resolve monitors: %w", err)
+			}
+		}
+		covered := countCoveredEpisodes(wanted, files)
+
+		switch {
+		case len(wanted) == 0:
+			if hasFiles || item.Monitored {
+				newStatus = "available"
 			} else {
 				newStatus = "missing"
 			}
-		} else {
-			episodes, err := s.store.ListEpisodesByMediaItem(itemID)
-			if err != nil {
-				return fmt.Errorf("recalc status: list episodes: %w", err)
-			}
-
-			aired := filterAiredEpisodes(episodes)
-			if len(aired) == 0 {
-				// No aired episodes tracked yet but files exist — treat as available.
-				newStatus = "available"
-			} else if allAiredEpisodesCovered(aired, files) {
-				newStatus = "available"
-			} else {
-				newStatus = "partial"
-			}
+		case covered == len(wanted):
+			newStatus = "available"
+		case covered > 0:
+			newStatus = "partial"
+		case hasFiles:
+			newStatus = "partial"
+		default:
+			newStatus = "missing"
 		}
 	}
 
@@ -474,6 +535,44 @@ func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 	}
 	item.Status = newStatus
 	return s.store.UpdateMediaItem(item)
+}
+
+// filterMonitoredEpisodes returns the episodes that resolve to monitored via
+// the EpisodeMonitor > SeasonMonitor > not-monitored hierarchy (no season row =
+// not monitored), mirroring the monitor worker's wanted-episode resolution.
+func (s *Service) filterMonitoredEpisodes(itemID uint, episodes []store.Episode) ([]store.Episode, error) {
+	monitors, err := s.store.ListSeasonMonitorsByMediaItem(itemID)
+	if err != nil {
+		return nil, err
+	}
+	seasonMon := make(map[int]bool, len(monitors))
+	for _, m := range monitors {
+		seasonMon[m.SeasonNumber] = m.Monitored
+	}
+
+	epMonitors, err := s.store.ListEpisodeMonitorsByMediaItem(itemID)
+	if err != nil {
+		return nil, err
+	}
+	type seKey struct{ s, e int }
+	epMon := make(map[seKey]bool, len(epMonitors))
+	for _, em := range epMonitors {
+		epMon[seKey{em.SeasonNumber, em.EpisodeNumber}] = em.Monitored
+	}
+
+	monitored := make([]store.Episode, 0, len(episodes))
+	for _, ep := range episodes {
+		if mon, ok := epMon[seKey{ep.SeasonNumber, ep.EpisodeNumber}]; ok {
+			if mon {
+				monitored = append(monitored, ep)
+			}
+			continue
+		}
+		if seasonMon[ep.SeasonNumber] {
+			monitored = append(monitored, ep)
+		}
+	}
+	return monitored, nil
 }
 
 // filterAiredEpisodes returns only episodes whose AirDate is non-empty and not in the future.
@@ -488,9 +587,9 @@ func filterAiredEpisodes(episodes []store.Episode) []store.Episode {
 	return aired
 }
 
-// allAiredEpisodesCovered checks whether every aired episode has at least one
+// countCoveredEpisodes counts how many of the given episodes have at least one
 // matching MediaFile (by SeasonNumber + EpisodeNumber).
-func allAiredEpisodesCovered(aired []store.Episode, files []store.MediaFile) bool {
+func countCoveredEpisodes(episodes []store.Episode, files []store.MediaFile) int {
 	type seKey struct{ s, e int }
 	fileSet := make(map[seKey]struct{}, len(files))
 	for _, f := range files {
@@ -498,12 +597,13 @@ func allAiredEpisodesCovered(aired []store.Episode, files []store.MediaFile) boo
 			fileSet[seKey{*f.SeasonNumber, *f.EpisodeNumber}] = struct{}{}
 		}
 	}
-	for _, ep := range aired {
-		if _, ok := fileSet[seKey{ep.SeasonNumber, ep.EpisodeNumber}]; !ok {
-			return false
+	covered := 0
+	for _, ep := range episodes {
+		if _, ok := fileSet[seKey{ep.SeasonNumber, ep.EpisodeNumber}]; ok {
+			covered++
 		}
 	}
-	return true
+	return covered
 }
 
 // groupFolders groups top-level folders into logical media items.
@@ -721,12 +821,16 @@ func fileSize(path string) int64 {
 // findOrphanedMediaItems returns MediaItem IDs that have no remaining MediaFiles
 // after the given paths were removed and are therefore safe to hard-delete.
 //
-// Two classes of item are deliberately NOT reported as orphans:
+// Three classes of item are deliberately NOT reported as orphans:
 //  1. Items whose media item could not be loaded (skipped defensively — we never
 //     delete something we cannot inspect).
 //  2. Request/pending items (see isRequestOrPending). These legitimately have zero
 //     disk files because they have not been downloaded yet; deleting them would
 //     destroy the user's request together with its metadata and episode records.
+//  3. Monitored items. The user asked the app to keep tracking them (e.g. only
+//     future seasons monitored, old seasons deleted from disk); hard-deleting
+//     would destroy the monitors and metadata. Their status is recalculated to
+//     reflect the empty disk state instead.
 func (s *Service) findOrphanedMediaItems(removedPaths []string, allFiles []store.MediaFile, pathToItem map[string]uint) []uint {
 	removedSet := make(map[string]struct{}, len(removedPaths))
 	for _, p := range removedPaths {
@@ -761,6 +865,11 @@ func (s *Service) findOrphanedMediaItems(removedPaths []string, allFiles []store
 		if isRequestOrPending(item) {
 			slog.Info("sync: skipping orphan delete for request/pending item",
 				"media_item_id", itemID, "source", item.Source, "status", item.Status)
+			continue
+		}
+		if item.Monitored {
+			slog.Info("sync: skipping orphan delete for monitored item",
+				"media_item_id", itemID, "title", item.Title)
 			continue
 		}
 		orphans = append(orphans, itemID)

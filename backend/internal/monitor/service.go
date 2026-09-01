@@ -45,11 +45,26 @@ var terminalFailureStatuses = func() map[string]bool {
 }()
 
 type Service struct {
-	store      store.Store
-	indexerSvc *indexer.Service
-	settings   *settings.Service
-	bus        *eventbus.Bus
-	loop       *worker.Loop
+	store        store.Store
+	indexerSvc   *indexer.Service
+	settings     *settings.Service
+	bus          *eventbus.Bus
+	loop         *worker.Loop
+	statusRecalc StatusRecalculator
+}
+
+// StatusRecalculator recalculates a media item's persisted status from current
+// DB state. Implemented by sync.Service; injected via setter (see main.go).
+type StatusRecalculator interface {
+	RecalcMediaItemStatus(itemID uint) error
+}
+
+// SetStatusRecalculator injects the status recalculator. The monitor refreshes
+// each monitored item's status once per cycle because "aired" is time-driven: a
+// new episode airing must flip a fully-covered series from "available" to
+// "partial"/"missing" even when no other DB write ever happens.
+func (s *Service) SetStatusRecalculator(r StatusRecalculator) {
+	s.statusRecalc = r
 }
 
 func NewService(s store.Store, indexerSvc *indexer.Service, settingsSvc *settings.Service, bus *eventbus.Bus) *Service {
@@ -121,6 +136,15 @@ func (s *Service) processOnce() {
 			s.processMovie(item, meta, downloads, files)
 		case "series":
 			s.processSeries(item, meta, downloads, files)
+		}
+
+		// Absorb time-driven status transitions (an episode airing changes the
+		// correct status without any write happening elsewhere). No-ops when
+		// the status is already current.
+		if s.statusRecalc != nil {
+			if err := s.statusRecalc.RecalcMediaItemStatus(item.ID); err != nil {
+				slog.Warn("monitor: status recalc failed", "item_id", item.ID, "error", err)
+			}
 		}
 	}
 }

@@ -15,6 +15,7 @@ const emit = defineEmits<{
   searchEpisode: [seasonNumber: number, episodeNumber: number, episodeId: number]
   searchSeasonSubtitles: [seasonNumber: number]
   searchEpisodeSubtitles: [seasonNumber: number, episodeNumber: number]
+  monitorsChanged: []
 }>()
 
 const seasons = ref<SeasonSummary[]>([])
@@ -38,6 +39,8 @@ async function toggleSeasonMonitor(seasonNumber: number, currentMonitored: boole
   })
   // Refetch to reflect cascade (season toggle clears episode overrides)
   await fetchEpisodes()
+  // Monitoring feeds the item's status — let the parent refresh the badge.
+  emit('monitorsChanged')
 }
 
 async function toggleEpisodeMonitor(ep: Episode) {
@@ -47,6 +50,7 @@ async function toggleEpisodeMonitor(ep: Episode) {
     body: { monitored: newVal },
   })
   ep.monitored = newVal
+  emit('monitorsChanged')
 }
 
 function toggleSeason(seasonNumber: number) {

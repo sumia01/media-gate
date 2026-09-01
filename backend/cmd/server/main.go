@@ -236,6 +236,7 @@ func main() {
 	importerSvc.Start()
 
 	monitorSvc := monitor.NewService(db, indexerSvc, settingsSvc, bus)
+	monitorSvc.SetStatusRecalculator(syncSvc)
 	monitorSvc.Start()
 	workerReg.Register(monitorSvc.Loop())
 
