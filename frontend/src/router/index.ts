@@ -12,6 +12,7 @@ import MediaDetailView from '@/views/MediaDetailView.vue'
 import MediaPreviewView from '@/views/MediaPreviewView.vue'
 import MediaProfilesView from '@/views/MediaProfilesView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import SimilarMediaView from '@/views/SimilarMediaView.vue'
 import UserProfileView from '@/views/UserProfileView.vue'
 import UsersView from '@/views/UsersView.vue'
 import WatchedView from '@/views/WatchedView.vue'
@@ -57,6 +58,12 @@ const router = createRouter({
           name: 'discover-popular-series',
           component: DiscoverCategoryView,
           props: { category: 'popular-series' },
+        },
+        {
+          path: 'discover/similar/:source/:externalId',
+          name: 'discover-similar',
+          component: SimilarMediaView,
+          props: true,
         },
         {
           path: 'libraries',

@@ -495,6 +495,17 @@ watch(() => route.params.id, loadAll)
         >
           Search Indexers
         </button>
+        <router-link
+          v-if="metadata"
+          :to="{
+            name: 'discover-similar',
+            params: { source: metadata.source, externalId: metadata.externalId },
+            query: { mediaType: item.mediaType, title: metadata.title || item.title },
+          }"
+          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+        >
+          Discover Similar
+        </router-link>
         <button
           v-if="item.source === 'disk'"
           class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"

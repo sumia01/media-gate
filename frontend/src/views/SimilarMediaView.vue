@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, Loader2 } from 'lucide-vue-next'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
 import { usePagedDiscover } from '@/composables/usePagedDiscover'
@@ -8,41 +9,47 @@ import { useWatchedLibrary } from '@/composables/useWatchedLibrary'
 import type { DiscoverItem } from '@/types/api'
 
 const props = defineProps<{
-  category: 'trending' | 'popular-movies' | 'popular-series'
+  source: string
+  externalId: string
 }>()
 
-const title = computed(() => {
-  switch (props.category) {
-    case 'trending':
-      return 'Trending This Week'
-    case 'popular-movies':
-      return 'Popular Movies'
-    case 'popular-series':
-      return 'Popular Series'
-  }
-})
+const route = useRoute()
+const router = useRouter()
 
-const endpoint = computed(() => {
-  switch (props.category) {
-    case 'trending':
-      return '/discover/trending' as const
-    case 'popular-movies':
-      return '/discover/popular-movies' as const
-    case 'popular-series':
-      return '/discover/popular-series' as const
-  }
+const sourceParam = computed(() => (props.source === 'tvdb' ? 'tvdb' : 'tmdb') as 'tmdb' | 'tvdb')
+const mediaType = computed(() => (route.query.mediaType === 'series' ? 'series' : 'movie') as 'movie' | 'series')
+
+const title = computed(() => {
+  const t = route.query.title
+  return typeof t === 'string' && t ? `Similar to ${t}` : 'Similar Titles'
 })
 
 const { isWatched, isInLibrary, fetchWatched, fetchLibraryItems, goToPreview } = useWatchedLibrary()
 
-const { items, loading, initialLoading, loadFailed, hasMore, sentinel, fetchPage } = usePagedDiscover<DiscoverItem>(
-  async (page) => {
-    const { data } = await client.GET(endpoint.value, {
-      params: { query: { page } },
-    })
-    return data
+const { items, loading, initialLoading, loadFailed, hasMore, sentinel, fetchPage, reset } =
+  usePagedDiscover<DiscoverItem>(
+    async (page) => {
+      const { data } = await client.GET('/discover/similar/{source}/{externalId}', {
+        params: {
+          path: { source: sourceParam.value, externalId: Number(props.externalId) },
+          query: { mediaType: mediaType.value, page },
+        },
+      })
+      return data
+    },
+    (item) => `${item.source}:${item.externalId}`,
+  )
+
+// Refetch when the route points at a different origin title while this
+// component instance is reused. The route-name guard keeps the watcher from
+// firing on the way OUT of the page, when route.query already belongs to the
+// next route but this component is still mounted.
+watch(
+  () => `${props.source}:${props.externalId}:${mediaType.value}`,
+  () => {
+    if (route.name !== 'discover-similar') return
+    reset()
   },
-  (item) => `${item.source}:${item.externalId}`,
 )
 
 onMounted(() => {
@@ -55,9 +62,12 @@ onMounted(() => {
   <div>
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl font-semibold text-gray-100 tracking-tight">{{ title }}</h1>
-      <router-link :to="{ name: 'home' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">
+      <button
+        class="text-sm text-violet-400 hover:text-violet-300 transition-colors"
+        @click="router.back()"
+      >
         <ArrowLeft class="w-4 h-4 inline" /> Back
-      </router-link>
+      </button>
     </div>
 
     <!-- Skeleton grid on initial load -->
@@ -67,6 +77,12 @@ onMounted(() => {
         <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
         <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
       </div>
+    </div>
+
+    <!-- Empty state -->
+    <div v-else-if="!items.length && !loadFailed" class="text-center py-16">
+      <p class="text-gray-400 text-sm">No similar titles found</p>
+      <p class="text-gray-600 text-xs mt-1">TMDB returned no suggestions for this title — this also happens when no TMDB API key is configured</p>
     </div>
 
     <!-- Items grid -->

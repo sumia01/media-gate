@@ -1314,6 +1314,64 @@ paths:
                   totalPages:
                     type: integer
 
+  /discover/similar/{source}/{externalId}:
+    parameters:
+      - name: source
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+      - name: externalId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getSimilarMedia
+      tags:
+        - discover
+      summary: Titles similar to a movie or series
+      description: Uses TMDB recommendations, falling back to TMDB's similar list when no recommendations exist. TVDB ids are resolved to TMDB via /find (TVDB has no similarity API).
+      parameters:
+        - name: mediaType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - movie
+              - series
+          description: Media type (selects the TMDB movie or TV endpoint)
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Similar titles
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - page
+                  - totalPages
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoverItem"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
+
   /media-profiles:
     get:
       operationId: listMediaProfiles

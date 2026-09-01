@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
+import { useWatchedLibrary } from '@/composables/useWatchedLibrary'
 import type { DiscoverItem, MediaItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
 
@@ -19,46 +20,11 @@ const trendingLoading = ref(true)
 const moviesLoading = ref(true)
 const seriesLoading = ref(true)
 
-const watchedSet = ref<Set<string>>(new Set())
-const libraryMap = ref<Map<string, number>>(new Map())
-
-function watchedKey(source: string, externalId: number): string {
-  return `${source}:${externalId}`
-}
-
-function isWatched(source: string, externalId: number): boolean {
-  return watchedSet.value.has(watchedKey(source, externalId))
-}
+const { isWatched, isInLibrary, fetchWatched, fetchLibraryItems, goToPreview } = useWatchedLibrary()
 
 function isRecentWatched(item: MediaItem): boolean {
   if (!item.metadata?.source || !item.metadata?.externalId) return false
   return isWatched(item.metadata.source, item.metadata.externalId)
-}
-
-function isInLibrary(source: string, externalId: number): boolean {
-  return libraryMap.value.has(watchedKey(source, externalId))
-}
-
-function libraryMediaId(source: string, externalId: number): number | undefined {
-  return libraryMap.value.get(watchedKey(source, externalId))
-}
-
-async function fetchWatched() {
-  const { data } = await client.GET('/watched')
-  const set = new Set<string>()
-  for (const item of data?.items ?? []) {
-    set.add(watchedKey(item.source, item.externalId))
-  }
-  watchedSet.value = set
-}
-
-async function fetchLibraryItems() {
-  const { data } = await client.GET('/media/external-ids')
-  const map = new Map<string, number>()
-  for (const item of data?.items ?? []) {
-    map.set(watchedKey(item.source, item.externalId), item.mediaItemId)
-  }
-  libraryMap.value = map
 }
 
 onMounted(() => {
@@ -96,19 +62,6 @@ async function fetchPopularSeries() {
 
 function goToMedia(item: MediaItem) {
   router.push({ name: 'media-detail', params: { id: item.id } })
-}
-
-function goToPreview(item: DiscoverItem) {
-  const mediaId = libraryMediaId(item.source, item.externalId)
-  if (mediaId !== undefined) {
-    router.push({ name: 'media-detail', params: { id: mediaId } })
-    return
-  }
-  router.push({
-    name: 'media-preview',
-    params: { source: item.source, externalId: item.externalId },
-    query: { mediaType: item.mediaType },
-  })
 }
 
 function getRecentPoster(item: MediaItem): string | null {

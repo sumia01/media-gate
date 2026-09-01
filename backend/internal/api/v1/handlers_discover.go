@@ -95,11 +95,7 @@ func (h *Handlers) GetPopularMovies(_ context.Context, request GetPopularMoviesR
 		if err != nil {
 			return nil, 0, err
 		}
-		out := make([]DiscoverItem, len(results))
-		for i, r := range results {
-			out[i] = toDiscoverItem(r.ID, r.Title, r.ReleaseDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeMovie)
-		}
-		return out, tp, nil
+		return moviesToDiscoverItems(results), tp, nil
 	})
 	if err != nil {
 		return nil, err
@@ -117,16 +113,83 @@ func (h *Handlers) GetPopularSeries(_ context.Context, request GetPopularSeriesR
 		if err != nil {
 			return nil, 0, err
 		}
-		out := make([]DiscoverItem, len(results))
-		for i, r := range results {
-			out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
-		}
-		return out, tp, nil
+		return tvToDiscoverItems(results), tp, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return GetPopularSeries200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
+}
+
+func (h *Handlers) GetSimilarMedia(_ context.Context, request GetSimilarMediaRequestObject) (GetSimilarMediaResponseObject, error) {
+	page := 1
+	if request.Params.Page != nil {
+		page = *request.Params.Page
+	}
+	items, totalPages, err := h.fetchDiscover(func(c *tmdb.Client) ([]DiscoverItem, int, error) {
+		// TVDB has no similarity API and is series-only in MediaGate, so a
+		// TVDB id is resolved to its TMDB series id via TMDB's /find and the
+		// TV branch is forced regardless of mediaType: TMDB movie and TV ids
+		// are separate namespaces, and feeding the resolved TV id to the
+		// movie endpoints would return suggestions for an unrelated movie
+		// that happens to share the number.
+		if request.Source == "tvdb" {
+			id, err := h.resolveTVDBSeries(c, request.ExternalId)
+			if err != nil {
+				return nil, 0, err
+			}
+			if id == 0 {
+				return []DiscoverItem{}, 0, nil
+			}
+			results, tp, err := c.TVSuggestions(id, page)
+			if err != nil {
+				return nil, 0, err
+			}
+			return tvToDiscoverItems(results), tp, nil
+		}
+
+		if request.Params.MediaType == GetSimilarMediaParamsMediaTypeMovie {
+			results, tp, err := c.MovieSuggestions(request.ExternalId, page)
+			if err != nil {
+				return nil, 0, err
+			}
+			return moviesToDiscoverItems(results), tp, nil
+		}
+
+		results, tp, err := c.TVSuggestions(request.ExternalId, page)
+		if err != nil {
+			return nil, 0, err
+		}
+		return tvToDiscoverItems(results), tp, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return GetSimilarMedia200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
+}
+
+// resolveTVDBSeries memoizes TMDB /find lookups of TVDB series ids. The
+// mapping is immutable, and the similar-media endpoint would otherwise re-run
+// it for every infinite-scroll page. Misses and errors are not cached so a
+// transient TMDB failure doesn't pin a resolvable id to "unknown".
+func (h *Handlers) resolveTVDBSeries(c *tmdb.Client, tvdbID int) (int, error) {
+	h.tvdbFindMu.Lock()
+	id, ok := h.tvdbFindCache[tvdbID]
+	h.tvdbFindMu.Unlock()
+	if ok {
+		return id, nil
+	}
+	id, err := c.FindTVByTVDBID(tvdbID)
+	if err != nil || id == 0 {
+		return id, err
+	}
+	h.tvdbFindMu.Lock()
+	if h.tvdbFindCache == nil {
+		h.tvdbFindCache = make(map[int]int)
+	}
+	h.tvdbFindCache[tvdbID] = id
+	h.tvdbFindMu.Unlock()
+	return id, nil
 }
 
 const tmdbPosterW342 = "https://image.tmdb.org/t/p/w342"
@@ -144,6 +207,22 @@ func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, int, 
 		return []DiscoverItem{}, 0, nil
 	}
 	return items, totalPages, nil
+}
+
+func moviesToDiscoverItems(results []tmdb.MovieResult) []DiscoverItem {
+	out := make([]DiscoverItem, len(results))
+	for i, r := range results {
+		out[i] = toDiscoverItem(r.ID, r.Title, r.ReleaseDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeMovie)
+	}
+	return out
+}
+
+func tvToDiscoverItems(results []tmdb.TVResult) []DiscoverItem {
+	out := make([]DiscoverItem, len(results))
+	for i, r := range results {
+		out[i] = toDiscoverItem(r.ID, r.Name, r.FirstAirDate, r.Overview, r.PosterPath, r.VoteAverage, DiscoverItemMediaTypeSeries)
+	}
+	return out
 }
 
 // toDiscoverItem builds a DiscoverItem from common TMDB result fields.

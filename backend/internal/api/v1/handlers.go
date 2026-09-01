@@ -48,6 +48,12 @@ type Handlers struct {
 	secureCookies  bool
 	setupMu        sync.Mutex
 	version        string
+
+	// tvdbFindCache memoizes TMDB /find resolutions of TVDB series ids for
+	// the similar-media endpoint (see resolveTVDBSeries). Lazily initialized
+	// under tvdbFindMu.
+	tvdbFindMu    sync.Mutex
+	tvdbFindCache map[int]int
 }
 
 func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, plexProvider *plex.Provider, workerReg *worker.Registry, version string) *Handlers {

@@ -122,35 +122,105 @@ func (c *Client) TrendingAll(timeWindow string, page int) ([]TrendingResult, int
 }
 
 func (c *Client) PopularMovies(page int) ([]MovieResult, int, error) {
-	params := url.Values{"page": {strconv.Itoa(page)}}
-	body, err := c.getWithParams("/movie/popular", params)
-	if err != nil {
-		return nil, 0, err
-	}
-	var resp struct {
-		Results    []MovieResult `json:"results"`
-		TotalPages int           `json:"total_pages"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, 0, fmt.Errorf("decoding response: %w", err)
-	}
-	return resp.Results, resp.TotalPages, nil
+	results, totalPages, _, err := c.pagedMovies("/movie/popular", page)
+	return results, totalPages, err
 }
 
 func (c *Client) PopularTV(page int) ([]TVResult, int, error) {
-	params := url.Values{"page": {strconv.Itoa(page)}}
-	body, err := c.getWithParams("/tv/popular", params)
+	results, totalPages, _, err := c.pagedTV("/tv/popular", page)
+	return results, totalPages, err
+}
+
+// MovieSuggestions returns TMDB's behavior-based recommendations for a movie,
+// falling back to the genre/keyword-based "similar" list when the
+// recommendation list is empty (common for obscure titles). The fallback keys
+// on the recommendation list's total_results — a property of the whole list,
+// not of the requested page — so the decision is stateless per request and
+// pages of the two datasets are never mixed: a page past the end of a
+// non-empty recommendation list returns empty results with the
+// recommendation list's page count instead of silently serving "similar".
+func (c *Client) MovieSuggestions(movieID, page int) ([]MovieResult, int, error) {
+	results, totalPages, totalResults, err := c.pagedMovies(fmt.Sprintf("/movie/%d/recommendations", movieID), page)
 	if err != nil {
 		return nil, 0, err
 	}
+	if totalResults == 0 {
+		results, totalPages, _, err = c.pagedMovies(fmt.Sprintf("/movie/%d/similar", movieID), page)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+	return results, totalPages, nil
+}
+
+// TVSuggestions is MovieSuggestions for series; see there for the fallback
+// semantics.
+func (c *Client) TVSuggestions(seriesID, page int) ([]TVResult, int, error) {
+	results, totalPages, totalResults, err := c.pagedTV(fmt.Sprintf("/tv/%d/recommendations", seriesID), page)
+	if err != nil {
+		return nil, 0, err
+	}
+	if totalResults == 0 {
+		results, totalPages, _, err = c.pagedTV(fmt.Sprintf("/tv/%d/similar", seriesID), page)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+	return results, totalPages, nil
+}
+
+// FindTVByTVDBID resolves a TVDB series id to its TMDB series id via TMDB's
+// /find endpoint. Returns 0 when TMDB has no series mapped to that TVDB id.
+func (c *Client) FindTVByTVDBID(tvdbID int) (int, error) {
+	params := url.Values{"external_source": {"tvdb_id"}}
+	body, err := c.getWithParams(fmt.Sprintf("/find/%d", tvdbID), params)
+	if err != nil {
+		return 0, err
+	}
 	var resp struct {
-		Results    []TVResult `json:"results"`
-		TotalPages int        `json:"total_pages"`
+		TVResults []TVResult `json:"tv_results"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, 0, fmt.Errorf("decoding response: %w", err)
+		return 0, fmt.Errorf("decoding response: %w", err)
 	}
-	return resp.Results, resp.TotalPages, nil
+	if len(resp.TVResults) == 0 {
+		return 0, nil
+	}
+	return resp.TVResults[0].ID, nil
+}
+
+func (c *Client) pagedMovies(path string, page int) ([]MovieResult, int, int, error) {
+	params := url.Values{"page": {strconv.Itoa(page)}}
+	body, err := c.getWithParams(path, params)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	var resp struct {
+		Results      []MovieResult `json:"results"`
+		TotalPages   int           `json:"total_pages"`
+		TotalResults int           `json:"total_results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, 0, 0, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Results, resp.TotalPages, resp.TotalResults, nil
+}
+
+func (c *Client) pagedTV(path string, page int) ([]TVResult, int, int, error) {
+	params := url.Values{"page": {strconv.Itoa(page)}}
+	body, err := c.getWithParams(path, params)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	var resp struct {
+		Results      []TVResult `json:"results"`
+		TotalPages   int        `json:"total_pages"`
+		TotalResults int        `json:"total_results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, 0, 0, fmt.Errorf("decoding response: %w", err)
+	}
+	return resp.Results, resp.TotalPages, resp.TotalResults, nil
 }
 
 func (c *Client) get(path string) ([]byte, error) {
