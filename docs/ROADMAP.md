@@ -389,6 +389,7 @@
 - [x] Incremental history loading — newest 30 records initially, then 100 more per click; status filters reset and paginate independently
 - [x] Stable newest-first ordering across paginated and unpaginated download queries
 - [x] Exact download completion timestamp from qBittorrent `completion_on`, persisted as nullable `downloaded_at` and displayed on download rows
+- [x] Legacy finished rows with no exact timestamp remain visible with a labelled `Downloaded by` fallback from their closest recorded lifecycle time
 - [x] Serialized polling/SSE refreshes with a queued trailing refresh and stale-response guard
 
 ## Phase 7.9: Discord webhook notifications ✅

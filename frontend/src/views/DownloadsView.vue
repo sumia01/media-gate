@@ -225,6 +225,16 @@ function formatDownloadedAt(dateStr: string): string {
   })
 }
 
+function hasFinishedDownloading(status: Download['status']): boolean {
+  return (
+    status === 'downloaded' ||
+    status === 'importing' ||
+    status === 'seeding' ||
+    status === 'completed' ||
+    status === 'import_failed'
+  )
+}
+
 function formatRetryTime(dateStr: string): string {
   const target = new Date(dateStr)
   const now = new Date()
@@ -343,8 +353,13 @@ onUnmounted(() => {
 
               <p class="text-sm font-medium text-gray-200 truncate mt-0.5">{{ dl.title }}</p>
 
-              <p v-if="dl.downloadedAt" class="text-[10px] text-gray-500 mt-1">
-                Downloaded {{ formatDownloadedAt(dl.downloadedAt) }}
+              <p
+                v-if="dl.downloadedAt || hasFinishedDownloading(dl.status)"
+                class="text-[10px] text-gray-500 mt-1"
+                :title="dl.downloadedAt ? undefined : 'Exact download time unavailable for this legacy record'"
+              >
+                {{ dl.downloadedAt ? 'Downloaded' : 'Downloaded by' }}
+                {{ formatDownloadedAt(dl.downloadedAt ?? dl.completedAt ?? dl.updatedAt) }}
               </p>
 
               <!-- Last error message -->

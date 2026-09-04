@@ -108,7 +108,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Real-time progress, speed, and ETA tracking
 - Inspect torrent file list per download
 - Paginated all-downloads history: newest 30 initially, then 100 more per click, with status filters applied before pagination
-- Exact qBittorrent completion date shown for newly completed downloads
+- Download completion date on every finished row: exact qBittorrent time for new downloads, closest recorded `Downloaded by` time for legacy history
 - Dual path support: local mount path vs qBittorrent NAS mount override
 - qBittorrent category support
 
