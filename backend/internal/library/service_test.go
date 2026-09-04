@@ -100,6 +100,9 @@ func (s *stubStore) CreateDownload(*store.Download) error                       
 func (s *stubStore) GetDownload(uint) (*store.Download, error)                  { return nil, nil }
 func (s *stubStore) UpdateDownload(*store.Download) error                       { return nil }
 func (s *stubStore) ListDownloads(*uint, *string) ([]store.Download, error)     { return nil, nil }
+func (s *stubStore) ListDownloadsPage(*uint, *string, int) ([]store.Download, bool, error) {
+	return nil, false, nil
+}
 func (s *stubStore) DeleteDownload(uint) error                                  { return nil }
 func (s *stubStore) HasActiveDownloadByURL(uint, string) (bool, error)          { return false, nil }
 func (s *stubStore) WithTx(fn func(store.Store) error) error                    { return fn(s) }

@@ -1798,7 +1798,15 @@ paths:
               - seeding
               - completed
               - failed
+              - import_failed
           description: Filter by status
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Maximum number of downloads to return
       responses:
         "200":
           description: Downloads list
@@ -1808,11 +1816,15 @@ paths:
                 type: object
                 required:
                   - downloads
+                  - hasMore
                 properties:
                   downloads:
                     type: array
                     items:
                       $ref: "#/components/schemas/Download"
+                  hasMore:
+                    type: boolean
+                    description: Whether more downloads match the current filters
     post:
       operationId: createDownload
       summary: Create a download record
@@ -3508,6 +3520,10 @@ components:
         completedAt:
           type: string
           format: date-time
+        downloadedAt:
+          type: string
+          format: date-time
+          description: When qBittorrent finished downloading the media
         progress:
           type: number
           format: float

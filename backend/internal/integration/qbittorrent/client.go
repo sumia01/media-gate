@@ -334,6 +334,7 @@ type TorrentInfo struct {
 	Progress      float64 `json:"progress"`
 	Ratio         float64 `json:"ratio"`
 	SeedingTime   int     `json:"seeding_time"`
+	CompletionOn  int64   `json:"completion_on"`
 	SavePath      string  `json:"save_path"`
 	Size          int64   `json:"size"`
 	DownloadSpeed int64   `json:"dlspeed"`

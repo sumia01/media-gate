@@ -69,6 +69,7 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	// Extend this list whenever a post-baseline migration adds a column.
 	for _, stmt := range []string{
 		`ALTER TABLE media_metadata DROP COLUMN content_ratings`,
+		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-baseline schema (%s): %v", stmt, err)
@@ -191,6 +192,54 @@ func TestFreshInstallSchema(t *testing.T) {
 	mustHaveColumn(t, sqlDB, "media_metadata", "content_ratings")
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
+	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
+}
+
+func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+	s1, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 1): %v", err)
+	}
+	item := mustCreateMediaItem(t, s1)
+	dl := &store.Download{
+		MediaItemID: item.ID,
+		IndexerID:   1,
+		IndexerName: "idx",
+		Title:       "Show.S01E01.1080p",
+		DownloadURL: "magnet:?x",
+		Status:      "completed",
+	}
+	if err := s1.CreateDownload(dl); err != nil {
+		t.Fatalf("CreateDownload: %v", err)
+	}
+
+	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`ALTER TABLE downloads DROP COLUMN downloaded_at`); err != nil {
+		t.Fatalf("removing downloaded_at: %v", err)
+	}
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 3, dirty = 0`); err != nil {
+		t.Fatalf("resetting migration version: %v", err)
+	}
+	_ = s1.Close()
+
+	s2, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 2): %v", err)
+	}
+	defer s2.Close()
+
+	got, err := s2.GetDownload(dl.ID)
+	if err != nil {
+		t.Fatalf("GetDownload after migration: %v", err)
+	}
+	if got.Title != dl.Title || got.Status != dl.Status {
+		t.Errorf("download changed during migration: got title %q status %q", got.Title, got.Status)
+	}
+	if got.DownloadedAt != nil {
+		t.Errorf("DownloadedAt = %v, want nil for an existing row", got.DownloadedAt)
+	}
 }
 
 // TestCleanupRaceOrphanedDownloads_0002 exercises the actual embedded 0002

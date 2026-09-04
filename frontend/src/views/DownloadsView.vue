@@ -10,31 +10,22 @@ import { formatBytes, formatSize } from '@/utils/media'
 const router = useRouter()
 const { on, off } = useEventStream()
 
+const INITIAL_LIMIT = 30
+const LOAD_MORE_COUNT = 100
+
 const downloads = ref<Download[]>([])
 const loading = ref(false)
-const statusFilter = ref<string>('')
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const visibleLimit = ref(INITIAL_LIMIT)
+const statusFilter = ref<Download['status'] | ''>('')
 const torrentFiles = ref<Map<number, TorrentFile[]>>(new Map())
 const loadingFiles = ref<Set<number>>(new Set())
 const confirmDeleteId = ref<number | null>(null)
-
-const statusOrder: Record<string, number> = {
-  downloading: 0,
-  pending: 1,
-  seeding: 2,
-  downloaded: 3,
-  importing: 4,
-  failed: 5,
-  import_failed: 6,
-  completed: 7,
-}
-
-const sortedDownloads = computed(() =>
-  [...downloads.value].sort((a, b) => {
-    const so = (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
-    if (so !== 0) return so
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  }),
-)
+let loadingRequest = 0
+let fetchRequest = 0
+let refreshInFlight = false
+let refreshPending = false
 
 const hasActiveDownloads = computed(() =>
   downloads.value.some(
@@ -52,7 +43,7 @@ let progressTimer: ReturnType<typeof setInterval> | null = null
 
 function startProgressPoll() {
   if (progressTimer) return
-  progressTimer = setInterval(fetchDownloads, 3000)
+  progressTimer = setInterval(refreshDownloads, 3000)
 }
 
 function stopProgressPoll() {
@@ -67,22 +58,83 @@ watch(hasActiveDownloads, (active) => {
   else stopProgressPoll()
 })
 
-async function fetchDownloads() {
-  const query: Record<string, any> = {}
-  if (statusFilter.value) {
-    query.status = statusFilter.value
+async function fetchDownloads(): Promise<boolean> {
+  const request = ++fetchRequest
+  const requestedStatus = statusFilter.value
+  const requestedLimit = visibleLimit.value
+  const query: { limit: number; status?: Download['status'] } = { limit: requestedLimit }
+  if (requestedStatus) {
+    query.status = requestedStatus
   }
-  const { data } = await client.GET('/downloads', { params: { query } })
-  downloads.value = data?.downloads ?? []
+  const response = await client.GET('/downloads', { params: { query } }).catch(() => null)
+  if (request !== fetchRequest || requestedStatus !== statusFilter.value || requestedLimit !== visibleLimit.value) {
+    return true
+  }
+  if (!response || response.error || !response.data) {
+    return false
+  }
+  downloads.value = response.data.downloads
+  hasMore.value = response.data.hasMore
+  return true
+}
+
+async function refreshDownloads() {
+  if (loading.value || loadingMore.value || refreshInFlight) {
+    refreshPending = true
+    return
+  }
+  refreshInFlight = true
+  try {
+    await fetchDownloads()
+  } finally {
+    refreshInFlight = false
+    flushPendingRefresh()
+  }
+}
+
+function flushPendingRefresh() {
+  if (refreshPending && !loading.value && !loadingMore.value && !refreshInFlight) {
+    refreshPending = false
+    refreshDownloads()
+  }
 }
 
 async function fetchWithLoading() {
+  const request = ++loadingRequest
   loading.value = true
-  await fetchDownloads()
-  loading.value = false
+  try {
+    await fetchDownloads()
+  } finally {
+    if (request === loadingRequest) {
+      loading.value = false
+      flushPendingRefresh()
+    }
+  }
 }
 
-watch(statusFilter, () => fetchWithLoading())
+watch(statusFilter, () => {
+  visibleLimit.value = INITIAL_LIMIT
+  hasMore.value = false
+  downloads.value = []
+  fetchWithLoading()
+})
+
+async function loadMore() {
+  const previousLimit = visibleLimit.value
+  const requestedStatus = statusFilter.value
+  const nextLimit = previousLimit + LOAD_MORE_COUNT
+  visibleLimit.value = nextLimit
+  loadingMore.value = true
+  try {
+    const loaded = await fetchDownloads()
+    if (!loaded && statusFilter.value === requestedStatus && visibleLimit.value === nextLimit) {
+      visibleLimit.value = previousLimit
+    }
+  } finally {
+    loadingMore.value = false
+    flushPendingRefresh()
+  }
+}
 
 async function fetchFiles(id: number) {
   if (loadingFiles.value.has(id)) return
@@ -163,6 +215,16 @@ function formatSpeed(bytesPerSec?: number): string {
   return `${mb.toFixed(1)} MB/s`
 }
 
+function formatDownloadedAt(dateStr: string): string {
+  return new Date(dateStr).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function formatRetryTime(dateStr: string): string {
   const target = new Date(dateStr)
   const now = new Date()
@@ -179,7 +241,7 @@ function formatRetryTime(dateStr: string): string {
 
 // SSE
 function handleDownloadEvent() {
-  fetchDownloads()
+  refreshDownloads()
 }
 
 const downloadEvents = [
@@ -234,13 +296,13 @@ onUnmounted(() => {
 
     <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>
 
-    <div v-else-if="sortedDownloads.length === 0" class="text-gray-500 text-sm">
+    <div v-else-if="downloads.length === 0" class="text-gray-500 text-sm">
       No downloads{{ statusFilter ? ' with this status' : '' }}.
     </div>
 
     <div v-else class="space-y-2">
       <div
-        v-for="dl in sortedDownloads"
+        v-for="dl in downloads"
         :key="dl.id"
       >
         <!-- Download row -->
@@ -280,6 +342,10 @@ onUnmounted(() => {
               </button>
 
               <p class="text-sm font-medium text-gray-200 truncate mt-0.5">{{ dl.title }}</p>
+
+              <p v-if="dl.downloadedAt" class="text-[10px] text-gray-500 mt-1">
+                Downloaded {{ formatDownloadedAt(dl.downloadedAt) }}
+              </p>
 
               <!-- Last error message -->
               <p
@@ -419,6 +485,16 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div v-if="hasMore" class="flex justify-center pt-4">
+        <button
+          class="text-xs px-4 py-2 rounded-lg border border-violet-800/40 text-gray-300 hover:text-violet-200 hover:border-violet-500/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+          :disabled="loadingMore"
+          @click="loadMore"
+        >
+          {{ loadingMore ? 'Loading...' : 'Load more' }}
+        </button>
       </div>
     </div>
   </div>

@@ -3,8 +3,10 @@ package download
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
+	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -13,9 +15,14 @@ import (
 type stubStore struct {
 	store.Store
 	byStatus map[string][]store.Download
+	download *store.Download
 
 	mu      sync.Mutex
 	updated []store.Download
+}
+
+func (s *stubStore) GetDownload(_ uint) (*store.Download, error) {
+	return s.download, nil
 }
 
 func (s *stubStore) ListDownloads(_ *uint, status *string) ([]store.Download, error) {
@@ -111,6 +118,47 @@ func TestHandleMissingTorrent_Linked(t *testing.T) {
 	}
 	if dl.CompletedAt == nil {
 		t.Error("CompletedAt should be set")
+	}
+}
+
+func TestUpdateFromTorrentRecordsDownloadedAt(t *testing.T) {
+	st := &stubStore{}
+	svc := &Service{store: st, bus: eventbus.New(4)}
+	dl := &store.Download{ID: 9, MediaItemID: 3, Title: "Done", Status: "downloading"}
+	downloadedAt := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+
+	svc.updateFromTorrent(dl, &qbittorrent.TorrentInfo{State: "pausedUP", CompletionOn: downloadedAt.Unix()})
+
+	if dl.Status != "downloaded" {
+		t.Fatalf("status = %q, want downloaded", dl.Status)
+	}
+	if dl.DownloadedAt == nil {
+		t.Fatal("DownloadedAt should be set")
+	}
+	if !dl.DownloadedAt.Equal(downloadedAt) {
+		t.Errorf("DownloadedAt = %v, want %v", dl.DownloadedAt, downloadedAt)
+	}
+	if st.lastUpdate(t).DownloadedAt == nil {
+		t.Fatal("persisted DownloadedAt should be set")
+	}
+}
+
+func TestUpdateStatusPreservesDownloadedAtOnImportRetry(t *testing.T) {
+	downloadedAt := time.Now()
+	st := &stubStore{download: &store.Download{
+		ID: 9, Status: "import_failed", DownloadedAt: &downloadedAt, RetryCount: 3,
+	}}
+	svc := &Service{store: st}
+
+	dl, err := svc.UpdateStatus(9, "pending")
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if dl.DownloadedAt == nil || !dl.DownloadedAt.Equal(downloadedAt) {
+		t.Errorf("DownloadedAt = %v, want %v", dl.DownloadedAt, downloadedAt)
+	}
+	if dl.RetryCount != 0 {
+		t.Errorf("RetryCount = %d, want 0", dl.RetryCount)
 	}
 }
 

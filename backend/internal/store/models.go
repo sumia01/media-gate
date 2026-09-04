@@ -174,6 +174,7 @@ type Download struct {
 	LastError         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	DownloadedAt      *time.Time
 	CompletedAt       *time.Time
 
 	// Populated by JOIN in ListDownloads (media_item_title alias), not a real

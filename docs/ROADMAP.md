@@ -376,7 +376,7 @@
 - [x] Clicking an "in library" discover item navigates to `/media/:id` (library detail) instead of TMDB preview
 
 ## Phase 7.8: All Downloads page ✅
-→ See ADR-095
+→ See ADR-095, ADR-134
 - [x] `DownloadsView.vue` — standalone page listing all downloads across all media items
 - [x] `mediaItemTitle` optional field added to `Download` OpenAPI schema — populated via LEFT JOIN on `media_items` in `ListDownloads()`
 - [x] Sidebar nav item (`Downloads`) in top navigation after Watched
@@ -386,6 +386,10 @@
 - [x] "Open in library" icon button replaces "Replace" button
 - [x] SSE subscription + progress polling for real-time updates
 - [x] Retry/delete actions with inline confirmation
+- [x] Incremental history loading — newest 30 records initially, then 100 more per click; status filters reset and paginate independently
+- [x] Stable newest-first ordering across paginated and unpaginated download queries
+- [x] Exact download completion timestamp from qBittorrent `completion_on`, persisted as nullable `downloaded_at` and displayed on download rows
+- [x] Serialized polling/SSE refreshes with a queued trailing refresh and stale-response guard
 
 ## Phase 7.9: Discord webhook notifications ✅
 → See ADR-097

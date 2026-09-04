@@ -58,7 +58,7 @@ func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObje
 		status = &s
 	}
 
-	downloads, err := h.downloadSvc.ListWithProgress(mediaItemID, status)
+	downloads, hasMore, err := h.downloadSvc.ListWithProgress(mediaItemID, status, req.Params.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (h *Handlers) ListDownloads(_ context.Context, req ListDownloadsRequestObje
 		}
 	}
 
-	return ListDownloads200JSONResponse{Downloads: apiDownloads}, nil
+	return ListDownloads200JSONResponse{Downloads: apiDownloads, HasMore: hasMore}, nil
 }
 
 func (h *Handlers) GetDownload(_ context.Context, req GetDownloadRequestObject) (GetDownloadResponseObject, error) {

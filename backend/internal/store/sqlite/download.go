@@ -19,7 +19,8 @@ func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]store.
 	q := s.db.
 		Select("downloads.*, media_items.title AS media_item_title").
 		Joins("LEFT JOIN media_items ON media_items.id = downloads.media_item_id").
-		Order("created_at DESC")
+		Order("downloads.created_at DESC").
+		Order("downloads.id DESC")
 	if mediaItemID != nil {
 		q = q.Where("downloads.media_item_id = ?", *mediaItemID)
 	}
@@ -30,6 +31,35 @@ func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]store.
 		return nil, err
 	}
 	return downloads, nil
+}
+
+func (s *SQLiteStore) ListDownloadsPage(mediaItemID *uint, status *string, limit int) ([]store.Download, bool, error) {
+	if limit < 1 {
+		return []store.Download{}, false, nil
+	}
+
+	var downloads []store.Download
+	q := s.db.
+		Select("downloads.*, media_items.title AS media_item_title").
+		Joins("LEFT JOIN media_items ON media_items.id = downloads.media_item_id").
+		Order("downloads.created_at DESC").
+		Order("downloads.id DESC").
+		Limit(limit + 1)
+	if mediaItemID != nil {
+		q = q.Where("downloads.media_item_id = ?", *mediaItemID)
+	}
+	if status != nil {
+		q = q.Where("downloads.status = ?", *status)
+	}
+	if err := q.Find(&downloads).Error; err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(downloads) > limit
+	if hasMore {
+		downloads = downloads[:limit]
+	}
+	return downloads, hasMore, nil
 }
 
 func (s *SQLiteStore) HasActiveDownloadByURL(mediaItemID uint, downloadURL string) (bool, error) {

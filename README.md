@@ -107,6 +107,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - qBittorrent health check: skips sending if unreachable to avoid burning retries
 - Real-time progress, speed, and ETA tracking
 - Inspect torrent file list per download
+- Paginated all-downloads history: newest 30 initially, then 100 more per click, with status filters applied before pagination
+- Exact qBittorrent completion date shown for newly completed downloads
 - Dual path support: local mount path vs qBittorrent NAS mount override
 - qBittorrent category support
 

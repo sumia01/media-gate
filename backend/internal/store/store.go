@@ -114,6 +114,7 @@ type Store interface {
 	GetDownload(id uint) (*Download, error)
 	UpdateDownload(download *Download) error
 	ListDownloads(mediaItemID *uint, status *string) ([]Download, error)
+	ListDownloadsPage(mediaItemID *uint, status *string, limit int) ([]Download, bool, error)
 	DeleteDownload(id uint) error
 	HasActiveDownloadByURL(mediaItemID uint, downloadURL string) (bool, error)
 

@@ -297,6 +297,13 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 	}
 
 	dl.Status = newStatus
+	if newStatus == "downloaded" && dl.DownloadedAt == nil {
+		downloadedAt := time.Now()
+		if info.CompletionOn > 0 {
+			downloadedAt = time.Unix(info.CompletionOn, 0)
+		}
+		dl.DownloadedAt = &downloadedAt
+	}
 
 	if err := s.store.UpdateDownload(dl); err != nil {
 		slog.Error("download worker: failed to update download",
@@ -392,10 +399,19 @@ func (s *Service) UpdateStatus(dlID uint, status string) (*store.Download, error
 
 // ListWithProgress lists downloads and optionally enriches them with real-time
 // qBittorrent progress data when filtering by media item.
-func (s *Service) ListWithProgress(mediaItemID *uint, status *string) ([]DownloadWithProgress, error) {
-	downloads, err := s.store.ListDownloads(mediaItemID, status)
+func (s *Service) ListWithProgress(mediaItemID *uint, status *string, limit *int) ([]DownloadWithProgress, bool, error) {
+	var (
+		downloads []store.Download
+		hasMore   bool
+		err       error
+	)
+	if limit == nil {
+		downloads, err = s.store.ListDownloads(mediaItemID, status)
+	} else {
+		downloads, hasMore, err = s.store.ListDownloadsPage(mediaItemID, status, *limit)
+	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	result := make([]DownloadWithProgress, len(downloads))
@@ -422,7 +438,7 @@ func (s *Service) ListWithProgress(mediaItemID *uint, status *string) ([]Downloa
 		}
 	}
 
-	return result, nil
+	return result, hasMore, nil
 }
 
 // ListTorrentFiles returns the file list for a torrent in qBittorrent.

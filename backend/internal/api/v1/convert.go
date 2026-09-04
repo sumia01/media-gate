@@ -824,6 +824,9 @@ func downloadToAPI(dl *store.Download) Download {
 	if dl.CompletedAt != nil {
 		api.CompletedAt = dl.CompletedAt
 	}
+	if dl.DownloadedAt != nil {
+		api.DownloadedAt = dl.DownloadedAt
+	}
 	if dl.RetryCount > 0 {
 		api.RetryCount = &dl.RetryCount
 	}
