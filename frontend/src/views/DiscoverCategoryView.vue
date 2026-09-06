@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ArrowLeft, Loader2 } from 'lucide-vue-next'
-import { computed, onMounted } from 'vue'
+import { ArrowLeft } from 'lucide-vue-next'
+import { computed, onMounted, watch } from 'vue'
 import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
+import DiscoverFilter from '@/components/media/DiscoverFilter.vue'
+import DiscoverResultsStatus from '@/components/media/DiscoverResultsStatus.vue'
+import { discoverKey, useDiscoverFilter } from '@/composables/useDiscoverFilter'
 import { usePagedDiscover } from '@/composables/usePagedDiscover'
 import { useWatchedLibrary } from '@/composables/useWatchedLibrary'
 import type { DiscoverItem } from '@/types/api'
@@ -33,17 +36,32 @@ const endpoint = computed(() => {
   }
 })
 
-const { isWatched, isInLibrary, fetchWatched, fetchLibraryItems, goToPreview } = useWatchedLibrary()
+const {
+  isWatched,
+  isInLibrary,
+  libraryReady,
+  libraryLoading,
+  libraryFailed,
+  fetchWatched,
+  fetchLibraryItems,
+  goToPreview,
+} = useWatchedLibrary()
+const { hideInLibrary, filterReady, includeItem } = useDiscoverFilter(isInLibrary, libraryReady)
 
-const { items, loading, initialLoading, loadFailed, hasMore, sentinel, fetchPage } = usePagedDiscover<DiscoverItem>(
-  async (page) => {
-    const { data } = await client.GET(endpoint.value, {
-      params: { query: { page } },
-    })
-    return data
-  },
-  (item) => `${item.source}:${item.externalId}`,
-)
+const { items, hiddenCount, loading, initialLoading, loadFailed, hasMore, sentinel, fetchPage, reset } =
+  usePagedDiscover<DiscoverItem>(
+    async (page, signal) => {
+      const { data } = await client.GET(endpoint.value, {
+        params: { query: { page } },
+        signal,
+      })
+      return data
+    },
+    discoverKey,
+    { include: includeItem, ready: () => filterReady.value, filterKey: () => hideInLibrary.value },
+  )
+
+watch(() => props.category, reset, { flush: 'post' })
 
 onMounted(() => {
   fetchWatched()
@@ -60,8 +78,15 @@ onMounted(() => {
       </router-link>
     </div>
 
+    <DiscoverFilter
+      v-model:hide-in-library="hideInLibrary"
+      :library-loading="libraryLoading"
+      :library-failed="libraryFailed"
+      @retry="fetchLibraryItems"
+    />
+
     <!-- Skeleton grid on initial load -->
-    <div v-if="initialLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
+    <div v-if="(initialLoading && filterReady) || (hideInLibrary && libraryLoading)" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
       <div v-for="n in 20" :key="n" class="animate-pulse">
         <div class="aspect-[2/3] rounded-lg bg-white/5" />
         <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
@@ -73,28 +98,25 @@ onMounted(() => {
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
       <DiscoverCard
         v-for="item in items"
-        :key="`${item.source}-${item.externalId}`"
+        :key="discoverKey(item)"
         :item="item"
-        :in-library="isInLibrary(item.source, item.externalId)"
-        :watched="isWatched(item.source, item.externalId)"
+        :in-library="isInLibrary(item)"
+        :watched="isWatched(item)"
         @click="goToPreview(item)"
       />
     </div>
 
-    <!-- Sentinel + loading spinner for infinite scroll -->
-    <div ref="sentinel" class="flex justify-center py-8">
-      <div v-if="loading && !initialLoading" class="flex items-center gap-2 text-gray-400 text-sm">
-        <Loader2 class="w-5 h-5 animate-spin" />
-        Loading more...
-      </div>
-      <button
-        v-else-if="loadFailed"
-        class="text-sm text-red-400 hover:text-red-300 transition-colors"
-        @click="fetchPage()"
-      >
-        Failed to load — click to retry
-      </button>
-      <p v-else-if="!hasMore && items.length" class="text-gray-500 text-sm">No more items</p>
+    <div ref="sentinel">
+      <DiscoverResultsStatus
+        :ready="filterReady"
+        :loading="loading"
+        :initial-loading="initialLoading"
+        :load-failed="loadFailed"
+        :has-more="hasMore"
+        :item-count="items.length"
+        :hidden-count="hiddenCount"
+        @load-more="fetchPage"
+      />
     </div>
   </div>
 </template>

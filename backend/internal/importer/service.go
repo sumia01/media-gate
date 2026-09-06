@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -119,26 +120,39 @@ func (s *Service) importDownloaded(client *qbittorrent.Client) {
 }
 
 func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
+	if dl.Status != "downloaded" {
+		return
+	}
 	// Mark as importing to prevent double-processing
-	dl.Status = "importing"
-	if err := s.store.UpdateDownload(dl); err != nil {
+	claimed := *dl
+	claimed.Status = "importing"
+	if err := s.store.UpdateDownload(&claimed); err != nil {
 		slog.Error("importer: failed to set importing status", "download_id", dl.ID, "error", err)
 		return
 	}
+	*dl = claimed
 	slog.Info("importer: starting import", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID)
 
 	// Look up media item and library
 	item, err := s.store.GetMediaItem(dl.MediaItemID)
 	if err != nil {
 		slog.Error("importer: media item not found", "download_id", dl.ID, "media_item_id", dl.MediaItemID, "error", err)
-		s.failImport(dl, "media item not found")
+		if errors.Is(err, store.ErrNotFound) {
+			s.failImport(dl, "media item not found")
+		} else {
+			s.retryImport(dl, "failed to load media item")
+		}
 		return
 	}
 
 	lib, err := s.store.GetLibrary(item.LibraryID)
 	if err != nil {
 		slog.Error("importer: library not found", "download_id", dl.ID, "library_id", item.LibraryID, "error", err)
-		s.failImport(dl, "library not found")
+		if errors.Is(err, store.ErrNotFound) {
+			s.failImport(dl, "library not found")
+		} else {
+			s.retryImport(dl, "failed to load library")
+		}
 		return
 	}
 
@@ -295,27 +309,25 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		return
 	}
 
-	// Mark as linked to library
-	dl.LinkedToLibrary = true
+	nextDL := *dl
+	nextDL.LinkedToLibrary = true
 
 	// Check if seeding is required
 	if s.needsSeeding(dl) {
-		dl.Status = "seeding"
+		nextDL.Status = "seeding"
 	} else {
-		dl.Status = "completed"
+		nextDL.Status = "completed"
 		now := time.Now()
-		dl.CompletedAt = &now
-		// No seeding required — remove torrent from qBit
-		if dl.ClientTorrentHash != "" {
-			if err := client.DeleteTorrent(dl.ClientTorrentHash, true); err != nil {
-				slog.Warn("importer: failed to delete torrent from qBit",
-					"download_id", dl.ID, "hash", dl.ClientTorrentHash, "error", err)
-			}
-		}
+		nextDL.CompletedAt = &now
 	}
 
-	if err := s.store.UpdateDownload(dl); err != nil {
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
 		slog.Error("importer: failed to update download after import", "download_id", dl.ID, "error", err)
+		return
+	}
+	*dl = nextDL
+	if dl.Status == "completed" {
+		s.removeCompletedTorrent(dl, client)
 	}
 
 	// Resync the media item to pick up fresh file metadata.
@@ -348,10 +360,18 @@ func (s *Service) needsSeeding(dl *store.Download) bool {
 
 // failImport sets a download to import_failed status.
 func (s *Service) failImport(dl *store.Download, reason string) {
-	dl.Status = "import_failed"
-	if err := s.store.UpdateDownload(dl); err != nil {
-		slog.Error("importer: failed to set import_failed status", "download_id", dl.ID, "error", err)
+	if dl.Status != "importing" && dl.Status != "downloaded" {
+		return
 	}
+	nextDL := *dl
+	nextDL.Status = "import_failed"
+	nextDL.LastError = reason
+	nextDL.NextRetryAt = nil
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
+		slog.Error("importer: failed to set import_failed status", "download_id", dl.ID, "error", err)
+		return
+	}
+	*dl = nextDL
 	slog.Warn("importer: import failed", "download_id", dl.ID, "title", dl.Title, "reason", reason)
 	s.bus.Publish(eventbus.ImportFailed, eventbus.DownloadPayload{
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "import_failed",
@@ -364,19 +384,24 @@ func (s *Service) failImport(dl *store.Download, reason string) {
 // schedules a backoff so a later importer tick retries. After maxImportRetries
 // it gives up and marks the download import_failed so the monitor can re-grab.
 func (s *Service) retryImport(dl *store.Download, reason string) {
-	dl.LastError = reason
+	if dl.Status != "importing" && dl.Status != "downloaded" {
+		return
+	}
 	if dl.RetryCount >= maxImportRetries {
 		s.failImport(dl, reason+" (max import retries exceeded)")
 		return
 	}
-	dl.RetryCount++
-	next := time.Now().Add(importRetryBackoff[dl.RetryCount-1])
-	dl.NextRetryAt = &next
-	dl.Status = "downloaded"
-	if err := s.store.UpdateDownload(dl); err != nil {
+	nextDL := *dl
+	nextDL.LastError = reason
+	nextDL.RetryCount++
+	next := time.Now().Add(importRetryBackoff[nextDL.RetryCount-1])
+	nextDL.NextRetryAt = &next
+	nextDL.Status = "downloaded"
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
 		slog.Error("importer: failed to schedule import retry", "download_id", dl.ID, "error", err)
 		return
 	}
+	*dl = nextDL
 	slog.Warn("importer: transient import error, scheduling retry",
 		"download_id", dl.ID, "title", dl.Title,
 		"retry", dl.RetryCount, "next_retry_at", next, "reason", reason)
@@ -436,27 +461,42 @@ func (s *Service) seedingComplete(dl *store.Download, info *qbittorrent.TorrentI
 
 // completeDownload marks a download as completed and optionally deletes the torrent.
 func (s *Service) completeDownload(dl *store.Download, client *qbittorrent.Client) {
-	if client != nil && dl.ClientTorrentHash != "" {
-		if err := client.DeleteTorrent(dl.ClientTorrentHash, true); err != nil {
-			slog.Warn("importer: failed to delete torrent from qBit",
-				"download_id", dl.ID, "hash", dl.ClientTorrentHash, "error", err)
-		}
+	if dl.Status != "seeding" {
+		return
 	}
 
-	dl.Status = "completed"
+	nextDL := *dl
+	nextDL.Status = "completed"
 	now := time.Now()
-	dl.CompletedAt = &now
+	nextDL.CompletedAt = &now
 
-	if err := s.store.UpdateDownload(dl); err != nil {
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
 		slog.Error("importer: failed to mark download completed", "download_id", dl.ID, "error", err)
 		return
 	}
+	*dl = nextDL
+	s.removeCompletedTorrent(dl, client)
 
 	slog.Info("importer: seeding complete, torrent removed",
 		"download_id", dl.ID, "title", dl.Title)
 	s.bus.Publish(eventbus.SeedingCompleted, eventbus.DownloadPayload{
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "completed",
 	})
+}
+
+// Call only after the completion CAS commits: that write authorizes cleanup and
+// finalization. Earlier cancellation rejects the CAS; later cancellation cannot
+// revoke authorization. Do not add a second persistence gate here: completed rows
+// are not polled again, so a transient error would strand finalization. qBit I/O
+// stays outside transactions and deletion remains best-effort.
+func (s *Service) removeCompletedTorrent(dl *store.Download, client *qbittorrent.Client) {
+	if client == nil || dl.ClientTorrentHash == "" {
+		return
+	}
+	if err := client.DeleteTorrent(dl.ClientTorrentHash, true); err != nil {
+		slog.Warn("importer: failed to delete torrent from qBit",
+			"download_id", dl.ID, "hash", dl.ClientTorrentHash, "error", err)
+	}
 }
 
 // torrentRootFolder detects the common root folder in a multi-file torrent.

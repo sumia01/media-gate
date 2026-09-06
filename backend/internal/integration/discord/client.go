@@ -52,7 +52,10 @@ type embed struct {
 }
 
 type webhookPayload struct {
-	Embeds []embed `json:"embeds"`
+	Embeds          []embed `json:"embeds"`
+	AllowedMentions struct {
+		Parse []string `json:"parse"`
+	} `json:"allowed_mentions"`
 }
 
 // Embed is a builder for constructing rich Discord embeds.
@@ -116,6 +119,7 @@ func (c *Client) Send(embeds ...*Embed) error {
 		data = append(data, e.data)
 	}
 	payload := webhookPayload{Embeds: data}
+	payload.AllowedMentions.Parse = []string{} // Never notify mentions from release titles or metadata.
 
 	body, err := json.Marshal(payload)
 	if err != nil {

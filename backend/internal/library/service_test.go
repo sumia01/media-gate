@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -13,6 +14,14 @@ import (
 type stubStore struct {
 	created *store.Library
 	updated *store.Library
+}
+
+func (s *stubStore) GetMonitorDecision(uint) (*store.MonitorDecision, error) {
+	return nil, store.ErrNotFound
+}
+func (s *stubStore) UpsertMonitorDecision(*store.MonitorDecision) error { return nil }
+func (s *stubStore) ListTimelineEpisodes(string, string) ([]store.TimelineEpisode, error) {
+	return nil, nil
 }
 
 func (s *stubStore) Close() error                              { return nil }
@@ -28,6 +37,7 @@ func (s *stubStore) DeleteLibrary(uint) error                   { return nil }
 func (s *stubStore) CreateMediaItem(*store.MediaItem) error                     { return nil }
 func (s *stubStore) GetMediaItem(uint) (*store.MediaItem, error)                { return nil, nil }
 func (s *stubStore) UpdateMediaItem(*store.MediaItem) error                     { return nil }
+func (s *stubStore) SetMonitorSearchStartedAt(uint, *time.Time) error            { return nil }
 func (s *stubStore) DeleteMediaItem(uint) error                                 { return nil }
 func (s *stubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error)    { return nil, nil }
 func (s *stubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }

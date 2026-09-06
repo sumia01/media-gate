@@ -2,10 +2,12 @@ package importer
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +24,9 @@ type stubStore struct {
 	item      *store.MediaItem
 	lib       *store.Library
 	mediaFile []store.MediaFile
+	itemErr   error
+	libErr    error
+	updateErr error
 
 	mu           sync.Mutex
 	updated      []store.Download
@@ -29,6 +34,9 @@ type stubStore struct {
 }
 
 func (s *stubStore) GetMediaItem(id uint) (*store.MediaItem, error) {
+	if s.itemErr != nil {
+		return nil, s.itemErr
+	}
 	if s.item != nil && s.item.ID == id {
 		return s.item, nil
 	}
@@ -36,6 +44,9 @@ func (s *stubStore) GetMediaItem(id uint) (*store.MediaItem, error) {
 }
 
 func (s *stubStore) GetLibrary(id uint) (*store.Library, error) {
+	if s.libErr != nil {
+		return nil, s.libErr
+	}
 	if s.lib != nil && s.lib.ID == id {
 		return s.lib, nil
 	}
@@ -60,6 +71,9 @@ func (s *stubStore) CreateMediaFile(*store.MediaFile) error {
 func (s *stubStore) UpdateDownload(dl *store.Download) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.updateErr != nil {
+		return s.updateErr
+	}
 	s.updated = append(s.updated, *dl)
 	return nil
 }
@@ -133,6 +147,9 @@ func TestImportOne_NoVideoFiles_DoesNotDeleteOrComplete(t *testing.T) {
 	if dl.Status != "import_failed" {
 		t.Fatalf("status = %q, want import_failed", dl.Status)
 	}
+	if !strings.HasPrefix(dl.LastError, "no video files imported (") || st.updated[len(st.updated)-1].LastError != dl.LastError {
+		t.Errorf("missing persisted import reason: %q", dl.LastError)
+	}
 	if dl.LinkedToLibrary {
 		t.Error("LinkedToLibrary must stay false when nothing was imported")
 	}
@@ -202,6 +219,119 @@ func TestRetryImport_ExhaustsToImportFailed(t *testing.T) {
 
 	if dl.Status != "import_failed" {
 		t.Fatalf("status = %q, want import_failed after exhausting retries", dl.Status)
+	}
+}
+
+func TestImportFailurePersistsReasonBeforePublishingOnce(t *testing.T) {
+	for _, persistFails := range []bool{false, true} {
+		name := "persisted"
+		if persistFails {
+			name = "persistence failure"
+		}
+		t.Run(name, func(t *testing.T) {
+			st := &stubStore{}
+			if persistFails {
+				st.updateErr = errors.New("database unavailable")
+			}
+			bus := eventbus.New(8)
+			rec := newRecorder()
+			bus.Subscribe(eventbus.ImportFailed, func(e eventbus.Event) {
+				st.mu.Lock()
+				defer st.mu.Unlock()
+				if len(st.updated) != 1 || st.updated[0].LastError != "no torrent hash" || st.updated[0].Status != "import_failed" {
+					t.Errorf("event arrived without persisted reason: %+v", st.updated)
+				}
+				if p, ok := e.Payload.(eventbus.DownloadPayload); !ok || p.DownloadID != 1 || p.Status != "import_failed" {
+					t.Errorf("unexpected payload: %+v", e.Payload)
+				}
+				rec.handle(e)
+			})
+			bus.Start()
+			t.Cleanup(bus.Stop)
+			downloadedAt, retryAt := time.Now().Add(-time.Hour), time.Now()
+			dl := &store.Download{ID: 1, Status: "importing", LastError: "previous failure", DownloadedAt: &downloadedAt, NextRetryAt: &retryAt}
+			svc := &Service{store: st, bus: bus}
+			svc.failImport(dl, "no torrent hash")
+			svc.failImport(dl, "no torrent hash")
+			bus.Stop()
+			if persistFails {
+				if rec.count(eventbus.ImportFailed) != 0 || dl.Status != "importing" || dl.LastError != "previous failure" {
+					t.Errorf("failed persistence changed state or notified: %+v", dl)
+				}
+				return
+			}
+			if rec.count(eventbus.ImportFailed) != 1 || dl.NextRetryAt != nil {
+				t.Errorf("events=%d nextRetryAt=%v", rec.count(eventbus.ImportFailed), dl.NextRetryAt)
+			}
+			if dl.DownloadedAt == nil || !dl.DownloadedAt.Equal(downloadedAt) || !st.updated[0].DownloadedAt.Equal(downloadedAt) {
+				t.Error("DownloadedAt was not preserved")
+			}
+		})
+	}
+}
+
+func TestImportRetryOnlyPublishesOnExhaustion(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      string
+		retries     int
+		persistFail bool
+		wantStatus  string
+		wantEvents  int
+	}{
+		{"transient", "importing", 0, false, "downloaded", 0},
+		{"last retry", "importing", maxImportRetries - 1, false, "downloaded", 0},
+		{"exhausted", "importing", maxImportRetries, false, "import_failed", 1},
+		{"failed persistence", "importing", maxImportRetries, true, "importing", 0},
+		{"cancelled", "cancelled", maxImportRetries, false, "cancelled", 0},
+		{"already failed", "import_failed", maxImportRetries, false, "import_failed", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := &stubStore{}
+			if tc.persistFail {
+				st.updateErr = errors.New("database unavailable")
+			}
+			bus := eventbus.New(8)
+			rec := newRecorder()
+			bus.SubscribeAll(rec.handle)
+			bus.Start()
+			svc := &Service{store: st, bus: bus}
+			downloadedAt := time.Now().Add(-time.Hour)
+			dl := &store.Download{ID: 1, Status: tc.status, RetryCount: tc.retries, DownloadedAt: &downloadedAt}
+			svc.retryImport(dl, "failed to get torrent files from qBittorrent: temporary outage")
+			bus.Stop()
+			if dl.Status != tc.wantStatus || rec.count(eventbus.ImportFailed) != tc.wantEvents {
+				t.Errorf("status=%s events=%d, want %s/%d", dl.Status, rec.count(eventbus.ImportFailed), tc.wantStatus, tc.wantEvents)
+			}
+			if tc.wantEvents == 1 && !strings.HasSuffix(dl.LastError, " (max import retries exceeded)") {
+				t.Errorf("missing exhausted reason: %q", dl.LastError)
+			}
+			if dl.DownloadedAt == nil || !dl.DownloadedAt.Equal(downloadedAt) {
+				t.Error("DownloadedAt changed on retry")
+			}
+		})
+	}
+}
+
+func TestImportLookupTransientErrorsRetry(t *testing.T) {
+	for _, libraryError := range []bool{false, true} {
+		st := &stubStore{itemErr: errors.New("database busy")}
+		if libraryError {
+			st.itemErr = nil
+			st.item = &store.MediaItem{ID: 1, LibraryID: 2}
+			st.libErr = errors.New("database busy")
+		}
+		bus := eventbus.New(4)
+		rec := newRecorder()
+		bus.SubscribeAll(rec.handle)
+		bus.Start()
+		svc := &Service{store: st, bus: bus}
+		dl := &store.Download{ID: 1, MediaItemID: 1, Status: "downloaded"}
+		svc.importOne(nil, dl)
+		bus.Stop()
+		if dl.Status != "downloaded" || dl.RetryCount != 1 || rec.count(eventbus.ImportFailed) != 0 {
+			t.Errorf("transient lookup error permanently failed import: %+v", dl)
+		}
 	}
 }
 

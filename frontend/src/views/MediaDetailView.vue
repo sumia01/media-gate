@@ -9,6 +9,7 @@ import DownloadList from '@/components/media/DownloadList.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
+import MonitorDecisionPanel from '@/components/media/MonitorDecisionPanel.vue'
 import MonitorSettingsModal, { type MonitorSettingsPayload } from '@/components/media/MonitorSettingsModal.vue'
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 import SubtitleList from '@/components/media/SubtitleList.vue'
@@ -188,7 +189,9 @@ async function updateMediaItem(update: MediaItemUpdate) {
     params: { path: { id: item.value.id } },
     body: update,
   })
-  if (data) item.value = data
+  if (data) {
+    item.value = data
+  }
 }
 
 // Direct save: movie, or a series with monitoring turned off — no season step.
@@ -836,6 +839,14 @@ watch(() => route.params.id, loadAll)
           </select>
         </div>
       </div>
+
+      <MonitorDecisionPanel
+        :key="item.id"
+        :mediaItemId="item.id"
+        :monitored="item.monitored ?? false"
+        :updatedAt="item.updatedAt"
+        class="mt-3"
+      />
 
       <!-- Episodes section (series only) -->
       <EpisodeGrid

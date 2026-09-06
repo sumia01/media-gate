@@ -497,6 +497,7 @@ paths:
                         - source
                         - externalId
                         - mediaItemId
+                        - mediaType
                       properties:
                         source:
                           type: string
@@ -504,6 +505,79 @@ paths:
                           type: integer
                         mediaItemId:
                           type: integer
+                        mediaType:
+                          type: string
+                          enum: [movie, series]
+
+  /media/episode-timeline:
+    get:
+      operationId: getEpisodeTimeline
+      tags: [media]
+      summary: Dated episodes of followed series in a bounded date window
+      description: Returns episodes in the half-open interval [from, to), up to 31 days per request. Past and future episodes are included, including unmonitored episodes of followed series.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        "200":
+          description: Episodes in the requested date window
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EpisodeTimelineItem"
+        "400":
+          description: Invalid date window
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /media/{id}/monitor-decision:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getMonitorDecision
+      tags: [media]
+      summary: Latest persisted automatic-search decision
+      responses:
+        "200":
+          description: Latest decision, or null before the first monitoring check
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    allOf:
+                      - $ref: "#/components/schemas/MonitorDecision"
+                    nullable: true
+        "404":
+          description: Media item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /media/{id}:
     parameters:
@@ -2309,6 +2383,66 @@ paths:
 
 components:
   schemas:
+    EpisodeTimelineItem:
+      type: object
+      required: [episode, seriesTitle]
+      properties:
+        episode:
+          $ref: "#/components/schemas/Episode"
+        seriesTitle:
+          type: string
+        posterPath:
+          type: string
+
+    MonitorDecision:
+      type: object
+      required: [checkedAt, outcome, summary, details, truncated]
+      properties:
+        checkedAt:
+          type: string
+          format: date-time
+          description: When this worker check completed, not the freshness of its inputs
+        inputUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: UpdatedAt of the media item used when the check began; absent or null for older snapshots with unknown input freshness
+        outcome:
+          type: string
+        summary:
+          type: string
+        truncated:
+          type: boolean
+          description: More checks occurred than the bounded detail list can retain
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonitorDecisionDetail"
+
+    MonitorDecisionDetail:
+      type: object
+      required: [outcome, explanation, totalResults, rejectedResults, blockedResults]
+      properties:
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        outcome:
+          type: string
+        explanation:
+          type: string
+        totalResults:
+          type: integer
+        rejectedResults:
+          type: integer
+        blockedResults:
+          type: integer
+        selectedTitle:
+          type: string
+        downloadId:
+          type: integer
+          format: int64
+
     HealthResponse:
       type: object
       required:

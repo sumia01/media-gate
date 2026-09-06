@@ -6,6 +6,8 @@ Self-hosted, single-binary media management app (Go backend + Vue 3 frontend). R
 
 - Core discover, library, matching, indexer, download/import, monitoring, subtitle, Plex, notification, auth, and self-update flows are implemented.
 - The All Downloads page uses bounded newest-first history loading (30 initially, then 100 more), with server-side status filtering, exact qBittorrent completion timestamps for new downloads, and a labelled fallback for legacy finished rows.
+- Discover supports a persistent "Hide in library" filter and a bidirectional, lazy-loaded episode timeline for followed series. Direct membership includes media type; TVDB-to-TMDB identity normalization remains deferred.
+- Media details show the latest bounded automatic-search decision, with evaluated input freshness separate from completion time. Discord alerts cover persisted terminal download/import failures without retry spam.
 
 ## Agent Rules
 
@@ -27,6 +29,7 @@ Go commands run from `backend/`, npm commands from `frontend/`:
 cd backend && go test -count=1 ./...           # Run all Go tests
 cd backend && go test -count=1 ./internal/crypto/...  # Single package
 cd frontend && npm run type-check     # vue-tsc --build
+cd frontend && npm test               # regression tests; use Node.js 24 (native TS imports/module hooks)
 cd frontend && npm run build          # type-check + vite build
 ```
 
@@ -69,7 +72,7 @@ Integration clients: `tmdb`, `tvdb`, `qbittorrent`, `plex`, `discord`, `flaresol
 
 ### Data access
 
-- All DB access through `Store` interface (`store/store.go`), implemented in `store/sqlite/`. Models in `store/models.go`. Services never touch GORM/DB directly.
+- All DB access through `Store` interface (`store/store.go`), implemented in `store/sqlite/`. Models and query projections live in `store/` (`models.go`, `monitor_decision.go`, `timeline.go`). Services never touch GORM/DB directly.
 - `WithTx(fn func(Store) error)` for multi-step writes.
 - All FKs use GORM `constraint:OnDelete:CASCADE` (or `SET NULL`). SQLite FK enforcement via `?_pragma=foreign_keys(1)`. Never write manual cascade deletes.
 - **Pure-Go SQLite** (`glebarez/sqlite`). No CGO. Never add CGO-dependent SQLite drivers.
@@ -78,10 +81,13 @@ Integration clients: `tmdb`, `tvdb`, `qbittorrent`, `plex`, `discord`, `flaresol
 
 Schema is managed entirely by `golang-migrate`; GORM AutoMigrate is not used. Add paired embedded SQL files under `store/sqlite/migrations/` as `NNNN_name.up.sql` and `NNNN_name.down.sql`, then bump `latestMigrationVersion` in `store/sqlite/migrator.go`. Version state lives in `schema_migrations`. Preserve the pure-Go SQLite driver and verify fresh install plus legacy adoption tests.
 
+Current migrations reach version 7: `0005` adds latest monitor snapshots, `0006` indexes timeline dates, and `0007` adds nullable evaluated-input timestamps. Legacy snapshots keep unknown input freshness. Tests that rewind a migration version must also remove schema added after that version, not merely change the version row.
+
 ### Backend patterns
 
 - **Thin handlers**: `api/v1/handlers_*.go` validate input, call service, map response. `Handlers` struct holds service refs + store (read-only).
 - **Event bus + SSE**: `eventbus` dispatches typed events. `sse` streams to frontends. Some event publishers injected via setter methods to avoid circular imports.
+- **Persist before lifecycle events**: `UpdateDownload` uses the supplied `UpdatedAt` as an optimistic concurrency check and returns `ErrNotFound` for stale/deleted snapshots. Only successful writes authorize lifecycle publication. Import completion's committed update also authorizes best-effort torrent cleanup; never insert another persistence gate afterward or hold a DB transaction across qBittorrent I/O.
 - **Shared singletons** — don't duplicate:
   - `qbittorrent.Provider` — lazy-cached qBit client (settings-invalidated)
   - `plex.Provider` — lazy-cached Plex client (settings-invalidated)
@@ -102,6 +108,11 @@ Schema is managed entirely by `golang-migrate`; GORM AutoMigrate is not used. Ad
 
 ## Gotchas
 
+- **Discover filtering**: Membership and card identity are keyed by `(source, mediaType, externalId)`, not numeric ID alone. Keep Recently Added unfiltered. Retain raw provider pages, continue past fully hidden pages with a five-page automatic scan budget, and preserve abort/stale-response guards. Cross-provider TVDB/TMDB membership remains unresolved; do not guess by title.
+- **Episode timeline**: Followed means a monitored series item. Include dated past/future episodes even when individually unmonitored, resolving episode override > season > false. Fetch half-open `[from, to)` windows (31-day API maximum; frontend uses 14 days), keep nearby cache/DOM bounded, and preserve the visible date during panning and SSE invalidation. Empty windows are not the end of the timeline.
+- **Monitor decision freshness**: One latest snapshot per item, at most 50 prioritized details. `CheckedAt` is completion time; nullable `InputUpdatedAt` copies the evaluated item's `UpdatedAt`. Compare server versions only, never a browser receipt timestamp. Season/episode edits touch the parent transactionally; `SetMonitorSearchStartedAt` updates only the marker without bumping `UpdatedAt` or rewriting monitoring settings. Old snapshots remain unknown, not backfilled.
+- **Deletion and auto-grab**: Disable parent monitoring and cancel its downloads in one transaction before external media cleanup. The monitor's final fresh-parent check, URL dedup/blocklist check, and insert share a transaction, so an in-flight search cannot re-grab after deletion begins. Never restore a stale whole-item snapshot merely to update a search marker.
+- **Import ownership and notifications**: Metadata episode-ID backfill skips `importing` snapshots and revisits deferred work on later successful refreshes, even unchanged ones. Publish terminal failure events only after persistence, not on retries/cancellation. Discord uses fixed safe reasons instead of raw `LastError`, disables mentions, and retains best-effort delivery rather than a durable notification queue.
 - **YAML escape sanitization**: Prowlarr YAML definitions have escapes (`\/`, `\d`) that `yaml.v3` rejects. `SanitizeYAML` preprocesses before parsing. `remote.go` uses regex fallback for ID extraction.
 - **Two download paths**: `qbit_download_path` = local mount (import/sync/hardlink). `qbit_save_path` = optional qBittorrent override when its NAS mount differs. When empty, falls back to `qbit_download_path`.
 - **Episode monitoring hierarchy**: `EpisodeMonitor` → `SeasonMonitor` → not monitored. Keyed by `(MediaItemID, SeasonNumber, EpisodeNumber)` — NOT by `Episode.ID` — survives re-match. Toggling a season deletes episode overrides. Disabling item monitoring clears all episode monitors.

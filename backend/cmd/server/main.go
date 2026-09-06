@@ -251,10 +251,7 @@ func main() {
 	strictOpts := apiv1.StrictHTTPServerOptions{
 		// Fires when the request can't be decoded (malformed JSON body, bad path
 		// params) — a client error.
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Warn("api request decode error", "method", r.Method, "path", r.URL.Path, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-		},
+		RequestErrorHandlerFunc: apiv1.RequestErrorHandler,
 		// Fires when a handler returns a non-nil error (or a response fails to
 		// serialize) — treated as an internal server error.
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -296,7 +293,8 @@ func main() {
 
 	// Mount generated API routes under /api/v1.
 	apiHandler := apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{
-		BaseURL: "/api/v1",
+		BaseURL:          "/api/v1",
+		ErrorHandlerFunc: apiv1.RequestErrorHandler,
 	})
 	apiMux.Handle("/api/", apiHandler)
 

@@ -3,8 +3,10 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"time"
 
@@ -45,8 +47,10 @@ var terminalFailureStatuses = func() map[string]bool {
 }()
 
 type Service struct {
-	store        store.Store
-	indexerSvc   *indexer.Service
+	store      store.Store
+	indexerSvc interface {
+		SearchWithDiagnostics(context.Context, indexer.SearchParams) ([]indexer.TorrentResult, indexer.SearchDiagnostics, error)
+	}
 	settings     *settings.Service
 	bus          *eventbus.Bus
 	loop         *worker.Loop
@@ -106,66 +110,89 @@ func (s *Service) processOnce() {
 	slog.Debug("monitor: processing monitored items", "count", len(items))
 
 	for i := range items {
-		item := &items[i]
-
-		slog.Debug("monitor: checking item", "item_id", item.ID, "title", item.Title, "type", item.MediaType)
-
-		meta, err := s.store.GetMediaMetadataByMediaItem(item.ID)
-		if err != nil || meta == nil {
-			continue // not matched yet, skip
-		}
-
-		downloads, err := s.store.ListDownloads(&item.ID, nil)
+		item, err := s.store.GetMediaItem(items[i].ID)
 		if err != nil {
-			slog.Error("monitor: failed to list downloads", "item_id", item.ID, "error", err)
-			continue
-		}
-
-		// Record any terminally-failed releases in the blocklist so we stop
-		// re-grabbing broken torrents on subsequent cycles.
-		s.recordDownloadFailures(item, downloads)
-
-		files, err := s.store.ListMediaFilesByMediaItem(item.ID)
-		if err != nil {
-			slog.Error("monitor: failed to list files", "item_id", item.ID, "error", err)
-			continue
-		}
-
-		switch item.MediaType {
-		case "movie":
-			s.processMovie(item, meta, downloads, files)
-		case "series":
-			s.processSeries(item, meta, downloads, files)
-		}
-
-		// Absorb time-driven status transitions (an episode airing changes the
-		// correct status without any write happening elsewhere). No-ops when
-		// the status is already current.
-		if s.statusRecalc != nil {
-			if err := s.statusRecalc.RecalcMediaItemStatus(item.ID); err != nil {
-				slog.Warn("monitor: status recalc failed", "item_id", item.ID, "error", err)
+			if !errors.Is(err, store.ErrNotFound) {
+				slog.Error("monitor: failed to reload item", "item_id", items[i].ID, "error", err)
 			}
+			continue
+		}
+		if item != nil && item.Monitored {
+			s.processItem(item)
 		}
 	}
 }
 
-func (s *Service) processMovie(item *store.MediaItem, meta *store.MediaMetadata, downloads []store.Download, files []store.MediaFile) {
+func (s *Service) processItem(item *store.MediaItem) {
+	slog.Debug("monitor: checking item", "item_id", item.ID, "title", item.Title, "type", item.MediaType)
+	check := newDecisionCheck(item)
+	defer s.saveDecision(check)
+	if !item.Monitored {
+		check.add(decisionDetail("disabled", "Auto-download is disabled; no search was performed."))
+		return
+	}
+	meta, err := s.store.GetMediaMetadataByMediaItem(item.ID)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && meta == nil) {
+		check.add(decisionDetail("missing_metadata", "Match this item to metadata before auto-download can search."))
+		return
+	}
+	if err != nil {
+		slog.Error("monitor: failed to load metadata", "item_id", item.ID, "error", err)
+		check.add(decisionDetail("error", "Could not load metadata. The monitor will retry on its next check."))
+		return
+	}
+	downloads, err := s.store.ListDownloads(&item.ID, nil)
+	if err != nil {
+		slog.Error("monitor: failed to list downloads", "item_id", item.ID, "error", err)
+		check.add(decisionDetail("error", "Could not check existing downloads; no search was performed."))
+		return
+	}
+	s.recordDownloadFailures(item, downloads)
+	files, err := s.store.ListMediaFilesByMediaItem(item.ID)
+	if err != nil {
+		slog.Error("monitor: failed to list files", "item_id", item.ID, "error", err)
+		check.add(decisionDetail("error", "Could not check library files; no search was performed."))
+		return
+	}
+	switch item.MediaType {
+	case "movie":
+		check.add(s.processMovie(item, meta, downloads, files, check))
+	case "series":
+		s.processSeries(item, meta, downloads, files, check)
+	default:
+		check.add(decisionDetail("no_eligible_targets", "This media type is not supported by auto-download."))
+	}
+
+	// Absorb time-driven status transitions (an episode airing changes the
+	// correct status without any write happening elsewhere). No-ops when
+	// the status is already current.
+	if s.statusRecalc != nil {
+		if err := s.statusRecalc.RecalcMediaItemStatus(item.ID); err != nil {
+			slog.Warn("monitor: status recalc failed", "item_id", item.ID, "error", err)
+		}
+	}
+}
+
+func (s *Service) processMovie(item *store.MediaItem, meta *store.MediaMetadata, downloads []store.Download, files []store.MediaFile, check *decisionCheck) store.MonitorDecisionDetail {
 	// Already have files — no upgrade
 	if len(files) > 0 {
 		slog.Debug("monitor: movie already has files, skipping", "item_id", item.ID, "title", item.Title)
-		return
+		return decisionDetail("already_present", "Library files already exist. Auto-download does not upgrade existing files.")
 	}
 
 	// Already have an active download
 	if hasActiveDownload(downloads, nil) {
 		slog.Debug("monitor: movie already has active download, skipping", "item_id", item.ID, "title", item.Title)
-		return
+		return decisionDetail("active_download", "An existing download already covers this movie.")
 	}
 
 	// Check if released
 	if !isReleased(meta) {
 		slog.Debug("monitor: movie not yet released, skipping", "item_id", item.ID, "title", item.Title)
-		return
+		if meta.ReleaseDate == "" && meta.Year == nil {
+			return decisionDetail("missing_metadata", "No release date or year is known, so release eligibility cannot be checked.")
+		}
+		return decisionDetail("unaired", "The movie has not been released yet; no search was performed.")
 	}
 
 	// Search indexers
@@ -182,42 +209,56 @@ func (s *Service) processMovie(item *store.MediaItem, meta *store.MediaMetadata,
 		params.Type = "search"
 	}
 
-	results, err := s.indexerSvc.Search(ctx, params)
+	results, diagnostics, err := s.indexerSvc.SearchWithDiagnostics(ctx, params)
 	if err != nil {
 		slog.Warn("monitor: search failed", "item_id", item.ID, "title", item.Title, "error", err)
-		return
+		return decisionDetail("indexer_error", "The indexer search could not complete. The monitor will retry on its next check.")
 	}
+	check.addPartialSearchFailure(diagnostics, nil)
 
 	// Filter by quality profile
 	filtered := s.filterByProfile(results, item)
 
 	if len(filtered) == 0 {
 		s.markSearchStarted(item)
-		return
+		return searchDecision(len(results), len(filtered), diagnostics)
 	}
 
 	// Pick the best (highest seeders — already sorted by indexer search)
 	best := filtered[0]
 
 	// Final dedup check
-	freshDownloads, _ := s.store.ListDownloads(&item.ID, nil)
-	if hasActiveDownload(freshDownloads, nil) {
-		return
+	freshDownloads, err := s.store.ListDownloads(&item.ID, nil)
+	var detail store.MonitorDecisionDetail
+	switch {
+	case err != nil:
+		detail = decisionDetail("error", "Could not recheck existing downloads; no download was queued.")
+	case hasActiveDownload(freshDownloads, nil):
+		detail = decisionDetail("active_download", "A download appeared during the search; no duplicate was queued.")
+	default:
+		detail = s.createAutoDownload(item, best, nil, nil)
 	}
-
-	s.createAutoDownload(item, best, nil, nil)
+	detail.TotalResults = len(results)
+	detail.RejectedResults = len(results) - len(filtered)
+	return detail
 }
 
-func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata, downloads []store.Download, files []store.MediaFile) {
+func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata, downloads []store.Download, files []store.MediaFile, check *decisionCheck) {
 	episodes, err := s.store.ListEpisodesByMediaItem(item.ID)
 	if err != nil {
 		slog.Error("monitor: failed to list episodes", "item_id", item.ID, "error", err)
+		check.add(decisionDetail("error", "Could not load episodes; no search was performed."))
+		return
+	}
+	if len(episodes) == 0 {
+		check.add(decisionDetail("missing_metadata", "No episode metadata is available yet; no search was performed."))
 		return
 	}
 
 	monitors, err := s.store.ListSeasonMonitorsByMediaItem(item.ID)
 	if err != nil {
 		slog.Error("monitor: failed to list season monitors", "item_id", item.ID, "error", err)
+		check.add(decisionDetail("error", "Could not load season monitoring settings; no search was performed."))
 		return
 	}
 
@@ -227,7 +268,11 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 	}
 
 	// Build episode monitor lookup for per-episode overrides
-	epMonitors, _ := s.store.ListEpisodeMonitorsByMediaItem(item.ID)
+	epMonitors, err := s.store.ListEpisodeMonitorsByMediaItem(item.ID)
+	if err != nil {
+		check.add(decisionDetail("error", "Could not load episode monitoring overrides; no search was performed."))
+		return
+	}
 	epMonitorLookup := make(map[string]bool, len(epMonitors))
 	for _, em := range epMonitors {
 		key := fmt.Sprintf("S%dE%d", em.SeasonNumber, em.EpisodeNumber)
@@ -249,17 +294,29 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 
 	var wanted []wantedEp
 	for _, ep := range episodes {
+		detail := store.MonitorDecisionDetail{SeasonNumber: &ep.SeasonNumber, EpisodeNumber: &ep.EpisodeNumber}
+		skip := func(outcome, explanation string) {
+			detail.Outcome, detail.Explanation = outcome, explanation
+			check.add(detail)
+		}
 		// Must be aired
 		if ep.AirDate == "" || ep.AirDate > today {
+			if ep.AirDate == "" {
+				skip("missing_metadata", "No air date is known; this episode is not eligible yet.")
+			} else {
+				skip("unaired", "This episode has not aired yet.")
+			}
 			continue
 		}
 		// Resolve monitored: episode-level override > season-level > not monitored
 		epKey := fmt.Sprintf("S%dE%d", ep.SeasonNumber, ep.EpisodeNumber)
 		if epMon, ok := epMonitorLookup[epKey]; ok {
 			if !epMon {
+				skip("disabled", "This episode has an explicit monitoring override turned off.")
 				continue // explicitly unmonitored episode
 			}
 		} else if seasonMon, ok := monitorLookup[ep.SeasonNumber]; !ok || !seasonMon {
+			skip("disabled", "This season is not monitored and the episode has no enabled override.")
 			continue // season not monitored and no episode override
 		}
 
@@ -267,11 +324,13 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 
 		// Must not have a file
 		if fileMap[fileKey(ep.SeasonNumber, ep.EpisodeNumber)] {
+			skip("already_present", "A library file already covers this episode.")
 			continue
 		}
 		// Must not have an active download
 		epID := ep.ID
 		if hasActiveDownloadForEpisode(downloadMap, &epID, ep.SeasonNumber, ep.EpisodeNumber) {
+			skip("active_download", "An existing episode, range or season-pack download covers this episode.")
 			continue
 		}
 		wanted = append(wanted, wantedEp{episode: ep})
@@ -279,6 +338,7 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 
 	if len(wanted) == 0 {
 		slog.Debug("monitor: series has no missing aired episodes, skipping", "item_id", item.ID, "title", item.Title)
+		check.add(decisionDetail("no_eligible_targets", "No monitored, aired episodes are missing both files and downloads. No search was performed."))
 		return
 	}
 
@@ -289,7 +349,13 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 	}
 
 	foundAny := false
-	for seasonNum, wantedEps := range seasonWanted {
+	seasonNumbers := make([]int, 0, len(seasonWanted))
+	for sn := range seasonWanted {
+		seasonNumbers = append(seasonNumbers, sn)
+	}
+	sort.Ints(seasonNumbers)
+	for _, seasonNum := range seasonNumbers {
+		wantedEps := seasonWanted[seasonNum]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 		params := indexer.SearchParams{
@@ -303,15 +369,22 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 			params.Type = "search"
 		}
 
-		results, err := s.indexerSvc.Search(ctx, params)
+		results, diagnostics, err := s.indexerSvc.SearchWithDiagnostics(ctx, params)
 		cancel()
 		if err != nil {
 			slog.Warn("monitor: series search failed",
 				"item_id", item.ID, "title", item.Title, "season", seasonNum, "error", err)
+			detail := decisionDetail("indexer_error", "The season search could not complete. The monitor will retry on its next check.")
+			detail.SeasonNumber = &seasonNum
+			check.add(detail)
 			continue
 		}
+		check.addPartialSearchFailure(diagnostics, &seasonNum)
 
 		filtered := s.filterByProfile(results, item)
+		searchDetail := searchDecision(len(results), len(filtered), diagnostics)
+		searchDetail.SeasonNumber = &seasonNum
+		check.add(searchDetail)
 		if len(filtered) == 0 {
 			continue
 		}
@@ -322,14 +395,26 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		for _, w := range wantedEps {
 			best := s.findBestForEpisode(filtered, w.episode, packPref, wantedRatio)
 			if best == nil {
+				detail := decisionDetail("no_match", "No eligible release matched this episode under the current season-pack preference.")
+				detail.SeasonNumber, detail.EpisodeNumber = &w.episode.SeasonNumber, &w.episode.EpisodeNumber
+				check.add(detail)
 				continue
 			}
 
 			// Final dedup check
 			epID := w.episode.ID
-			freshDownloads, _ := s.store.ListDownloads(&item.ID, nil)
+			freshDownloads, err := s.store.ListDownloads(&item.ID, nil)
+			if err != nil {
+				detail := decisionDetail("error", "Could not recheck existing downloads; no download was queued for this episode.")
+				detail.SeasonNumber, detail.EpisodeNumber = &w.episode.SeasonNumber, &w.episode.EpisodeNumber
+				check.add(detail)
+				continue
+			}
 			freshMap := buildDownloadMap(freshDownloads)
 			if hasActiveDownloadForEpisode(freshMap, &epID, w.episode.SeasonNumber, w.episode.EpisodeNumber) {
+				detail := decisionDetail("active_download", "A download appeared during the search; no duplicate was queued.")
+				detail.SeasonNumber, detail.EpisodeNumber = &w.episode.SeasonNumber, &w.episode.EpisodeNumber
+				check.add(detail)
 				continue
 			}
 
@@ -337,15 +422,19 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 			if parsed.Season != nil && parsed.Episode == nil {
 				// Season pack — create one download for the whole season
 				sn := seasonNum
-				s.createAutoDownload(item, *best, nil, &sn)
-				foundAny = true
+				detail := s.createAutoDownload(item, *best, nil, &sn)
+				detail.SeasonNumber = &sn
+				check.add(detail)
+				foundAny = foundAny || detail.Outcome == "grabbed"
 				break // Don't create individual episode downloads for this season
 			}
 
 			eid := w.episode.ID
 			sn := seasonNum
-			s.createAutoDownload(item, *best, &eid, &sn)
-			foundAny = true
+			detail := s.createAutoDownload(item, *best, &eid, &sn)
+			detail.SeasonNumber, detail.EpisodeNumber = &sn, &w.episode.EpisodeNumber
+			check.add(detail)
+			foundAny = foundAny || detail.Outcome == "grabbed"
 		}
 	}
 
@@ -457,35 +546,7 @@ func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {
 	return nil
 }
 
-func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.TorrentResult, episodeID *uint, seasonNumber *int) {
-	// Guard against duplicate downloads (same torrent URL already active).
-	exists, err := s.store.HasActiveDownloadByURL(item.ID, result.DownloadURL)
-	if err != nil {
-		slog.Error("monitor: failed to check duplicate download",
-			"item_id", item.ID, "title", result.Title, "error", err)
-		return
-	}
-	if exists {
-		slog.Debug("monitor: skipping duplicate download",
-			"item_id", item.ID, "title", result.Title)
-		return
-	}
-
-	// Guard against re-grabbing a release that has already failed repeatedly
-	// (dead URL, qBit error, repeated import failure). Failed downloads are not
-	// "active", so without this the same broken URL would be grabbed every cycle.
-	blocked, err := s.store.IsBlocklisted(item.ID, result.DownloadURL, maxBlocklistFailures)
-	if err != nil {
-		slog.Error("monitor: failed to check download blocklist",
-			"item_id", item.ID, "title", result.Title, "error", err)
-		return
-	}
-	if blocked {
-		slog.Info("monitor: skipping blocklisted release",
-			"item_id", item.ID, "title", result.Title, "url", result.DownloadURL)
-		return
-	}
-
+func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.TorrentResult, episodeID *uint, seasonNumber *int) store.MonitorDecisionDetail {
 	dl := &store.Download{
 		MediaItemID:  item.ID,
 		EpisodeID:    episodeID,
@@ -500,10 +561,43 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 		Status:       "pending",
 	}
 
-	if err := s.store.CreateDownload(dl); err != nil {
+	var detail store.MonitorDecisionDetail
+	// Serialize the final eligibility check and insert with media deletion's
+	// disable-and-cancel transaction. Searches and event delivery stay outside.
+	if err := s.store.WithTx(func(tx store.Store) error {
+		parent, err := tx.GetMediaItem(item.ID)
+		if errors.Is(err, store.ErrNotFound) || (err == nil && (parent == nil || !parent.Monitored)) {
+			detail = decisionDetail("disabled", "Auto-download was disabled or the item was deleted during the search; no download was queued.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		exists, err := tx.HasActiveDownloadByURL(item.ID, result.DownloadURL)
+		if err != nil {
+			return err
+		}
+		if exists {
+			detail = decisionDetail("active_download", "The selected release already has an active download; no duplicate was queued.")
+			return nil
+		}
+		blocked, err := tx.IsBlocklisted(item.ID, result.DownloadURL, maxBlocklistFailures)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			detail = decisionDetail("blocked", "The highest-ranked selection is blocked after repeated failures. No fallback release was attempted.")
+			detail.BlockedResults = 1
+			return nil
+		}
+		return tx.CreateDownload(dl)
+	}); err != nil {
 		slog.Error("monitor: failed to create download",
 			"item_id", item.ID, "title", result.Title, "error", err)
-		return
+		return decisionDetail("error", "Could not verify eligibility or save the selected download. The monitor will retry on its next check.")
+	}
+	if detail.Outcome != "" {
+		return detail
 	}
 
 	slog.Info("monitor: auto-download created",
@@ -524,7 +618,13 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 
 	// Clear search started marker
 	item.MonitorSearchStartedAt = nil
-	_ = s.store.UpdateMediaItem(item)
+	if err := s.store.SetMonitorSearchStartedAt(item.ID, nil); err != nil {
+		slog.Error("monitor: failed to clear search started", "item_id", item.ID, "error", err)
+	}
+	detail = decisionDetail("grabbed", "A download was queued successfully. This does not mean the files have finished downloading or importing.")
+	detail.SelectedTitle = safeSelectedTitle(result.Title)
+	detail.DownloadID = &dl.ID
+	return detail
 }
 
 // recordDownloadFailures scans an item's downloads for terminally-failed
@@ -570,10 +670,11 @@ func (s *Service) markSearchStarted(item *store.MediaItem) {
 		return // already tracking
 	}
 	now := time.Now()
-	item.MonitorSearchStartedAt = &now
-	if err := s.store.UpdateMediaItem(item); err != nil {
+	if err := s.store.SetMonitorSearchStartedAt(item.ID, &now); err != nil {
 		slog.Error("monitor: failed to update search started", "item_id", item.ID, "error", err)
+		return
 	}
+	item.MonitorSearchStartedAt = &now
 }
 
 // --- helpers ---

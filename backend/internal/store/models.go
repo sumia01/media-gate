@@ -32,6 +32,7 @@ type MediaItem struct {
 type MediaMetadata struct {
 	ID          uint    `gorm:"primarykey"`
 	MediaItemID uint    `gorm:"not null;uniqueIndex;constraint:OnDelete:CASCADE"`
+	MediaType   string  `gorm:"->;-:migration"` // Read-only projection from media_items, not a metadata column.
 	Source      string  `gorm:"not null"`
 	ExternalID  int     `gorm:"not null"`
 	ImdbID      string

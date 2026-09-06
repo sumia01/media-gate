@@ -75,6 +75,15 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Recently added feed from local libraries
 - Full external media preview before adding to a library
 - Duplicate detection: results indicate if media already exists locally
+- Persistent "Hide in library" filter on Discover, category, and similar-title pages; Recently Added stays visible
+- Library identities include media type, so a movie and series with the same provider ID are not confused. TVDB-to-TMDB identity normalization remains a known limitation of badges and filtering
+
+### Episode Timeline
+
+- Drag, swipe, or use keyboard/arrow controls to explore past and upcoming episodes of followed series
+- Loads 14-day windows on demand, with bounded rendered days and nearby cache rather than downloading the whole calendar
+- Today shortcut, availability badges, and explicit unmonitored-episode labels
+- Download/import and metadata events refresh the visible dates without moving the timeline
 
 ### Indexer Engine
 
@@ -129,6 +138,9 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Toggle entire seasons (clears episode-level overrides)
 - Auto-monitor new seasons when they appear
 - Profile-based filtering of search results before grabbing
+- Latest auto-download decision on each media detail page: release/profile counts, blocklisted selections, existing downloads, missing metadata, and actual grabs
+- Distinguishes no enabled indexers, genuine empty searches, and partial/complete indexer failures
+- Persists one bounded snapshot per item (up to 50 details), keeping the evaluated input version separate from completion time so settings changes during a search remain visibly stale
 
 ### Metadata Refresh
 
@@ -155,7 +167,9 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 ### Notifications
 
 - Discord webhook notifications on import events
-- Rich embeds with media title, year, type, and poster image
+- Terminal download/import failure notifications through the same webhook, without retry spam or alerts for intentional deletion
+- Failure messages use safe summaries rather than raw errors, credentials, or private paths; mention parsing is disabled
+- Successful imports use rich embeds with media title, year, type, and poster image; failure messages use a compact title, safe reason, and download ID
 - Connection testing from the UI
 
 ### Plex Integration
@@ -215,7 +229,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 | **Prowlarr/Indexers** | 700+ torrent indexer definitions (Cardigann YAML) |
 | **FlareSolverr** | Cloudflare challenge bypass for protected indexer sites |
 | **Plex** | Automatic library refresh after import (section-level scan trigger) |
-| **Discord** | Webhook notifications for import events |
+| **Discord** | Webhook notifications for successful imports and terminal download/import failures |
 | **OpenSubtitles.com** | Subtitle search and download |
 | **GitHub Releases** | Self-update checking and binary replacement |
 
@@ -249,6 +263,14 @@ The UI includes a dedicated **Workers panel** with real-time SSE-driven status f
 ```bash
 make tools      # install air + oapi-codegen
 make dev        # Air (Go hot-reload) + Vite (frontend HMR) in parallel
+```
+
+Run backend tests without cached results and use Node.js 24 for the frontend regression tests (native TypeScript imports and module hooks):
+
+```bash
+(cd backend && go test -count=1 ./...)
+(cd frontend && npm test)
+scripts/lint-all.sh   # run from the repository root; check both linter outputs
 ```
 
 ### Production build

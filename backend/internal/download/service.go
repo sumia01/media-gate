@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -134,7 +135,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 		if err != nil {
 			slog.Error("download worker: failed to fetch torrent",
 				"download_id", dl.ID, "title", dl.Title, "error", err)
-			s.handleRetry(dl, err)
+			s.handleRetry(dl, fmt.Errorf("failed to fetch torrent: %w", err))
 			continue
 		}
 
@@ -153,7 +154,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 			if err != nil {
 				slog.Error("download worker: failed to add torrent",
 					"download_id", dl.ID, "title", dl.Title, "error", err)
-				s.handleRetry(dl, err)
+				s.handleRetry(dl, fmt.Errorf("failed to add torrent to qBittorrent: %w", err))
 				continue
 			}
 		}
@@ -180,25 +181,37 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 
 // handleRetry increments retry count and schedules backoff, or fails permanently.
 func (s *Service) handleRetry(dl *store.Download, lastErr error) {
-	dl.LastError = lastErr.Error()
+	if dl.Status != "pending" || errors.Is(lastErr, context.Canceled) {
+		return
+	}
+	nextDL := *dl
+	nextDL.LastError = lastErr.Error()
 
 	if dl.RetryCount < maxRetries {
-		dl.RetryCount++
-		next := time.Now().Add(retryBackoff[dl.RetryCount-1])
-		dl.NextRetryAt = &next
+		nextDL.RetryCount++
+		next := time.Now().Add(retryBackoff[nextDL.RetryCount-1])
+		nextDL.NextRetryAt = &next
 		slog.Warn("download worker: scheduling retry",
 			"download_id", dl.ID, "title", dl.Title,
-			"retry", dl.RetryCount, "next_retry_at", next)
+			"retry", nextDL.RetryCount, "next_retry_at", next)
 	} else {
-		dl.Status = "failed"
+		nextDL.Status = "failed"
+		nextDL.NextRetryAt = nil
+		nextDL.LastError = "download retries exhausted: " + lastErr.Error()
 		slog.Error("download worker: max retries exceeded, marking failed",
 			"download_id", dl.ID, "title", dl.Title, "retries", dl.RetryCount)
+	}
+
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
+		slog.Error("download worker: failed to persist retry outcome", "download_id", dl.ID, "error", err)
+		return
+	}
+	*dl = nextDL
+	if dl.Status == "failed" {
 		s.bus.Publish(eventbus.DownloadFailed, eventbus.DownloadPayload{
 			DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: "failed",
 		})
 	}
-
-	_ = s.store.UpdateDownload(dl)
 }
 
 // pollActive checks downloads in "downloading" status against qBittorrent.
@@ -247,20 +260,27 @@ func (s *Service) pollActive(client *qbittorrent.Client, justSent map[uint]bool)
 // imported it is marked "completed"; otherwise "failed" so the monitor can
 // re-grab. Mirrors cleanupSeeding's handling of missing seeding torrents.
 func (s *Service) handleMissingTorrent(dl *store.Download) {
+	if dl.Status != "downloading" && dl.Status != "seeding" {
+		return
+	}
+	nextDL := *dl
 	if dl.LinkedToLibrary {
-		dl.Status = "completed"
+		nextDL.Status = "completed"
 		now := time.Now()
-		dl.CompletedAt = &now
+		nextDL.CompletedAt = &now
 	} else {
-		dl.Status = "failed"
-		dl.ClientTorrentHash = ""
+		nextDL.Status = "failed"
+		nextDL.ClientTorrentHash = ""
+		nextDL.LastError = "torrent missing from qBittorrent before import"
+		nextDL.NextRetryAt = nil
 	}
 
-	if err := s.store.UpdateDownload(dl); err != nil {
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
 		slog.Error("download worker: failed to update download for missing torrent",
 			"download_id", dl.ID, "error", err)
 		return
 	}
+	*dl = nextDL
 
 	slog.Warn("download worker: torrent missing from qBittorrent, marking terminal",
 		"download_id", dl.ID, "title", dl.Title, "status", dl.Status)
@@ -276,6 +296,9 @@ func (s *Service) handleMissingTorrent(dl *store.Download) {
 // When qBit reports download is complete (seeding/pausedUP), transitions to "downloaded"
 // so the import worker can pick it up.
 func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.TorrentInfo) {
+	if dl.Status != "downloading" {
+		return
+	}
 	mapped := qbittorrent.MapState(info.State)
 
 	var newStatus string
@@ -286,6 +309,9 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 		// qBit says files are complete — hand off to import worker
 		newStatus = "downloaded"
 	case "error":
+		if info.State != "error" && info.State != "missingFiles" {
+			return // An unknown client state is not a confirmed failure.
+		}
 		newStatus = "failed"
 	default:
 		// paused, moving, unknown — don't change status
@@ -296,20 +322,29 @@ func (s *Service) updateFromTorrent(dl *store.Download, info *qbittorrent.Torren
 		return
 	}
 
-	dl.Status = newStatus
+	nextDL := *dl
+	nextDL.Status = newStatus
+	if newStatus == "failed" {
+		nextDL.LastError = "qBittorrent reported a torrent error"
+		if info.State == "missingFiles" {
+			nextDL.LastError = "qBittorrent reported missing files"
+		}
+		nextDL.NextRetryAt = nil
+	}
 	if newStatus == "downloaded" && dl.DownloadedAt == nil {
 		downloadedAt := time.Now()
 		if info.CompletionOn > 0 {
 			downloadedAt = time.Unix(info.CompletionOn, 0)
 		}
-		dl.DownloadedAt = &downloadedAt
+		nextDL.DownloadedAt = &downloadedAt
 	}
 
-	if err := s.store.UpdateDownload(dl); err != nil {
+	if err := s.store.UpdateDownload(&nextDL); err != nil {
 		slog.Error("download worker: failed to update download",
 			"download_id", dl.ID, "error", err)
 		return
 	}
+	*dl = nextDL
 
 	slog.Info("download worker: status updated",
 		"download_id", dl.ID, "title", dl.Title, "status", newStatus)
@@ -459,8 +494,8 @@ func (s *Service) ListTorrentFiles(hash string) ([]qbittorrent.TorrentFile, erro
 
 // Reconcile checks that downloads in "downloading" or "seeding" status still
 // have active torrents in qBittorrent. Downloads whose torrents have been
-// removed externally are marked as failed. Best-effort — skipped if qBit
-// is not configured or unreachable.
+// removed externally are marked as failed, or completed if already imported.
+// Best-effort: skipped if qBit is not configured or unreachable.
 func (s *Service) Reconcile() {
 	// Recover downloads stuck in the transient "importing" state after a crash or
 	// restart mid-import. This is a pure DB fixup independent of qBittorrent, so
@@ -498,11 +533,7 @@ func (s *Service) Reconcile() {
 				continue
 			}
 			if _, ok := hashSet[strings.ToLower(dl.ClientTorrentHash)]; !ok {
-				slog.Warn("startup: torrent missing from client, marking download as failed",
-					"download_id", dl.ID, "title", dl.Title, "hash", dl.ClientTorrentHash)
-				dl.Status = "failed"
-				dl.ClientTorrentHash = ""
-				_ = s.store.UpdateDownload(dl)
+				s.handleMissingTorrent(dl)
 			}
 		}
 	}

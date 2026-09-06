@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -12,6 +13,14 @@ import (
 type settingsStubStore struct {
 	libraries []store.Library
 	settings  map[string]*store.Setting
+}
+
+func (s *settingsStubStore) GetMonitorDecision(uint) (*store.MonitorDecision, error) {
+	return nil, store.ErrNotFound
+}
+func (s *settingsStubStore) UpsertMonitorDecision(*store.MonitorDecision) error { return nil }
+func (s *settingsStubStore) ListTimelineEpisodes(string, string) ([]store.TimelineEpisode, error) {
+	return nil, nil
 }
 
 func newSettingsStubStore() *settingsStubStore {
@@ -31,6 +40,7 @@ func (s *settingsStubStore) DeleteLibrary(uint) error                   { return
 func (s *settingsStubStore) CreateMediaItem(*store.MediaItem) error                     { return nil }
 func (s *settingsStubStore) GetMediaItem(uint) (*store.MediaItem, error)                { return nil, nil }
 func (s *settingsStubStore) UpdateMediaItem(*store.MediaItem) error                     { return nil }
+func (s *settingsStubStore) SetMonitorSearchStartedAt(uint, *time.Time) error            { return nil }
 func (s *settingsStubStore) DeleteMediaItem(uint) error                                 { return nil }
 func (s *settingsStubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error)    { return nil, nil }
 func (s *settingsStubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }

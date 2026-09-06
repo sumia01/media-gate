@@ -92,6 +92,13 @@ type SearchParams struct {
 	Limit      int
 }
 
+// SearchDiagnostics contains counts only, never indexer credentials or error bodies.
+// Attempted includes selected indexers whose engine could not be initialized.
+type SearchDiagnostics struct {
+	Attempted int
+	Failed    int
+}
+
 // NewService loads indexer definitions and creates the indexer service.
 // It tries the disk cache first, then falls back to embedded definitions.
 func NewService(s store.Store, settingsSvc *settings.Service, cacheDir string) (*Service, error) {
@@ -365,9 +372,17 @@ func (s *Service) TestConnection(id uint, overrideSettings map[string]string) (b
 
 // Search queries multiple indexers in parallel and aggregates results.
 func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentResult, error) {
+	results, _, err := s.SearchWithDiagnostics(ctx, params)
+	return results, err
+}
+
+// SearchWithDiagnostics preserves successful results even when other indexers
+// fail. Only setup failures (such as listing indexers) return an error, matching
+// Search's existing behavior; per-indexer failures are reported in the counts.
+func (s *Service) SearchWithDiagnostics(ctx context.Context, params SearchParams) ([]TorrentResult, SearchDiagnostics, error) {
 	indexers, err := s.store.ListIndexers()
 	if err != nil {
-		return nil, fmt.Errorf("listing indexers: %w", err)
+		return nil, SearchDiagnostics{}, fmt.Errorf("listing indexers: %w", err)
 	}
 
 	// Filter to enabled indexers or specific IDs.
@@ -388,7 +403,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 	}
 
 	if len(targets) == 0 {
-		return []TorrentResult{}, nil
+		return []TorrentResult{}, SearchDiagnostics{}, nil
 	}
 
 	query := cardigann.SearchQuery{
@@ -402,6 +417,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 
 	type indexerResults struct {
 		results []TorrentResult
+		failed  bool
 	}
 
 	resultsCh := make(chan indexerResults, len(targets))
@@ -411,12 +427,14 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 	for _, idx := range targets {
 		wg.Add(1)
 		go func(idx store.Indexer) {
+			defer wg.Done()
+			outcome := indexerResults{failed: true}
 			defer func() {
 				if r := recover(); r != nil {
 					slog.Error("indexer search panicked", "indexer", idx.Name, "panic", r)
 				}
+				resultsCh <- outcome
 			}()
-			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -427,8 +445,8 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 			}
 
 			entry.mu.Lock()
+			defer entry.mu.Unlock()
 			results, err := entry.engine.Search(ctx, query)
-			entry.mu.Unlock()
 
 			if err != nil {
 				slog.Warn("indexer search failed", "indexer", idx.Name, "error", err)
@@ -454,7 +472,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 					UploadVolumeFactor:   r.UploadVolumeFactor,
 				})
 			}
-			resultsCh <- indexerResults{results: converted}
+			outcome = indexerResults{results: converted}
 		}(idx)
 	}
 
@@ -464,8 +482,12 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 	}()
 
 	var all []TorrentResult
+	diagnostics := SearchDiagnostics{Attempted: len(targets)}
 	for ir := range resultsCh {
 		all = append(all, ir.results...)
+		if ir.failed {
+			diagnostics.Failed++
+		}
 	}
 
 	sort.Slice(all, func(i, j int) bool { return all[i].Seeders > all[j].Seeders })
@@ -474,7 +496,7 @@ func (s *Service) Search(ctx context.Context, params SearchParams) ([]TorrentRes
 		all = all[:params.Limit]
 	}
 
-	return all, nil
+	return all, diagnostics, nil
 }
 
 func (s *Service) getOrCreateEngine(indexer *store.Indexer) (*engineEntry, error) {

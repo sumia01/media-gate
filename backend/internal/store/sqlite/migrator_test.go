@@ -66,10 +66,12 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	// since the AutoMigrate era that produced un-stamped databases ended before
 	// any of these columns existed in the model.
 	//
-	// Extend this list whenever a post-baseline migration adds a column.
+	// Extend this list whenever a post-baseline migration adds schema.
 	for _, stmt := range []string{
 		`ALTER TABLE media_metadata DROP COLUMN content_ratings`,
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
+		`DROP TABLE monitor_decisions`,
+		`DROP INDEX idx_episodes_air_date`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-baseline schema (%s): %v", stmt, err)
@@ -193,6 +195,7 @@ func TestFreshInstallSchema(t *testing.T) {
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
 	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
+	mustHaveColumn(t, sqlDB, "monitor_decisions", "input_updated_at")
 }
 
 func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
@@ -216,8 +219,15 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
-	if _, err := sqlDB.Exec(`ALTER TABLE downloads DROP COLUMN downloaded_at`); err != nil {
-		t.Fatalf("removing downloaded_at: %v", err)
+	// Recreate version 3, including removal of tables/indexes added afterward.
+	for _, stmt := range []string{
+		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
+		`DROP TABLE monitor_decisions`,
+		`DROP INDEX idx_episodes_air_date`,
+	} {
+		if _, err := sqlDB.Exec(stmt); err != nil {
+			t.Fatalf("stripping post-v3 schema (%s): %v", stmt, err)
+		}
 	}
 	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 3, dirty = 0`); err != nil {
 		t.Fatalf("resetting migration version: %v", err)

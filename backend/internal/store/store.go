@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"io"
+	"time"
 )
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -41,6 +42,9 @@ type Store interface {
 	CreateMediaItem(item *MediaItem) error
 	GetMediaItem(id uint) (*MediaItem, error)
 	UpdateMediaItem(item *MediaItem) error
+	// SetMonitorSearchStartedAt starts tracking only monitored items without a
+	// marker, or clears it when nil. Missing items are a no-op; UpdatedAt is unchanged.
+	SetMonitorSearchStartedAt(mediaItemID uint, startedAt *time.Time) error
 	DeleteMediaItem(id uint) error
 	ListMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
@@ -89,6 +93,11 @@ type Store interface {
 	ListEpisodesByMediaItem(mediaItemID uint) ([]Episode, error)
 	GetEpisodeByNumber(mediaItemID uint, seasonNumber, episodeNumber int) (*Episode, error)
 	DeleteEpisodesByMediaItem(mediaItemID uint) error
+	ListTimelineEpisodes(from, to string) ([]TimelineEpisode, error)
+
+	// Latest automatic-search snapshot for a media item.
+	GetMonitorDecision(mediaItemID uint) (*MonitorDecision, error)
+	UpsertMonitorDecision(decision *MonitorDecision) error
 
 	GetSetting(key string) (*Setting, error)
 	SetSetting(setting *Setting) error

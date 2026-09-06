@@ -32,9 +32,34 @@ func NewService(s store.Store, syncSvc *mediasync.Service, bus *eventbus.Bus, qb
 // DeleteMediaItem removes a media item and all associated resources:
 // torrents from qBittorrent, imported files from disk, poster, and DB record.
 func (s *Service) DeleteMediaItem(itemID uint) error {
-	item, err := s.store.GetMediaItem(itemID)
-	if err != nil {
-		return err
+	var item *store.MediaItem
+	var downloads []store.Download
+	// Disable new monitor grabs and cancel every child atomically before external
+	// cleanup. Preserve hashes and paths until the parent deletion cascades rows.
+	if err := s.store.WithTx(func(tx store.Store) error {
+		var err error
+		item, err = tx.GetMediaItem(itemID)
+		if err != nil {
+			return err
+		}
+		item.Monitored = false
+		item.MonitorSearchStartedAt = nil
+		if err := tx.UpdateMediaItem(item); err != nil {
+			return err
+		}
+		downloads, err = tx.ListDownloads(&itemID, nil)
+		if err != nil {
+			return err
+		}
+		for i := range downloads {
+			downloads[i].Status = "cancelled"
+			if err := tx.UpdateDownload(&downloads[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("disable monitoring and cancel downloads before media deletion: %w", err)
 	}
 	slog.Info("media: deleting media item", "media_item_id", item.ID, "title", item.Title, "library_id", item.LibraryID)
 
@@ -42,8 +67,6 @@ func (s *Service) DeleteMediaItem(itemID uint) error {
 	mediaFiles, _ := s.store.ListMediaFilesByMediaItem(item.ID)
 
 	// Remove torrents from qBittorrent (best-effort).
-	id := item.ID
-	downloads, _ := s.store.ListDownloads(&id, nil)
 	if client, err := s.qbit.Client(); err == nil {
 		for _, dl := range downloads {
 			if dl.ClientTorrentHash == "" {
@@ -112,6 +135,13 @@ func (s *Service) DeleteDownload(dlID uint, deleteFiles bool) error {
 	dl, err := s.store.GetDownload(dlID)
 	if err != nil {
 		return err
+	}
+
+	// Persist intent before removing the torrent: an in-flight poll may still
+	// hold a downloading snapshot, but its stale update must not mark this failed.
+	dl.Status = "cancelled"
+	if err := s.store.UpdateDownload(dl); err != nil {
+		return fmt.Errorf("cancel download before deletion: %w", err)
 	}
 
 	if dl.ClientTorrentHash != "" {

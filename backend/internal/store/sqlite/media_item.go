@@ -1,6 +1,10 @@
 package sqlite
 
-import "github.com/sumia01/media-gate/internal/store"
+import (
+	"time"
+
+	"github.com/sumia01/media-gate/internal/store"
+)
 
 func (s *SQLiteStore) CreateMediaItem(item *store.MediaItem) error {
 	return s.db.Create(item).Error
@@ -12,6 +16,15 @@ func (s *SQLiteStore) GetMediaItem(id uint) (*store.MediaItem, error) {
 
 func (s *SQLiteStore) UpdateMediaItem(item *store.MediaItem) error {
 	return save(s.db, item)
+}
+
+func (s *SQLiteStore) SetMonitorSearchStartedAt(mediaItemID uint, startedAt *time.Time) error {
+	query := s.db.Model(&store.MediaItem{}).Where("id = ?", mediaItemID)
+	if startedAt != nil {
+		query = query.Where("monitored = ? AND monitor_search_started_at IS NULL", true)
+	}
+	// Marker bookkeeping is not a change to the monitor's input version.
+	return query.UpdateColumn("monitor_search_started_at", startedAt).Error
 }
 
 func (s *SQLiteStore) DeleteMediaItem(id uint) error {

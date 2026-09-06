@@ -2089,3 +2089,61 @@ The trailer check is deliberately asymmetric rather than uniformly strict. A JPE
 Download completion is stored separately as nullable `downloads.downloaded_at` (SQL migration `0004`) when qBittorrent first reports a completed state. The value comes from qBittorrent's Unix `completion_on` field, with observation time used only when that field is unavailable. Import retries preserve it because the payload has already downloaded. Existing terminal rows remain NULL: neither import/seeding completion nor the last update can reconstruct the original download time reliably. To keep that legacy history useful, finished rows without `downloaded_at` render `Downloaded by` with `completedAt`/`updatedAt` as the closest truthful upper bound, plus a tooltip that the exact time is unavailable; this is a display fallback, not a database backfill. This does not supersede ADR-127, whose `Updated at` display describes row activity on the separate media-detail list.
 
 **Rationale**: A growing prefix is robust while new records and SSE-driven status changes arrive; offset pagination can skip or duplicate rows when the leading page changes between requests. It also keeps every refresh internally consistent without merging mutable pages in the browser. A dedicated timestamp costs one nullable column but preserves the meaning of the existing lifecycle timestamps and gives the UI the exact event the label promises.
+
+## ADR-135: Filter Discover with typed library identities and bounded continuation
+**Date**: 2026-09-06
+**Status**: Accepted; supersedes ADR-130's provider-error fallback
+
+**Context**: Discover needed to hide titles already in the library without hiding watched-only titles or breaking pagination. Numeric provider IDs alone are ambiguous because TMDB movies and series occupy separate namespaces. Filtering an entire provider page can leave the viewport empty even when later pages contain useful results.
+
+**Decision**:
+1. Use `(source, mediaType, externalId)` for membership, card deduplication, and existing-item navigation. `/media/external-ids` includes media type through one joined query; the model field is a read-only projection, not a new metadata column.
+2. Share one safely persisted browser preference across Home, category, and similar-title views. Recently Added remains unfiltered. Wait for membership when filtering is enabled, and expose lookup failures with retry instead of claiming the library is empty.
+3. Keep raw fetched pages so toggling does not refetch them. Skip fully hidden/duplicate pages, but stop automatic scanning after five pages per batch and offer manual continuation. Preserve abort/epoch guards, reject repeated page numbers, and cap provider pagination at TMDB's 500-page limit.
+4. A missing configured metadata client still yields an empty list. Provider failures now propagate as errors and show a retry state, replacing ADR-130's empty-success fallback. No synthetic end-of-catalogue state is inferred from an upstream error.
+
+**Rationale**: This reuses existing membership data and provider pagination without an unbounded lookup or a new server-side catalogue. Cross-provider TVDB/TMDB normalization remains explicitly deferred: a media-type-aware key prevents collisions but cannot manufacture a missing provider alias.
+
+## ADR-136: Browse followed episodes through bounded date windows
+**Date**: 2026-09-06
+**Status**: Accepted
+
+**Context**: A weekly upcoming list would not support exploring past episodes or future releases. Loading every followed show's history into the browser would make navigation and refresh costs grow with the library.
+
+**Decision**:
+1. `GET /media/episode-timeline?from=&to=` queries a half-open calendar interval `[from, to)` with a 31-day maximum. Migration `0006` adds the date index. Date filtering happens in the Store query, with deterministic ordering and no silent row cap.
+2. Followed means `MediaType == series` and item monitoring enabled. Dated past/future episodes remain visible even when available or individually unmonitored; episode monitoring resolves override > season > false. Download enrichment reuses the existing four-tier resolver rather than interpreting every NULL episode ID as a season pack.
+3. The frontend fetches 14-day windows and renders only the viewport plus overscan on a recentering 70-day rail. Cache eviction bounds retained windows; prepending/recentering preserves the exact visible date and offset. Empty windows are valid, not terminal pages.
+4. Calendar-day arithmetic avoids timezone/DST shifts. Native touch scrolling, pointer dragging, keyboard/arrow controls, and Today share the same viewport. Relevant SSE events invalidate nearby data and coalesce reloads without recentering; late responses cannot restore evicted data.
+
+**Rationale**: Windowed querying keeps the endpoint proportional to the dates being explored, while bounded cache/DOM prevents years of panning from retaining the full history. The timeline is informational: provider air dates do not guarantee torrent availability, and unmonitored episodes are labelled rather than silently omitted.
+
+## ADR-137: Persist the latest monitor decision with its evaluated input version
+**Date**: 2026-09-06
+**Status**: Accepted
+
+**Context**: Existing logs and the search-start marker could not explain why automatic downloading skipped an item. A completion timestamp alone also cannot prove freshness: settings can change while an indexer search is running.
+
+**Decision**:
+1. Migration `0005` creates one upserted snapshot per media item, cascading with the parent. Keep up to 50 details, prioritize grabs/errors over routine skips, report truncation, and retain complete aggregate outcome counts. This is neither an unbounded audit log nor a live search endpoint.
+2. Capture actual selection/insertion outcomes, profile rejection counts, blocked choices, existing downloads, missing metadata, and unreleased/unmonitored targets. `SearchWithDiagnostics` adds attempted/failed counts while the existing `Search` wrapper preserves manual-search behavior. Diagnostics distinguish no enabled indexers, genuine empty results, and partial/complete search failures without persisting raw credentials or response bodies.
+3. Migration `0007` adds nullable `InputUpdatedAt`, copied from the item actually evaluated. `CheckedAt` remains completion time. Existing snapshots keep NULL input freshness; no historical input version is invented.
+4. Season/episode monitor mutations transactionally touch a freshly read parent, even if its media status is unchanged. Search-marker bookkeeping uses a narrow Store update that neither overwrites other settings nor advances `UpdatedAt`.
+5. The authenticated read endpoint and collapsible detail panel show the saved result. Manual refresh and monitor-worker completion reload it without starting a search. Freshness compares server item/input versions only; browser receipt times would keep later valid snapshots incorrectly stale. Other item changes may conservatively invalidate the result.
+
+**Rationale**: Bounded latest-state diagnostics answer the operational question without becoming a second log system. Keeping evaluated input and completion separate preserves a truthful stale warning across long searches, page reloads, and subsequent fresh results.
+
+## ADR-138: Authorize lifecycle events and cleanup through committed state
+**Date**: 2026-09-06
+**Status**: Accepted
+
+**Context**: Adding failure notifications exposed ordering races: events could precede failed database writes, intentional deletion could look like a missing torrent, and stale workers could overwrite cancellation. A second cleanup-claim transaction after committing `completed` could also fail and permanently skip import finalization.
+
+**Decision**:
+1. `UpdateDownload` is update-only and matches both ID and the supplied `UpdatedAt`. A stale/deleted snapshot returns `ErrNotFound`; success returns the new version to the caller. Legacy NULL timestamps acquire a real version on their next successful update.
+2. Persist terminal status and a meaningful `LastError` before publishing failure events. Retries, transient connectivity errors, and cancellation do not produce terminal alerts. The notifier rereads the persisted state, reuses the configured Discord webhook, sends fixed safe reason categories instead of raw errors/private paths, and disables mention parsing.
+3. Single-download deletion persists cancellation before external cleanup. Whole-item deletion disables monitoring and cancels children atomically before cleanup; the monitor's final fresh-parent/dedup/blocklist check and insertion are transactional against this boundary. All filesystem/torrent cleanup remains outside database transactions and parent deletion uses the existing foreign-key cascades.
+4. The successful import/seeding completion update itself authorizes finalization and best-effort torrent removal. Cancellation committed before that compare-and-swap rejects it; later cancellation cannot revoke already-authorized work. There is no second persistence gate after completion, and qBittorrent failure cannot suppress resync, status recalculation, or the completion event that drives downstream consumers.
+5. Episode-ID backfill skips `importing` rows to avoid invalidating the importer's owned snapshot. Later successful metadata refreshes revisit deferred work even if no metadata changed. `DownloadedAt` remains intact through retries and every later transition.
+
+**Rationale**: One committed authorization boundary is smaller and safer than adding a cleanup queue or holding a SQLite write lock across network I/O. Eventbus/webhook delivery remains best-effort, not durable exactly-once delivery; existing startup recovery still handles interrupted imports, and failed torrent removal may require manual cleanup.

@@ -16,14 +16,16 @@ func (h *Handlers) GetMediaExternalIds(_ context.Context, _ GetMediaExternalIdsR
 		return nil, err
 	}
 	items := make([]struct {
-		ExternalId  int    `json:"externalId"`
-		MediaItemId int    `json:"mediaItemId"`
-		Source      string `json:"source"`
+		ExternalId  int                                                  `json:"externalId"`
+		MediaItemId int                                                  `json:"mediaItemId"`
+		MediaType   GetMediaExternalIds200JSONResponseBodyItemsMediaType `json:"mediaType"`
+		Source      string                                               `json:"source"`
 	}, len(metas))
 	for i, m := range metas {
 		items[i].Source = m.Source
 		items[i].ExternalId = m.ExternalID
 		items[i].MediaItemId = int(m.MediaItemID)
+		items[i].MediaType = GetMediaExternalIds200JSONResponseBodyItemsMediaType(m.MediaType)
 	}
 	return GetMediaExternalIds200JSONResponse{Items: items}, nil
 }
@@ -195,7 +197,7 @@ func (h *Handlers) resolveTVDBSeries(c *tmdb.Client, tvdbID int) (int, error) {
 const tmdbPosterW342 = "https://image.tmdb.org/t/p/w342"
 
 // fetchDiscover handles the common discover pattern: get a TMDB client from the
-// matching service, call the fetch function, return empty slice on missing key or API error.
+// matching service, call the fetch function, return empty slice on missing key.
 func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, int, error)) ([]DiscoverItem, int, error) {
 	client := h.matchSvc.TMDBClient()
 	if client == nil {
@@ -204,7 +206,7 @@ func (h *Handlers) fetchDiscover(fetch func(*tmdb.Client) ([]DiscoverItem, int, 
 	items, totalPages, err := fetch(client)
 	if err != nil {
 		slog.Warn("discover fetch failed", "error", err)
-		return []DiscoverItem{}, 0, nil
+		return nil, 0, err
 	}
 	return items, totalPages, nil
 }

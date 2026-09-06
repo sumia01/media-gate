@@ -588,6 +588,21 @@
 - [x] `EpisodeGrid` emits `monitorsChanged` on season/episode toggles so the media-detail status badge refreshes immediately
 - [x] Table-driven state machine tests in `sync/status_test.go`, including the exact reported scenario
 
+## Phase 9.8: Discovery, Episode Timeline, and Diagnostics
+See ADR-135 through ADR-138. Included in v0.40.0; cross-provider identity normalization remains a separate follow-up.
+
+- [x] Shared persistent "Hide in library" control on Discover home, categories, and similar titles; media-type-aware keys prevent movie/series ID collisions, and filtered pages do not stop pagination
+- [x] Followed-series episode timeline on Discover home: past/future pointer drag, touch and keyboard controls, Today shortcut, 14-day lazy windows, bounded viewport/cache, and anchor-preserving live refresh
+- [x] Bounded `GET /media/episode-timeline` with half-open date windows and the shared episode monitoring/download-status rules; migration 0006 indexes episode dates
+- [x] Latest automatic-search snapshot per item, persisted by migration 0005 with up to 50 details; collapsible media-detail panel shows actual grabs, rejected/blocked selections, empty/error searches, and disabled/stale context
+- [x] Migration 0007 records the evaluated item version separately from check completion; changes during a search remain stale after reload, legacy input freshness stays unknown, and later fresh snapshots clear the warning without remounting
+- [x] Indexer search diagnostics distinguish no enabled indexers, all failures, and partial failures without changing manual search ordering or results
+- [x] Discord terminal download/import failure alerts reuse the existing webhook; persist before publication, omit sensitive error details, and suppress mention parsing
+- [x] Media deletion disables monitoring before cancelling downloads, serialized with the final automatic-grab check and insert; marker-only writes cannot restore stale settings
+- [x] Download cancellation is saved before intentional deletion; optimistic snapshot updates reject stale worker writes and prevent false failure alerts. The committed completion update authorizes import finalization and best-effort torrent cleanup without a second database gate
+- [x] Frontend regression tests run with `npm test`; backend migration, query, decision, notification, and cancellation tests run uncached
+- [ ] Existing provider-identity gap remains: TVDB-matched library entries are not automatically normalized to TMDB Discover IDs (also documented in Phase 9.5 and the filter UI)
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

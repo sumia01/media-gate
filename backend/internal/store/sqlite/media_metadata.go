@@ -43,7 +43,10 @@ func (s *SQLiteStore) ListMediaMetadataByMediaItemIDs(ids []uint) ([]store.Media
 
 func (s *SQLiteStore) ListMediaMetadataExternalIDs() ([]store.MediaMetadata, error) {
 	var metas []store.MediaMetadata
-	if err := s.db.Select("media_item_id", "source", "external_id").Find(&metas).Error; err != nil {
+	if err := s.db.Model(&store.MediaMetadata{}).
+		Select("media_metadata.media_item_id, media_metadata.source, media_metadata.external_id, media_items.media_type").
+		Joins("JOIN media_items ON media_items.id = media_metadata.media_item_id").
+		Find(&metas).Error; err != nil {
 		return nil, err
 	}
 	return metas, nil

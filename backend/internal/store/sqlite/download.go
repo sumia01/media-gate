@@ -11,7 +11,22 @@ func (s *SQLiteStore) GetDownload(id uint) (*store.Download, error) {
 }
 
 func (s *SQLiteStore) UpdateDownload(download *store.Download) error {
-	return save(s.db, download)
+	if download.ID == 0 {
+		return store.ErrNotFound
+	}
+	// Compare the snapshot version in the UPDATE itself. A separate status read
+	// would race cancellation, manual retry, or another worker's terminal write.
+	// Keep save's update-only/zero-value semantics; never upsert a deleted row.
+	q := s.db.Where("updated_at = ?", download.UpdatedAt)
+	if download.UpdatedAt.IsZero() {
+		q = s.db.Where("updated_at IS NULL OR updated_at = ?", download.UpdatedAt)
+	}
+	next := *download
+	if err := save(q, &next); err != nil {
+		return err
+	}
+	*download = next
+	return nil
 }
 
 func (s *SQLiteStore) ListDownloads(mediaItemID *uint, status *string) ([]store.Download, error) {

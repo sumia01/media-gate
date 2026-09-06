@@ -2,7 +2,9 @@ package apiv1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,13 +22,21 @@ import (
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/subtitle"
+	mediasync "github.com/sumia01/media-gate/internal/sync"
 	"github.com/sumia01/media-gate/internal/updater"
 	"github.com/sumia01/media-gate/internal/worker"
-	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
 // Ensure Handlers implements the generated StrictServerInterface.
 var _ StrictServerInterface = (*Handlers)(nil)
+
+// RequestErrorHandler keeps binding and body-decoding failures in the API's JSON format.
+func RequestErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	slog.Warn("api request decode error", "method", r.Method, "path", r.URL.Path, "error", err)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Code: http.StatusBadRequest, Message: "invalid request parameters"})
+}
 
 type Handlers struct {
 	lib            *library.Service

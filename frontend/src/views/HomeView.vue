@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { ArrowRight, Eye } from 'lucide-vue-next'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
+import DiscoverFilter from '@/components/media/DiscoverFilter.vue'
+import DiscoverResultsStatus from '@/components/media/DiscoverResultsStatus.vue'
+import EpisodeTimeline from '@/components/media/EpisodeTimeline.vue'
+import { discoverKey, useDiscoverFilter } from '@/composables/useDiscoverFilter'
+import { usePagedDiscover } from '@/composables/usePagedDiscover'
 import { useWatchedLibrary } from '@/composables/useWatchedLibrary'
 import type { DiscoverItem, MediaItem } from '@/types/api'
 import { posterUrl } from '@/utils/media'
@@ -11,53 +16,71 @@ import { posterUrl } from '@/utils/media'
 const router = useRouter()
 
 const recentItems = ref<MediaItem[]>([])
-const trendingItems = ref<DiscoverItem[]>([])
-const popularMovies = ref<DiscoverItem[]>([])
-const popularSeries = ref<DiscoverItem[]>([])
-
 const recentLoading = ref(true)
-const trendingLoading = ref(true)
-const moviesLoading = ref(true)
-const seriesLoading = ref(true)
+const recentFailed = ref(false)
+const controller = new AbortController()
+onUnmounted(() => controller.abort())
 
-const { isWatched, isInLibrary, fetchWatched, fetchLibraryItems, goToPreview } = useWatchedLibrary()
+const {
+  isWatched,
+  isInLibrary,
+  libraryReady,
+  libraryLoading,
+  libraryFailed,
+  fetchWatched,
+  fetchLibraryItems,
+  goToPreview,
+} = useWatchedLibrary()
+const { hideInLibrary, filterReady, includeItem } = useDiscoverFilter(isInLibrary, libraryReady)
+
+const sections = [
+  { title: 'Trending This Week', route: 'discover-trending', endpoint: '/discover/trending' },
+  { title: 'Popular Movies', route: 'discover-popular-movies', endpoint: '/discover/popular-movies' },
+  { title: 'Popular Series', route: 'discover-popular-series', endpoint: '/discover/popular-series' },
+] as const
+const feeds = sections.map((section) =>
+  reactive({
+    ...section,
+    ...usePagedDiscover<DiscoverItem>(
+      async (page, signal) => {
+        const { data } = await client.GET(section.endpoint, { params: { query: { page } }, signal })
+        return data
+      },
+      discoverKey,
+      {
+        include: includeItem,
+        ready: () => filterReady.value,
+        filterKey: () => hideInLibrary.value,
+        infiniteScroll: false,
+      },
+    ),
+  }),
+)
 
 function isRecentWatched(item: MediaItem): boolean {
   if (!item.metadata?.source || !item.metadata?.externalId) return false
-  return isWatched(item.metadata.source, item.metadata.externalId)
+  return isWatched({ source: item.metadata.source, externalId: item.metadata.externalId, mediaType: item.mediaType })
 }
 
 onMounted(() => {
   fetchRecent()
-  fetchTrending()
-  fetchPopularMovies()
-  fetchPopularSeries()
   fetchWatched()
   fetchLibraryItems()
 })
 
 async function fetchRecent() {
-  const { data } = await client.GET('/discover/recently-added')
-  recentItems.value = data?.items ?? []
-  recentLoading.value = false
-}
-
-async function fetchTrending() {
-  const { data } = await client.GET('/discover/trending')
-  trendingItems.value = data?.items ?? []
-  trendingLoading.value = false
-}
-
-async function fetchPopularMovies() {
-  const { data } = await client.GET('/discover/popular-movies')
-  popularMovies.value = data?.items ?? []
-  moviesLoading.value = false
-}
-
-async function fetchPopularSeries() {
-  const { data } = await client.GET('/discover/popular-series')
-  popularSeries.value = data?.items ?? []
-  seriesLoading.value = false
+  recentLoading.value = true
+  recentFailed.value = false
+  try {
+    const { data } = await client.GET('/discover/recently-added', { signal: controller.signal })
+    if (controller.signal.aborted) return
+    if (!data) throw new Error('Recently added unavailable')
+    recentItems.value = data.items
+  } catch {
+    if (!controller.signal.aborted) recentFailed.value = true
+  } finally {
+    if (!controller.signal.aborted) recentLoading.value = false
+  }
 }
 
 function goToMedia(item: MediaItem) {
@@ -74,8 +97,10 @@ function getRecentPoster(item: MediaItem): string | null {
 
 <template>
   <div>
+    <EpisodeTimeline class="mb-8" />
+
     <!-- Recently Added -->
-    <section v-if="recentLoading || recentItems.length" class="mb-10">
+    <section v-if="recentLoading || recentItems.length || recentFailed" class="mb-10">
       <h2 class="text-lg font-semibold mb-4 text-gray-100 tracking-tight">Recently Added</h2>
       <div v-if="recentLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
@@ -83,6 +108,10 @@ function getRecentPoster(item: MediaItem): string | null {
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
           <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
         </div>
+      </div>
+      <div v-else-if="recentFailed" role="alert" class="text-sm text-amber-300">
+        Could not load recently added titles.
+        <button type="button" class="ml-2 underline underline-offset-2 hover:text-amber-200" @click="fetchRecent">Retry</button>
       </div>
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div
@@ -122,13 +151,19 @@ function getRecentPoster(item: MediaItem): string | null {
       </div>
     </section>
 
-    <!-- Trending -->
-    <section v-if="trendingLoading || trendingItems.length" class="mb-10">
+    <DiscoverFilter
+      v-model:hide-in-library="hideInLibrary"
+      :library-loading="libraryLoading"
+      :library-failed="libraryFailed"
+      @retry="fetchLibraryItems"
+    />
+
+    <section v-for="feed in feeds" :key="feed.route" class="mb-10">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Trending This Week</h2>
-        <router-link :to="{ name: 'discover-trending' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
+        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">{{ feed.title }}</h2>
+        <router-link :to="{ name: feed.route }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
       </div>
-      <div v-if="trendingLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
+      <div v-if="(feed.initialLoading && filterReady) || (hideInLibrary && libraryLoading)" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div v-for="n in 7" :key="n" class="animate-pulse">
           <div class="aspect-[2/3] rounded-lg bg-white/5" />
           <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
@@ -137,70 +172,24 @@ function getRecentPoster(item: MediaItem): string | null {
       </div>
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <DiscoverCard
-          v-for="item in trendingItems"
-          :key="`${item.source}-${item.externalId}`"
+          v-for="item in feed.items"
+          :key="discoverKey(item)"
           :item="item"
-          :in-library="isInLibrary(item.source, item.externalId)"
-          :watched="isWatched(item.source, item.externalId)"
+          :in-library="isInLibrary(item)"
+          :watched="isWatched(item)"
           @click="goToPreview(item)"
         />
       </div>
+      <DiscoverResultsStatus
+        :ready="filterReady"
+        :loading="feed.loading"
+        :initial-loading="feed.initialLoading"
+        :load-failed="feed.loadFailed"
+        :has-more="feed.hasMore"
+        :item-count="feed.items.length"
+        :hidden-count="feed.hiddenCount"
+        @load-more="feed.fetchPage"
+      />
     </section>
-
-    <!-- Popular Movies -->
-    <section v-if="moviesLoading || popularMovies.length" class="mb-10">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Movies</h2>
-        <router-link :to="{ name: 'discover-popular-movies' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
-      </div>
-      <div v-if="moviesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-lg bg-white/5" />
-          <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
-          <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
-        </div>
-      </div>
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <DiscoverCard
-          v-for="item in popularMovies"
-          :key="`${item.source}-${item.externalId}`"
-          :item="item"
-          :in-library="isInLibrary(item.source, item.externalId)"
-          :watched="isWatched(item.source, item.externalId)"
-          @click="goToPreview(item)"
-        />
-      </div>
-    </section>
-
-    <!-- Popular Series -->
-    <section v-if="seriesLoading || popularSeries.length" class="mb-10">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-100 tracking-tight">Popular Series</h2>
-        <router-link :to="{ name: 'discover-popular-series' }" class="text-sm text-violet-400 hover:text-violet-300 transition-colors">See more <ArrowRight class="w-3 h-3 inline-block ml-1" /></router-link>
-      </div>
-      <div v-if="seriesLoading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <div v-for="n in 7" :key="n" class="animate-pulse">
-          <div class="aspect-[2/3] rounded-lg bg-white/5" />
-          <div class="mt-2 h-4 w-3/4 rounded bg-white/5" />
-          <div class="mt-1 h-3 w-1/3 rounded bg-white/5" />
-        </div>
-      </div>
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
-        <DiscoverCard
-          v-for="item in popularSeries"
-          :key="`${item.source}-${item.externalId}`"
-          :item="item"
-          :in-library="isInLibrary(item.source, item.externalId)"
-          :watched="isWatched(item.source, item.externalId)"
-          @click="goToPreview(item)"
-        />
-      </div>
-    </section>
-
-    <!-- Empty state when nothing loads -->
-    <div v-if="!recentLoading && !trendingLoading && !moviesLoading && !seriesLoading && !recentItems.length && !trendingItems.length && !popularMovies.length && !popularSeries.length" class="flex flex-col items-center justify-center py-20 text-gray-500">
-      <p class="text-lg">Nothing to show yet</p>
-      <p class="text-sm mt-1">Add media to your libraries or configure your TMDB API key in settings</p>
-    </div>
   </div>
 </template>

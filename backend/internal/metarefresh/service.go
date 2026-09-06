@@ -90,6 +90,9 @@ func (s *Service) processOnce() {
 			continue
 		}
 
+		// Revisit deferred imports even when this refresh discovered no changes.
+		s.resolveOrphanDownloads(item.ID)
+
 		if changed {
 			// Auto-create SeasonMonitor rows for new seasons when MonitorNewSeasons is enabled.
 			if item.MonitorNewSeasons {
@@ -112,11 +115,6 @@ func (s *Service) processOnce() {
 					}
 				}
 			}
-
-			// Resolve orphan downloads: fill in episode_id for single-episode downloads
-			// that were created before the episode existed in the database (e.g. via season
-			// search when metadata provider didn't list the episode yet).
-			s.resolveOrphanDownloads(item.ID)
 
 			updated++
 			_ = s.syncSvc.RecalcMediaItemStatus(item.ID)
@@ -148,6 +146,11 @@ func (s *Service) resolveOrphanDownloads(itemID uint) {
 	for i := range downloads {
 		dl := &downloads[i]
 		if dl.EpisodeID != nil {
+			continue
+		}
+		// The importer owns this snapshot until it persists its outcome. Updating
+		// EpisodeID here would invalidate its CAS and strand the importing row.
+		if dl.Status == "importing" {
 			continue
 		}
 		// Skip terminal downloads — no point resolving episode_id on finished work.

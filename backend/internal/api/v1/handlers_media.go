@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
@@ -367,7 +368,41 @@ func (h *Handlers) ListSeasonMonitors(_ context.Context, req ListSeasonMonitorsR
 }
 
 func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonitorRequestObject) (UpdateSeasonMonitorResponseObject, error) {
-	item, err := h.store.GetMediaItem(uint(req.Id))
+	var sm store.SeasonMonitor
+	err := h.store.WithTx(func(tx store.Store) error {
+		item, err := tx.GetMediaItem(uint(req.Id))
+		if err != nil {
+			return err
+		}
+		monitors, err := tx.ListSeasonMonitorsByMediaItem(item.ID)
+		if err != nil {
+			return err
+		}
+		for _, monitor := range monitors {
+			if monitor.SeasonNumber == req.SeasonNumber {
+				sm = monitor
+				break
+			}
+		}
+		sm.MediaItemID = item.ID
+		sm.SeasonNumber = req.SeasonNumber
+		sm.Monitored = req.Body.Monitored
+		if sm.ID == 0 {
+			err = tx.CreateSeasonMonitor(&sm)
+		} else {
+			err = tx.UpdateSeasonMonitor(&sm)
+		}
+		if err != nil {
+			return err
+		}
+		// Episodes now inherit from the season setting.
+		if err := tx.DeleteEpisodeMonitorsBySeason(item.ID, req.SeasonNumber); err != nil {
+			return err
+		}
+		// Touch the transaction's fresh parent even if status stays unchanged.
+		item.UpdatedAt = time.Now().UTC()
+		return tx.UpdateMediaItem(item)
+	})
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateSeasonMonitor404JSONResponse{
@@ -377,49 +412,6 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 		}
 		return nil, err
 	}
-	_ = item
-
-	// Look for existing SeasonMonitor for this season.
-	monitors, err := h.store.ListSeasonMonitorsByMediaItem(uint(req.Id))
-	if err != nil {
-		return nil, err
-	}
-
-	var existing *store.SeasonMonitor
-	for i := range monitors {
-		if monitors[i].SeasonNumber == req.SeasonNumber {
-			existing = &monitors[i]
-			break
-		}
-	}
-
-	if existing != nil {
-		existing.Monitored = req.Body.Monitored
-		if err := h.store.UpdateSeasonMonitor(existing); err != nil {
-			return nil, err
-		}
-		// Clear episode-level overrides — episodes now inherit from the season setting.
-		_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
-		h.recalcStatusAfterMonitorChange(uint(req.Id))
-		return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
-			Id:           int64(existing.ID),
-			MediaItemId:  int64(existing.MediaItemID),
-			SeasonNumber: existing.SeasonNumber,
-			Monitored:    existing.Monitored,
-		}), nil
-	}
-
-	// Create new SeasonMonitor.
-	sm := &store.SeasonMonitor{
-		MediaItemID:  uint(req.Id),
-		SeasonNumber: req.SeasonNumber,
-		Monitored:    req.Body.Monitored,
-	}
-	if err := h.store.CreateSeasonMonitor(sm); err != nil {
-		return nil, err
-	}
-	// Clear episode-level overrides — episodes now inherit from the season setting.
-	_ = h.store.DeleteEpisodeMonitorsBySeason(uint(req.Id), req.SeasonNumber)
 	h.recalcStatusAfterMonitorChange(uint(req.Id))
 
 	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
@@ -431,22 +423,30 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 }
 
 func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMonitorRequestObject) (UpdateEpisodeMonitorResponseObject, error) {
-	if _, err := h.store.GetMediaItem(uint(req.Id)); err != nil {
+	err := h.store.WithTx(func(tx store.Store) error {
+		item, err := tx.GetMediaItem(uint(req.Id))
+		if err != nil {
+			return err
+		}
+		if err := tx.UpsertEpisodeMonitor(&store.EpisodeMonitor{
+			MediaItemID:   item.ID,
+			SeasonNumber:  req.SeasonNumber,
+			EpisodeNumber: req.EpisodeNumber,
+			Monitored:     req.Body.Monitored,
+		}); err != nil {
+			return err
+		}
+		// Keep saved monitor decisions visibly stale after a reload, too.
+		item.UpdatedAt = time.Now().UTC()
+		return tx.UpdateMediaItem(item)
+	})
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateEpisodeMonitor404JSONResponse{
 				Code:    http.StatusNotFound,
 				Message: "media item not found",
 			}, nil
 		}
-		return nil, err
-	}
-
-	if err := h.store.UpsertEpisodeMonitor(&store.EpisodeMonitor{
-		MediaItemID:   uint(req.Id),
-		SeasonNumber:  req.SeasonNumber,
-		EpisodeNumber: req.EpisodeNumber,
-		Monitored:     req.Body.Monitored,
-	}); err != nil {
 		return nil, err
 	}
 	h.recalcStatusAfterMonitorChange(uint(req.Id))
