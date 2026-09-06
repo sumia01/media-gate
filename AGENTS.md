@@ -8,6 +8,7 @@ Self-hosted, single-binary media management app (Go backend + Vue 3 frontend). R
 - The All Downloads page uses bounded newest-first history loading (30 initially, then 100 more), with server-side status filtering, exact qBittorrent completion timestamps for new downloads, and a labelled fallback for legacy finished rows.
 - Discover supports a persistent "Hide in library" filter and a bidirectional, lazy-loaded episode timeline for followed series; its initial and Today views center a subtly highlighted current-day column. Direct membership includes media type; TVDB-to-TMDB identity normalization remains deferred.
 - Media details show the latest bounded automatic-search decision, with evaluated input freshness separate from completion time. Discord alerts cover persisted terminal download/import failures without retry spam.
+- A disposable local/CI harness provides isolated named instances, readable Air/Vite/fake-service logs, and a deterministic fake tracker-to-qBittorrent-to-import smoke flow without real torrent side effects.
 
 ## Agent Rules
 
@@ -22,6 +23,8 @@ make build        # Full: generate → frontend → Go binary
 make tools        # Install air + oapi-codegen
 make frontend     # npm ci + build + copy dist to backend/frontend/dist/
 make clean        # Remove build artifacts
+make harness-up   # Isolated Air + Vite instance with safe fake integrations
+make harness-ci   # Built-binary deterministic release-gate smoke test
 ```
 
 Go commands run from `backend/`, npm commands from `frontend/`:
@@ -32,6 +35,23 @@ cd frontend && npm run type-check     # vue-tsc --build
 cd frontend && npm test               # regression tests; use Node.js 24 (native TS imports/module hooks)
 cd frontend && npm run build          # type-check + vite build
 ```
+
+## Disposable Harness
+
+Use `make harness-up` for an isolated Air + Vite instance backed by a local fake
+tracker and stateful fake qBittorrent API. Read `tmp/harness/default/manifest.json`
+for URLs/credentials and `tmp/harness/default/logs/` for backend, frontend, and
+fake-service output. Run `make harness-smoke` for the deterministic
+search-to-import flow, `make harness-down` to preserve artifacts, and
+`make harness-destroy` to discard everything. Named parallel instances use
+`HARNESS_ID=<name>`. Full details are in `docs/HARNESS.md`.
+
+Use the harness when changes affect frontend/API interaction, auth, SSE,
+migrations, workers, imports, integration protocols, or multi-service behavior.
+Skip it for isolated pure helpers when focused unit tests provide better signal.
+Never configure a real tracker for download testing: fetching a `.torrent` may
+already count as a snatch. Release-gate harness tests must use fake integrations;
+live provider checks are explicit and non-blocking.
 
 Backend uses `golangci-lint` (default linters, no config file). Frontend uses Biome (`biome.json`) for linting and formatting — run `npm run lint` to check, `npm run lint:fix` to auto-fix.
 
@@ -56,7 +76,7 @@ Two separate projects under one repo:
 
 Frontend dist is copied to `backend/frontend/dist/` and embedded via `go:embed` for single-binary output.
 
-Vite dev server proxies `/api` to `http://localhost:8080` (the Go backend).
+Vite dev server proxies `/api` to `VITE_API_PROXY_TARGET`, defaulting to `http://localhost:8080` (the Go backend).
 
 ### Backend `internal/` packages
 
@@ -64,7 +84,7 @@ Handlers in `api/v1/handlers_*.go` (auth, database, discover, download, indexer,
 
 Key service packages: `auth`, `library`, `sync`, `matching`, `indexer`, `download`, `importer`, `monitor`, `metarefresh`, `media`, `subtitle`, `notification`, `plexrefresh`, `settings`, `updater`.
 
-Supporting packages: `store` (data interface), `eventbus`, `sse`, `jobqueue`, `worker`, `crypto`, `fileparse` (title parsing: resolution, source, season/episode, language extraction, profile matching), `dateutil`, `telemetry`, `logging`.
+Supporting packages: `store` (data interface), `eventbus`, `sse`, `jobqueue`, `worker`, `crypto`, `fileparse` (title parsing: resolution, source, season/episode, language extraction, profile matching), `dateutil`, `telemetry`, `logging`, `devharness` (loopback fake tracker/qBittorrent for disposable tests only).
 
 Integration clients: `tmdb`, `tvdb`, `qbittorrent`, `plex`, `discord`, `flaresolverr`, `opensubtitles` (under `integration/`).
 

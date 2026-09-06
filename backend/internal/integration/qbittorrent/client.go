@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -414,26 +415,50 @@ func MapState(qbitState string) string {
 
 // InfoHash computes the SHA1 info hash from raw .torrent file bytes.
 func InfoHash(data []byte) (string, error) {
-	// Find the "info" key in the top-level bencode dict and hash its raw value.
-	// Bencode format: d...4:info<value>...e
-	infoKey := []byte("4:info")
-	idx := bytes.Index(data, infoKey)
-	if idx == -1 {
+	if len(data) < 2 || data[0] != 'd' {
+		return "", fmt.Errorf("torrent root is not a dictionary")
+	}
+
+	pos := 1
+	var info []byte
+	for pos < len(data) && data[pos] != 'e' {
+		key, next, err := bencodeString(data, pos)
+		if err != nil {
+			return "", fmt.Errorf("parsing torrent key: %w", err)
+		}
+		start := next
+		end, err := bencodeValueEnd(data, start)
+		if err != nil {
+			return "", fmt.Errorf("parsing torrent value: %w", err)
+		}
+		if string(key) == "info" {
+			if info != nil {
+				return "", fmt.Errorf("duplicate info key in torrent data")
+			}
+			info = data[start:end]
+		}
+		pos = end
+	}
+	if pos >= len(data) || data[pos] != 'e' || pos != len(data)-1 {
+		return "", fmt.Errorf("invalid torrent dictionary")
+	}
+	if info == nil {
 		return "", fmt.Errorf("info key not found in torrent data")
 	}
 
-	start := idx + len(infoKey)
-	end, err := bencodeValueEnd(data, start)
-	if err != nil {
-		return "", fmt.Errorf("parsing info value: %w", err)
-	}
-
-	h := sha1.Sum(data[start:end])
+	h := sha1.Sum(info)
 	return fmt.Sprintf("%x", h), nil
 }
 
 // bencodeValueEnd returns the index one past the end of the bencode value starting at pos.
 func bencodeValueEnd(data []byte, pos int) (int, error) {
+	return bencodeValueEndAt(data, pos, 0)
+}
+
+func bencodeValueEndAt(data []byte, pos, depth int) (int, error) {
+	if depth > 64 {
+		return 0, fmt.Errorf("bencode nesting is too deep")
+	}
 	if pos >= len(data) {
 		return 0, fmt.Errorf("unexpected end of data")
 	}
@@ -444,23 +469,19 @@ func bencodeValueEnd(data []byte, pos int) (int, error) {
 		if end == -1 {
 			return 0, fmt.Errorf("unterminated integer")
 		}
+		if _, err := strconv.ParseInt(string(data[pos+1:pos+end]), 10, 64); err != nil {
+			return 0, fmt.Errorf("invalid integer")
+		}
 		return pos + end + 1, nil
 
 	case data[pos] >= '0' && data[pos] <= '9': // string: <len>:<data>
-		colonIdx := bytes.IndexByte(data[pos:], ':')
-		if colonIdx == -1 {
-			return 0, fmt.Errorf("invalid string encoding")
-		}
-		length := 0
-		for _, b := range data[pos : pos+colonIdx] {
-			length = length*10 + int(b-'0')
-		}
-		return pos + colonIdx + 1 + length, nil
+		_, end, err := bencodeString(data, pos)
+		return end, err
 
 	case data[pos] == 'l': // list: l<items>e
 		p := pos + 1
 		for p < len(data) && data[p] != 'e' {
-			next, err := bencodeValueEnd(data, p)
+			next, err := bencodeValueEndAt(data, p, depth+1)
 			if err != nil {
 				return 0, err
 			}
@@ -474,14 +495,12 @@ func bencodeValueEnd(data []byte, pos int) (int, error) {
 	case data[pos] == 'd': // dict: d<key><value>...e
 		p := pos + 1
 		for p < len(data) && data[p] != 'e' {
-			// key (string)
-			next, err := bencodeValueEnd(data, p)
+			_, next, err := bencodeString(data, p)
 			if err != nil {
 				return 0, err
 			}
 			p = next
-			// value
-			next, err = bencodeValueEnd(data, p)
+			next, err = bencodeValueEndAt(data, p, depth+1)
 			if err != nil {
 				return 0, err
 			}
@@ -495,4 +514,24 @@ func bencodeValueEnd(data []byte, pos int) (int, error) {
 	default:
 		return 0, fmt.Errorf("unknown bencode type at pos %d: %c", pos, data[pos])
 	}
+}
+
+func bencodeString(data []byte, pos int) ([]byte, int, error) {
+	if pos >= len(data) || data[pos] < '0' || data[pos] > '9' {
+		return nil, 0, fmt.Errorf("invalid string encoding")
+	}
+	colonIdx := bytes.IndexByte(data[pos:], ':')
+	if colonIdx <= 0 {
+		return nil, 0, fmt.Errorf("invalid string encoding")
+	}
+	length, err := strconv.ParseUint(string(data[pos:pos+colonIdx]), 10, 64)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid string length")
+	}
+	start := pos + colonIdx + 1
+	if length > uint64(len(data)-start) {
+		return nil, 0, fmt.Errorf("truncated string")
+	}
+	end := start + int(length)
+	return data[start:end], end, nil
 }

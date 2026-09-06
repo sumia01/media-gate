@@ -603,6 +603,16 @@ See ADR-135 through ADR-138. Included in v0.40.0; cross-provider identity normal
 - [x] Frontend regression tests run with `npm test`; backend migration, query, decision, notification, and cancellation tests run uncached
 - [ ] Existing provider-identity gap remains: TVDB-matched library entries are not automatically normalized to TMDB Discover IDs (also documented in Phase 9.5 and the filter UI)
 
+## Phase 9.9: Disposable local and CI test harness ✅
+→ See ADR-139
+- [x] Isolated named instances with their own SQLite DB, runtime cache, library/download filesystem, generated credentials, ports, process groups, manifest, and service logs
+- [x] Local mode runs Air + Vite with hot reload; CI mode exercises the built single binary and embedded frontend through the same seed and smoke workflow
+- [x] Stateful loopback-only fake tracker and qBittorrent Web API exercise the production Cardigann and qBittorrent clients without contacting a torrent network or real tracker
+- [x] Deterministic API-driven seed and smoke flow covers login, settings, library sync, tracker search, `.torrent` fetch, qBittorrent submission/completion, import, Vite proxying, and the resulting library file
+- [x] Safe lifecycle controls (`up`, `status`, `logs`, `down`, `destroy`, fake completion/error/reset) with marker-guarded deletion, PID identity checks, startup/instance locks, graceful shutdown, and retained failure artifacts
+- [x] Harness-specific configuration remains opt-in (`API_HOST`, `DATA_DIR`, `BROWSER_OPEN`, `MEDIAGATE_ENV_FILE`, `VITE_API_PROXY_TARGET`); production defaults and single-binary deployment remain unchanged
+- [x] Torrent info-hash parsing hardened to inspect the real top-level bencode `info` value with bounds/depth validation instead of accepting decoys or panicking on malformed tracker data
+
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

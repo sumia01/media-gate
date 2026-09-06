@@ -1,8 +1,13 @@
 .PHONY: tools generate frontend build dev clean \
-       build-linux-amd64 build-darwin-arm64 build-windows-amd64 build-all
+        harness-up harness-status harness-logs harness-smoke harness-complete \
+        harness-error harness-reset-fakes harness-down harness-destroy harness-ci \
+        build-linux-amd64 build-darwin-arm64 build-windows-amd64 build-all
 
 BINARY   := media-gate
 DIST_DIR := dist
+HARNESS_ID ?= default
+HARNESS_MODE ?= local
+SERVICE ?= all
 
 ## tools: Install required Go dev tools (air, oapi-codegen)
 tools:
@@ -34,6 +39,43 @@ dev:
 	cd backend && air & \
 	cd frontend && npm run dev & \
 	wait
+
+## harness-up: Start an isolated disposable instance (HARNESS_ID=name, HARNESS_MODE=local|ci)
+harness-up:
+	HARNESS_ID="$(HARNESS_ID)" HARNESS_MODE="$(HARNESS_MODE)" ./harness/harness.sh up
+
+## harness-status: Show status and URLs for an isolated instance
+harness-status:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh status
+
+## harness-logs: Read instance logs (SERVICE=all|backend|frontend|fakes, FOLLOW=1)
+harness-logs:
+	HARNESS_ID="$(HARNESS_ID)" FOLLOW="$(FOLLOW)" ./harness/harness.sh logs "$(SERVICE)"
+
+## harness-smoke: Run deterministic API, torrent, and import smoke tests
+harness-smoke:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh smoke
+
+harness-complete:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh complete
+
+harness-error:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh error
+
+harness-reset-fakes:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh reset-fakes
+
+## harness-down: Stop an instance while preserving its data and logs
+harness-down:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh down
+
+## harness-destroy: Stop and delete an isolated instance
+harness-destroy:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh destroy
+
+## harness-ci: Build and run the disposable release-gate smoke test
+harness-ci:
+	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh ci
 
 ## clean: Remove build artifacts
 clean:

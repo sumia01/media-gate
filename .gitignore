@@ -37,6 +37,7 @@ dbhub.toml
 # Environment
 .env
 backend/.env
+harness/.env
 
 # IDE
 .vscode/

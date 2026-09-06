@@ -1,6 +1,9 @@
 package qbittorrent
 
 import (
+	"crypto/sha1"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +59,39 @@ func TestMapState(t *testing.T) {
 			got := MapState(tt.state)
 			if got != tt.expected {
 				t.Errorf("MapState(%q) = %q, want %q", tt.state, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestInfoHashUsesTopLevelInfoValue(t *testing.T) {
+	info := []byte("d4:name1:xe")
+	torrent := append([]byte("d7:comment9:xx4:infoz4:info"), info...)
+	torrent = append(torrent, 'e')
+
+	got, err := InfoHash(torrent)
+	if err != nil {
+		t.Fatalf("InfoHash() error = %v", err)
+	}
+	want := fmt.Sprintf("%x", sha1.Sum(info))
+	if got != want {
+		t.Fatalf("InfoHash() = %q, want %q", got, want)
+	}
+}
+
+func TestInfoHashRejectsMalformedData(t *testing.T) {
+	tests := map[string][]byte{
+		"truncated string": []byte("d4:info1000:xe"),
+		"invalid integer":  []byte("d4:infoi-nopee"),
+		"missing info":     []byte("d4:name1:xe"),
+		"trailing data":    []byte("d4:infod4:name1:xeejunk"),
+		"deep nesting":     []byte("d4:info" + strings.Repeat("l", 66) + strings.Repeat("e", 67)),
+	}
+
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := InfoHash(data); err == nil {
+				t.Fatal("InfoHash() unexpectedly accepted malformed data")
 			}
 		})
 	}

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/dotenv"
@@ -12,6 +13,8 @@ import (
 
 type Config struct {
 	API         APIConfig         `koanf:"api"`
+	Browser     BrowserConfig     `koanf:"browser"`
+	Data        DataConfig        `koanf:"data"`
 	DB          DBConfig          `koanf:"db"`
 	Log         LogConfig         `koanf:"log"`
 	Library     LibraryConfig     `koanf:"library"`
@@ -54,12 +57,21 @@ type GitHubConfig struct {
 }
 
 type APIConfig struct {
-	Port int `koanf:"port"`
+	Host string `koanf:"host"`
+	Port int    `koanf:"port"`
 	// TrustProxy enables honoring X-Forwarded-For / X-Real-IP for client-IP
 	// derivation (e.g. login rate-limiting). Leave false unless media-gate sits
 	// behind a trusted reverse proxy that sets these headers — otherwise clients
 	// could spoof them to evade rate limits. Env: MEDIAGATE_API_TRUSTPROXY=true.
 	TrustProxy bool `koanf:"trustproxy"`
+}
+
+type BrowserConfig struct {
+	Open bool `koanf:"open"`
+}
+
+type DataConfig struct {
+	Dir string `koanf:"dir"`
 }
 
 type DBConfig struct {
@@ -74,12 +86,20 @@ type LogConfig struct {
 func Load() (*Config, error) {
 	k := koanf.New(".")
 
-	// Load from .env file (optional — silently ignored if missing).
+	// Load from .env file (optional — silently ignored if missing). Harnesses can
+	// point MEDIAGATE_ENV_FILE at an isolated file instead of inheriting local
+	// developer configuration.
 	// Keys like API_PORT are mapped to api.port via the callback.
-	if err := k.Load(file.Provider(".env"), dotenv.ParserEnv("", ".", func(s string) string {
-		return strings.ToLower(strings.ReplaceAll(s, "_", "."))
-	})); err != nil && !isFileNotFound(err) {
-		return nil, fmt.Errorf("loading .env: %w", err)
+	envFile := ".env"
+	if configured, ok := os.LookupEnv("MEDIAGATE_ENV_FILE"); ok {
+		envFile = configured
+	}
+	if envFile != "" {
+		if err := k.Load(file.Provider(envFile), dotenv.ParserEnv("", ".", func(s string) string {
+			return strings.ToLower(strings.ReplaceAll(s, "_", "."))
+		})); err != nil && !isFileNotFound(err) {
+			return nil, fmt.Errorf("loading .env: %w", err)
+		}
 	}
 
 	// Overlay with MEDIAGATE_ prefixed environment variables.
@@ -93,7 +113,9 @@ func Load() (*Config, error) {
 	}
 
 	cfg := Config{
-		API:     APIConfig{Port: 8080},
+		API:     APIConfig{Host: "", Port: 8080},
+		Browser: BrowserConfig{Open: true},
+		Data:    DataConfig{Dir: "."},
 		DB:      DBConfig{Path: "media-gate.db"},
 		Log:     LogConfig{Level: "info", Format: "text"},
 		Library: LibraryConfig{BasePath: "/mnt"},

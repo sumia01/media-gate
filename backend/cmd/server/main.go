@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -83,11 +85,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	posterDir := ".cache/posters"
+	posterDir := filepath.Join(cfg.Data.Dir, ".cache", "posters")
 	// Sweep scratch files left by a poster download that died mid-write (SIGKILL
 	// / OOM), which the in-process deferred cleanup cannot reach.
 	matching.CleanupPosterTemps(posterDir)
-	defCacheDir := ".cache/definitions"
+	defCacheDir := filepath.Join(cfg.Data.Dir, ".cache", "definitions")
 	settingsSvc := settings.NewService(db, cfg.Library.BasePath, map[string]string{
 		settings.KeyTMDBApiKey:      cfg.TMDB.ApiKey,
 		settings.KeyTVDBApiKey:      cfg.TVDB.ApiKey,
@@ -313,7 +315,7 @@ func main() {
 	}
 	mux.Handle("/", spa)
 
-	addr := fmt.Sprintf(":%d", cfg.API.Port)
+	addr := net.JoinHostPort(cfg.API.Host, strconv.Itoa(cfg.API.Port))
 	slog.Info("starting server", "addr", addr, "version", version)
 
 	// OTel HTTP middleware — always registered; noop provider = zero cost when disabled.
@@ -347,7 +349,13 @@ func main() {
 		}
 	}()
 
-	openBrowser(fmt.Sprintf("http://localhost:%d", cfg.API.Port))
+	if cfg.Browser.Open {
+		browserHost := cfg.API.Host
+		if browserHost == "" || browserHost == "0.0.0.0" || browserHost == "::" {
+			browserHost = "localhost"
+		}
+		openBrowser("http://" + net.JoinHostPort(browserHost, strconv.Itoa(cfg.API.Port)))
+	}
 
 	exitCode := 0
 	select {

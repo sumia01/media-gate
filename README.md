@@ -263,7 +263,18 @@ The UI includes a dedicated **Workers panel** with real-time SSE-driven status f
 ```bash
 make tools      # install air + oapi-codegen
 make dev        # Air (Go hot-reload) + Vite (frontend HMR) in parallel
+make harness-up # isolated Air + Vite instance with safe fake integrations
 ```
+
+Disposable instances keep their own DB, cache, filesystem, ports, credentials,
+and backend/frontend logs under `tmp/harness/`. Run the full fake
+tracker-to-import smoke flow with `make harness-smoke`, then remove the instance
+with `make harness-destroy`. `make harness-ci` runs the same deterministic flow
+against the built single binary for release pipelines. See
+[`docs/HARNESS.md`](docs/HARNESS.md).
+
+For non-harness Vite sessions, `VITE_API_PROXY_TARGET` overrides the default
+`http://localhost:8080` backend proxy target.
 
 Run backend tests without cached results and use Node.js 24 for the frontend regression tests (native TypeScript imports and module hooks):
 
@@ -299,9 +310,13 @@ Copy `backend/.env.example` to `backend/.env`, or use `MEDIAGATE_`-prefixed envi
 |-----|---------|-------------|
 | `SECRET_KEY` | — | **Required.** Master key for encryption + JWT signing |
 | `API_PORT` | `8080` | HTTP server port |
+| `API_HOST` | empty | HTTP bind host; empty listens on all interfaces |
+| `DATA_DIR` | `.` | Runtime cache root |
 | `DB_PATH` | `media-gate.db` | SQLite database path |
 | `LIBRARY_BASEPATH` | `/mnt` | Root path for library directories |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `BROWSER_OPEN` | `true` | Open the UI automatically where supported |
+| `MEDIAGATE_ENV_FILE` | `.env` | Alternate dotenv path; set empty to disable dotenv loading |
 | `TMDB_APIKEY` | — | Fallback TMDB key (can also set in UI) |
 | `TVDB_APIKEY` | — | Fallback TVDB key (can also set in UI) |
 | `COOKIE_SECURE` | `false` | Set `true` behind a TLS-terminating reverse proxy |
@@ -320,6 +335,7 @@ Most settings are configurable through the web UI after initial setup.
 
 ```
 media-gate/
+├── harness/             # Disposable local/CI instance runner and smoke flow
 ├── backend/             # Go backend
 │   ├── cmd/server/      #   entrypoint
 │   ├── internal/        #   domain packages (api, auth, library, sync,
