@@ -592,7 +592,7 @@
 See ADR-135 through ADR-138. Included in v0.40.0; cross-provider identity normalization remains a separate follow-up.
 
 - [x] Shared persistent "Hide in library" control on Discover home, categories, and similar titles; media-type-aware keys prevent movie/series ID collisions, and filtered pages do not stop pagination
-- [x] Followed-series episode timeline on Discover home: past/future pointer drag, touch and keyboard controls, Today shortcut, 14-day lazy windows, bounded viewport/cache, and anchor-preserving live refresh
+- [x] Followed-series episode timeline on Discover home: past/future pointer drag, touch and keyboard controls, centered and highlighted Today view, 14-day lazy windows, bounded viewport/cache, and anchor-preserving live refresh
 - [x] Bounded `GET /media/episode-timeline` with half-open date windows and the shared episode monitoring/download-status rules; migration 0006 indexes episode dates
 - [x] Latest automatic-search snapshot per item, persisted by migration 0005 with up to 50 details; collapsible media-detail panel shows actual grabs, rejected/blocked selections, empty/error searches, and disabled/stale context
 - [x] Migration 0007 records the evaluated item version separately from check completion; changes during a search remain stale after reload, legacy input freshness stays unknown, and later fresh snapshots clear the warning without remounting

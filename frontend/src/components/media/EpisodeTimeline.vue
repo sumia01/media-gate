@@ -79,6 +79,7 @@ function episodeCode(season: number, episode: number) {
           v-for="day in days"
           :key="day.date"
           class="absolute top-0 h-full px-2 pb-3"
+          :class="{ 'timeline-today': day.day === today }"
           :style="{ left: `${(day.day - start) * dayWidth}px`, width: `${dayWidth}px` }"
           :aria-label="formatTimelineDay(day.day, { dateStyle: 'full' })"
         >
@@ -159,6 +160,10 @@ function episodeCode(season: number, episode: number) {
 .timeline-control:hover { background: rgb(139 92 246 / 12%); }
 .timeline-control:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
 .timeline-rail { overflow-anchor: none; scrollbar-color: #4c3b70 #111628; scrollbar-width: thin; }
+.timeline-today {
+  background: linear-gradient(180deg, rgb(139 92 246 / 8%), rgb(139 92 246 / 2%) 75%, transparent);
+  box-shadow: inset 1px 0 rgb(167 139 250 / 10%), inset -1px 0 rgb(167 139 250 / 10%);
+}
 .timeline-day-list { max-height: 288px; scrollbar-color: #4c3b70 transparent; scrollbar-width: thin; }
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse, .animate-spin { animation: none; }

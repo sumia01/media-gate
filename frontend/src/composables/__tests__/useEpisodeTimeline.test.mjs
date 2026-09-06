@@ -194,7 +194,11 @@ test('mounted timeline loads lazily, preserves drag/recenter anchors and cleans 
     return prevented
   }
   assert.ok(requests.length >= 1 && requests.length <= 2, 'only windows covering nearby days are loaded')
-  assert.equal(timeline.visibleRange.value.first, timeline.today.value)
+  assert.equal(
+    (timeline.today.value - timeline.start.value) * DAY_WIDTH + DAY_WIDTH / 2 - el.scrollLeft,
+    el.clientWidth / 2,
+    'today starts centered in the viewport',
+  )
   assert.ok(timeline.days.value.length <= 7, 'narrow screens only render nearby dates')
   for (const request of requests) {
     assert.equal(timelineDay(request.params.query.to) - timelineDay(request.params.query.from), 14)
@@ -254,12 +258,15 @@ test('mounted timeline loads lazily, preserves drag/recenter anchors and cleans 
   const stale = requests.filter((request) => !request.signal.aborted).slice(initialRequests)
   await timeline.goToday()
   await flush()
-  assert.equal(timeline.visibleRange.value.first, timeline.today.value)
+  assert.equal(
+    (timeline.today.value - timeline.start.value) * DAY_WIDTH + DAY_WIDTH / 2 - el.scrollLeft,
+    el.clientWidth / 2,
+  )
   assert.ok(stale.every((request) => request.signal.aborted))
   for (const request of stale) request.resolve({ data: { items: [{ episode: { id: 999 } }] } })
   await flush()
   assert.ok(timeline.days.value.every((day) => day.items.length === 0))
-  assert.equal(el.scrollLeft, WINDOW_DAYS * 2 * DAY_WIDTH)
+  assert.equal(el.scrollLeft, WINDOW_DAYS * 2 * DAY_WIDTH + DAY_WIDTH / 2 - el.clientWidth / 2)
 
   timeline.onScroll()
   harness.unmount()

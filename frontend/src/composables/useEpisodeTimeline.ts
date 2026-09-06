@@ -158,7 +158,8 @@ export function useEpisodeTimeline() {
   }
 
   async function goToday() {
-    if (shifting || disposed) return
+    const el = rail.value
+    if (shifting || disposed || !el) return
     shifting = true
     stopDrag()
     clearTimeout(refreshTimer)
@@ -167,10 +168,10 @@ export function useEpisodeTimeline() {
     cache.reset()
     revision.value++
     start.value = today.value - WINDOW_DAYS * 2
-    left.value = WINDOW_DAYS * 2 * DAY_WIDTH
+    left.value = WINDOW_DAYS * 2 * DAY_WIDTH + DAY_WIDTH / 2 - el.clientWidth / 2
     await nextTick()
-    if (disposed || !rail.value) return
-    rail.value.scrollLeft = left.value
+    if (disposed || rail.value !== el) return
+    el.scrollLeft = left.value
     shifting = false
     await measure()
   }

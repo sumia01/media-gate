@@ -82,7 +82,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 - Drag, swipe, or use keyboard/arrow controls to explore past and upcoming episodes of followed series
 - Loads 14-day windows on demand, with bounded rendered days and nearby cache rather than downloading the whole calendar
-- Today shortcut, availability badges, and explicit unmonitored-episode labels
+- The initial view and Today shortcut center the subtly highlighted current-day column, with availability badges and explicit unmonitored-episode labels
 - Download/import and metadata events refresh the visible dates without moving the timeline
 
 ### Indexer Engine
