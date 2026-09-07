@@ -16,6 +16,7 @@ const router = useRouter()
 const detail = ref<ExternalMediaDetail | null>(null)
 const externalSeasons = ref<ExternalSeasonSummary[]>([])
 const loading = ref(false)
+const episodesLoading = ref(false)
 const error = ref('')
 const showAddModal = ref(false)
 const showIndexerSearch = ref(false)
@@ -23,6 +24,7 @@ const showIndexerSearch = ref(false)
 const isWatched = ref(false)
 const watchedId = ref<number | null>(null)
 const watchedLoading = ref(false)
+let detailRequest = 0
 
 const genres = computed(() => parseGenres(detail.value?.genres))
 
@@ -55,12 +57,12 @@ const credits = computed(() => detail.value?.credits ?? [])
 const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
 const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 
-async function checkWatched() {
-  const d = detail.value
+async function checkWatched(d = detail.value, request = detailRequest) {
   if (!d) return
   const { data } = await client.GET('/watched/check', {
     params: { query: { source: d.source as 'tmdb' | 'tvdb', externalId: d.externalId } },
   })
+  if (request !== detailRequest) return
   if (data) {
     isWatched.value = data.watched
     watchedId.value = data.id ?? null
@@ -96,12 +98,19 @@ async function toggleWatched() {
 }
 
 async function fetchDetail() {
+  const request = ++detailRequest
   const source = route.params.source as string
   const externalId = Number(route.params.externalId)
   const mediaType = (route.query.mediaType as string) || 'movie'
 
   loading.value = true
   error.value = ''
+  detail.value = null
+  externalSeasons.value = []
+  episodesLoading.value = false
+  showAddModal.value = false
+  isWatched.value = false
+  watchedId.value = null
 
   const { data, error: err } = await client.GET('/search/{source}/{externalId}', {
     params: {
@@ -109,6 +118,7 @@ async function fetchDetail() {
       query: { mediaType: mediaType as 'movie' | 'series' },
     },
   })
+  if (request !== detailRequest) return
   loading.value = false
   if (err) {
     error.value = 'Failed to load media details'
@@ -116,19 +126,19 @@ async function fetchDetail() {
   }
   if (data) {
     detail.value = data
-    checkWatched()
+    checkWatched(data, request)
     // Prefetch episodes for series (used by AddToLibraryModal)
     if (data.mediaType === 'series' && data.seasons && data.seasons > 0) {
-      client
-        .GET('/search/{source}/{externalId}/episodes', {
-          params: {
-            path: { source: source as 'tmdb' | 'tvdb', externalId },
-            query: { seasonCount: data.seasons },
-          },
-        })
-        .then(({ data: epData }) => {
-          externalSeasons.value = epData?.seasons ?? []
-        })
+      episodesLoading.value = true
+      const { data: episodeData } = await client.GET('/search/{source}/{externalId}/episodes', {
+        params: {
+          path: { source: source as 'tmdb' | 'tvdb', externalId },
+          query: { seasonCount: data.seasons },
+        },
+      })
+      if (request !== detailRequest) return
+      externalSeasons.value = episodeData?.seasons ?? []
+      episodesLoading.value = false
     }
   }
 }
@@ -177,11 +187,12 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
           Check Indexers
         </button>
         <button
-          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200"
+          class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:cursor-wait disabled:opacity-60"
+          :disabled="episodesLoading"
           @click="showAddModal = true"
         >
           <Plus class="w-4 h-4" />
-          Add to Library
+          {{ episodesLoading ? 'Loading seasons...' : 'Add to Library' }}
         </button>
       </div>
     </div>

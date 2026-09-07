@@ -3,6 +3,7 @@ package apiv1
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -80,6 +81,32 @@ func mediaItemToAPI(item *store.MediaItem, meta *store.MediaMetadata) MediaItem 
 		apiItem.Metadata = &apiMeta
 	}
 	return apiItem
+}
+
+func mediaRequestsToAPI(requests []store.MediaRequestAttribution) *[]MediaRequestAttribution {
+	result := make([]MediaRequestAttribution, len(requests))
+	for i := range requests {
+		name := strings.TrimSpace(requests[i].FirstName + " " + requests[i].LastName)
+		if name == "" {
+			name = requests[i].Email
+		}
+		if name == "" {
+			name = "Deleted user"
+		}
+		requester := MediaRequester{Name: name}
+		if requests[i].UserID != nil {
+			id := int64(*requests[i].UserID)
+			requester.Id = &id
+		}
+		result[i] = MediaRequestAttribution{
+			Scope:         MediaRequestAttributionScope(requests[i].Scope),
+			SeasonNumber:  requests[i].SeasonNumber,
+			EpisodeNumber: requests[i].EpisodeNumber,
+			Requester:     requester,
+			RequestedAt:   requests[i].RequestedAt,
+		}
+	}
+	return &result
 }
 
 func mediaMetadataToAPI(meta *store.MediaMetadata) MediaMetadata {

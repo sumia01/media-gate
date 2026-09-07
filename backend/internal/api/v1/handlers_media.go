@@ -33,8 +33,14 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 		return nil, err
 	}
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
+	requests, err := h.store.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil {
+		return nil, err
+	}
+	apiItem := h.withRatings(mediaItemToAPI(item, meta), meta)
+	apiItem.Requests = mediaRequestsToAPI(requests)
 
-	return GetMediaItem200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
+	return GetMediaItem200JSONResponse(apiItem), nil
 }
 
 func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {

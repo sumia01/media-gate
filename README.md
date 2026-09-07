@@ -78,6 +78,14 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Persistent "Hide in library" filter on Discover, category, and similar-title pages; Recently Added stays visible
 - Library identities include media type, so a movie and series with the same provider ID are not confused. TVDB-to-TMDB identity normalization remains a known limitation of badges and filtering
 
+### Request Tracking
+
+- Records who requested each movie or series, including multiple requesters for media already in the library
+- Series requests preserve whole-series, season, and directly selected episode scope instead of deriving history from mutable monitoring settings
+- Media details show a deduplicated requester summary plus season/episode attribution where applicable
+- Repeat requests are idempotent and additively enable the requested monitoring scope without disabling another user's selections
+- Deleted accounts retain anonymous request history as `Deleted user`; legacy requested items remain unattributed
+
 ### Episode Timeline
 
 - Drag, swipe, or use keyboard/arrow controls to explore past and upcoming episodes of followed series

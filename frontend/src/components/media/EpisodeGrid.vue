@@ -2,12 +2,14 @@
 import { Languages, Search } from 'lucide-vue-next'
 import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { Episode, SeasonSummary } from '@/types/api'
+import type { Episode, MediaRequestAttribution, SeasonSummary } from '@/types/api'
+import { mediaRequesterNames } from '@/utils/mediaRequests'
 
 const props = defineProps<{
   mediaItemId: number
   monitored: boolean
   refreshKey?: number
+  requests?: MediaRequestAttribution[]
 }>()
 
 const emit = defineEmits<{
@@ -21,13 +23,17 @@ const emit = defineEmits<{
 const seasons = ref<SeasonSummary[]>([])
 const loading = ref(false)
 const expandedSeasons = ref<Set<number>>(new Set())
+let episodeRequest = 0
 
 async function fetchEpisodes() {
+  const request = ++episodeRequest
+  const mediaItemId = props.mediaItemId
   // Only show loading spinner on initial load, not on refetches
   if (!seasons.value.length) loading.value = true
   const { data } = await client.GET('/media/{id}/episodes', {
-    params: { path: { id: props.mediaItemId } },
+    params: { path: { id: mediaItemId } },
   })
+  if (request !== episodeRequest || mediaItemId !== props.mediaItemId) return
   seasons.value = data?.seasons ?? []
   loading.value = false
 }
@@ -63,6 +69,10 @@ function toggleSeason(seasonNumber: number) {
   expandedSeasons.value = s
 }
 
+function scopedRequesterNames(scope: 'season' | 'episode', seasonNumber: number, episodeNumber?: number): string[] {
+  return mediaRequesterNames(props.requests ?? [], scope, seasonNumber, episodeNumber)
+}
+
 type EpStatus =
   | 'available'
   | 'missing'
@@ -96,7 +106,14 @@ function statusLabel(status: EpStatus): string {
 }
 
 onMounted(fetchEpisodes)
-watch(() => props.mediaItemId, fetchEpisodes)
+watch(
+  () => props.mediaItemId,
+  () => {
+    seasons.value = []
+    expandedSeasons.value = new Set()
+    fetchEpisodes()
+  },
+)
 watch(() => props.refreshKey, fetchEpisodes)
 </script>
 
@@ -118,11 +135,14 @@ watch(() => props.refreshKey, fetchEpisodes)
       >
         <!-- Season header -->
         <div
-          class="flex items-center justify-between px-4 py-3 bg-[#161b2e] hover:bg-[#1a2038] transition-colors duration-200 cursor-pointer"
-          @click="toggleSeason(season.seasonNumber)"
+          class="flex items-center justify-between px-4 py-3 bg-[#161b2e] hover:bg-[#1a2038] transition-colors duration-200"
         >
           <!-- Left: season info -->
-          <div class="flex items-center gap-3">
+          <button
+            class="flex min-w-0 flex-1 flex-wrap items-center gap-3 text-left"
+            :aria-expanded="expandedSeasons.has(season.seasonNumber)"
+            @click="toggleSeason(season.seasonNumber)"
+          >
             <span class="text-gray-500 text-xs transition-transform duration-200" :class="expandedSeasons.has(season.seasonNumber) ? 'rotate-180' : ''">
               &#9660;
             </span>
@@ -137,7 +157,13 @@ watch(() => props.refreshKey, fetchEpisodes)
             >
               {{ season.availableEpisodes }}/{{ season.totalEpisodes }}
             </span>
-          </div>
+            <span
+              v-if="scopedRequesterNames('season', season.seasonNumber).length"
+              class="break-all text-[11px] text-sky-300/80"
+            >
+              Requested by {{ scopedRequesterNames('season', season.seasonNumber).join(', ') }}
+            </span>
+          </button>
 
           <!-- Right: actions -->
           <div class="flex items-center gap-3">
@@ -175,7 +201,7 @@ watch(() => props.refreshKey, fetchEpisodes)
           <div
             v-for="ep in season.episodes"
             :key="ep.episodeNumber"
-            class="flex items-center gap-3 px-4 py-2.5"
+            class="flex flex-wrap items-center gap-3 px-4 py-2.5 sm:flex-nowrap"
             :class="{
               'bg-emerald-600/5': episodeStatus(ep) === 'available',
               'bg-red-600/5': episodeStatus(ep) === 'missing',
@@ -197,13 +223,19 @@ watch(() => props.refreshKey, fetchEpisodes)
             </span>
 
             <!-- Title & details -->
-            <div class="flex-1 min-w-0">
+            <div class="min-w-0 flex-1 basis-[calc(100%-3rem)] sm:basis-auto">
               <p class="text-sm truncate" :class="episodeStatus(ep) === 'unmonitored' ? 'text-gray-500' : 'text-gray-200'">
                 {{ ep.title || `Episode ${ep.episodeNumber}` }}
               </p>
-              <div class="flex items-center gap-2 mt-0.5">
+              <div class="flex flex-wrap items-center gap-2 mt-0.5">
                 <span v-if="ep.airDate" class="text-[11px] text-gray-500">{{ ep.airDate }}</span>
                 <span v-if="ep.runtime" class="text-[11px] text-gray-500">{{ ep.runtime }}min</span>
+                <span
+                  v-if="scopedRequesterNames('episode', season.seasonNumber, ep.episodeNumber).length"
+                  class="basis-full break-all text-[11px] text-sky-300/80"
+                >
+                  Requested by {{ scopedRequesterNames('episode', season.seasonNumber, ep.episodeNumber).join(', ') }}
+                </span>
               </div>
             </div>
 

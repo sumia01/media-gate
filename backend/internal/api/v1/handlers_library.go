@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/store"
@@ -270,7 +271,7 @@ func (h *Handlers) SearchMediaForLibrary(_ context.Context, req SearchMediaForLi
 	return SearchMediaForLibrary200JSONResponse{Candidates: candidatesToAPI(candidates)}, nil
 }
 
-func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryRequestObject) (AddMediaToLibraryResponseObject, error) {
+func (h *Handlers) AddMediaToLibrary(ctx context.Context, req AddMediaToLibraryRequestObject) (AddMediaToLibraryResponseObject, error) {
 	lib, err := h.lib.Get(uint(req.Id))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -288,6 +289,17 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		Monitored:         req.Body.Monitored,
 		MonitorNewSeasons: req.Body.MonitorNewSeasons,
 	}
+	userID, ok := auth.UserIDFromContext(ctx)
+	if !ok {
+		return AddMediaToLibrary401JSONResponse{Code: http.StatusUnauthorized, Message: "unauthenticated"}, nil
+	}
+	if _, err := h.store.GetUser(userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return AddMediaToLibrary401JSONResponse{Code: http.StatusUnauthorized, Message: "user no longer exists"}, nil
+		}
+		return nil, err
+	}
+	addReq.RequesterID = &userID
 	if req.Body.MediaProfileId != nil {
 		pid := uint(*req.Body.MediaProfileId)
 		addReq.MediaProfileID = &pid
@@ -310,18 +322,27 @@ func (h *Handlers) AddMediaToLibrary(_ context.Context, req AddMediaToLibraryReq
 		}
 	}
 
-	item, meta, err := h.matchSvc.AddMediaToLibraryFull(h.store, lib, addReq)
+	item, meta, created, err := h.matchSvc.AddMediaToLibraryFull(h.store, lib, addReq)
 	if err != nil {
-		if errors.Is(err, matching.ErrAlreadyExists) {
-			return AddMediaToLibrary409JSONResponse{
-				Code:    http.StatusConflict,
-				Message: err.Error(),
-			}, nil
+		if errors.Is(err, matching.ErrNoRequestedScope) {
+			return AddMediaToLibrary400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
+		}
+		if errors.Is(err, store.ErrRequesterNotFound) {
+			return AddMediaToLibrary401JSONResponse{Code: http.StatusUnauthorized, Message: "user no longer exists"}, nil
 		}
 		return nil, err
 	}
 
-	return AddMediaToLibrary201JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
+	requests, err := h.store.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil {
+		return nil, err
+	}
+	apiItem := h.withRatings(mediaItemToAPI(item, meta), meta)
+	apiItem.Requests = mediaRequestsToAPI(requests)
+	if !created {
+		return AddMediaToLibrary200JSONResponse(apiItem), nil
+	}
+	return AddMediaToLibrary201JSONResponse(apiItem), nil
 }
 
 func (h *Handlers) GlobalSearch(_ context.Context, req GlobalSearchRequestObject) (GlobalSearchResponseObject, error) {

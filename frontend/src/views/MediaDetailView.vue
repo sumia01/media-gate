@@ -17,6 +17,7 @@ import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
 import { useEventStream } from '@/composables/useEventStream'
 import type { Library, MediaFile, MediaItem, MediaItemUpdate, MediaProfile, SeasonSummary } from '@/types/api'
 import { formatBytes, parseGenres, posterUrl, profileImageUrl } from '@/utils/media'
+import { mediaRequesterNames } from '@/utils/mediaRequests'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,6 +57,10 @@ const watchedId = ref<number | null>(null)
 const watchedLoading = ref(false)
 const subtitleAutoSearch = ref(false)
 const metadata = computed(() => item.value?.metadata ?? null)
+let itemRequest = 0
+
+const requesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? []))
+const wholeMediaRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'media'))
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
 
@@ -94,11 +99,13 @@ const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
 const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 
 async function fetchItem(id: number) {
+  const request = ++itemRequest
   loading.value = true
   error.value = ''
   const { data, error: err } = await client.GET('/media/{id}', {
     params: { path: { id } },
   })
+  if (request !== itemRequest || Number(route.params.id) !== id) return
   loading.value = false
   if (err) {
     error.value = 'Failed to load media item'
@@ -106,24 +113,24 @@ async function fetchItem(id: number) {
   }
   if (data) {
     item.value = data
-    fetchLibrary(data.libraryId)
+    fetchLibrary(data.libraryId, data.id)
     fetchFiles(data.id)
     checkWatched()
   }
 }
 
-async function fetchLibrary(id: number) {
+async function fetchLibrary(id: number, mediaItemId: number) {
   const { data } = await client.GET('/libraries/{id}', {
     params: { path: { id } },
   })
-  if (data) library.value = data
+  if (data && item.value?.id === mediaItemId) library.value = data
 }
 
 async function fetchFiles(id: number) {
   const { data } = await client.GET('/media/{id}/files', {
     params: { path: { id } },
   })
-  files.value = data?.files ?? []
+  if (item.value?.id === id) files.value = data?.files ?? []
 }
 
 async function fetchProfiles() {
@@ -144,11 +151,12 @@ async function toggleSubtitleAutoSearch() {
 
 async function checkWatched() {
   const meta = metadata.value
-  if (!meta) return
+  const mediaItemId = item.value?.id
+  if (!meta || !mediaItemId) return
   const { data } = await client.GET('/watched/check', {
     params: { query: { source: meta.source as 'tmdb' | 'tvdb', externalId: meta.externalId } },
   })
-  if (data) {
+  if (data && item.value?.id === mediaItemId) {
     isWatched.value = data.watched
     watchedId.value = data.id ?? null
   }
@@ -185,12 +193,13 @@ async function toggleWatched() {
 
 async function updateMediaItem(update: MediaItemUpdate) {
   if (!item.value) return
+  const mediaItemId = item.value.id
   const { data } = await client.PATCH('/media/{id}', {
-    params: { path: { id: item.value.id } },
+    params: { path: { id: mediaItemId } },
     body: update,
   })
-  if (data) {
-    item.value = data
+  if (data && item.value?.id === mediaItemId) {
+    item.value = { ...data, requests: data.requests ?? item.value.requests }
   }
 }
 
@@ -407,7 +416,7 @@ function handleImportEvent(data: any) {
   }
 }
 
-const mediaEvents = ['media.item_matched', 'media.resync_completed', 'monitor.grabbed']
+const mediaEvents = ['media.item_matched', 'media.request_added', 'media.resync_completed', 'monitor.grabbed']
 
 const importEvents = ['download.import_completed']
 
@@ -421,6 +430,11 @@ function handleSubtitleEvent(data: any) {
 
 function loadAll() {
   const id = Number(route.params.id)
+  if (item.value?.id !== id) {
+    item.value = null
+    library.value = null
+    files.value = []
+  }
   fetchItem(id)
   fetchProfiles()
   fetchSubtitleAutoSearch()
@@ -608,6 +622,28 @@ watch(() => route.params.id, loadAll)
             >
               {{ genre }}
             </span>
+          </div>
+
+          <div
+            v-if="requesterNames.length"
+            class="mb-5 px-4 py-3 rounded-lg bg-sky-500/5 border border-sky-500/20"
+          >
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-sky-400 mb-2">Requested by</p>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="(name, index) in requesterNames"
+                :key="`${name}-${index}`"
+                class="break-all text-xs px-2.5 py-1 rounded-full bg-sky-600/15 text-sky-200"
+              >
+                {{ name }}
+              </span>
+            </div>
+            <p
+              v-if="item.mediaType === 'series' && wholeMediaRequesterNames.length"
+              class="mt-2 text-[11px] text-gray-500"
+            >
+              Whole series: {{ wholeMediaRequesterNames.join(', ') }}
+            </p>
           </div>
 
           <!-- Overview -->
@@ -854,6 +890,7 @@ watch(() => route.params.id, loadAll)
         :mediaItemId="item.id"
         :monitored="item.monitored ?? false"
         :refreshKey="episodeRefreshKey"
+        :requests="item.requests"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
         @search-season-subtitles="(sn: number) => openSubtitleSearch(sn)"

@@ -29,6 +29,25 @@ type MediaItem struct {
 	UpdatedAt              time.Time
 }
 
+type MediaRequest struct {
+	ID            uint   `gorm:"primarykey"`
+	MediaItemID   uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	UserID        *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
+	Scope         string `gorm:"not null"` // media, season, or episode
+	SeasonNumber  *int
+	EpisodeNumber *int
+	RequestedAt   time.Time `gorm:"not null;autoCreateTime"`
+}
+
+// MediaRequestAttribution is the request row plus its optional requester
+// projection. User fields are empty after the requester account is deleted.
+type MediaRequestAttribution struct {
+	MediaRequest
+	FirstName string `gorm:"->;-:migration"`
+	LastName  string `gorm:"->;-:migration"`
+	Email     string `gorm:"->;-:migration"`
+}
+
 type MediaMetadata struct {
 	ID          uint    `gorm:"primarykey"`
 	MediaItemID uint    `gorm:"not null;uniqueIndex;constraint:OnDelete:CASCADE"`
@@ -188,7 +207,7 @@ type Download struct {
 // import for a given media item. Keyed by (MediaItemID, DownloadURL). The
 // monitor consults it before re-grabbing a release so a permanently-broken
 // torrent (dead URL, qBit error, repeated import failure) is not re-grabbed
-// forever. Created by migration V8 — NOT part of AutoMigrate.
+// forever. Managed by the migration schema, never AutoMigrate.
 type DownloadBlocklist struct {
 	ID           uint      `gorm:"primarykey"`
 	MediaItemID  uint      `gorm:"not null;index;uniqueIndex:idx_blocklist_item_url;constraint:OnDelete:CASCADE"`

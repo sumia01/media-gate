@@ -12,6 +12,10 @@ var ErrNotFound = errors.New("record not found")
 // ErrDuplicate is returned when a duplicate record already exists.
 var ErrDuplicate = errors.New("duplicate record")
 
+// ErrRequesterNotFound is returned when request attribution references a user
+// that no longer exists.
+var ErrRequesterNotFound = errors.New("requester not found")
+
 // ActiveDownloadStatuses are download statuses that indicate work is in progress
 // or complete. If a download has one of these statuses, the item/episode should
 // not be re-downloaded.
@@ -50,9 +54,12 @@ type Store interface {
 	ListDiskMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	ListNewMediaItemsByLibrary(libraryID uint) ([]MediaItem, error)
 	CountMediaItemsByLibrary(libraryID uint) (int64, error)
-	MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error)
+	GetMediaItemByExternalID(libraryID uint, source string, externalID int) (*MediaItem, error)
 	ListMonitoredMediaItems() ([]MediaItem, error)
 	ListRecentMediaItems(limit int) ([]MediaItem, error)
+
+	CreateMediaRequest(request *MediaRequest) error
+	ListMediaRequestsByMediaItem(mediaItemID uint) ([]MediaRequestAttribution, error)
 
 	CreateMediaMetadata(meta *MediaMetadata) error
 	GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error)

@@ -22,36 +22,39 @@ import (
 type memStore struct {
 	store.Store
 
-	ids     *uint
-	inTx    *atomic.Bool
-	items   map[uint]*store.MediaItem
-	metas   map[uint]*store.MediaMetadata
-	eps     map[uint][]store.Episode
-	seasons map[uint][]store.SeasonMonitor
-	epMons  map[uint][]store.EpisodeMonitor
+	ids      *uint
+	inTx     *atomic.Bool
+	items    map[uint]*store.MediaItem
+	metas    map[uint]*store.MediaMetadata
+	eps      map[uint][]store.Episode
+	seasons  map[uint][]store.SeasonMonitor
+	epMons   map[uint][]store.EpisodeMonitor
+	requests map[uint][]store.MediaRequest
 }
 
 func newMemStore() *memStore {
 	var id uint
 	return &memStore{
-		ids:     &id,
-		inTx:    &atomic.Bool{},
-		items:   map[uint]*store.MediaItem{},
-		metas:   map[uint]*store.MediaMetadata{},
-		eps:     map[uint][]store.Episode{},
-		seasons: map[uint][]store.SeasonMonitor{},
-		epMons:  map[uint][]store.EpisodeMonitor{},
+		ids:      &id,
+		inTx:     &atomic.Bool{},
+		items:    map[uint]*store.MediaItem{},
+		metas:    map[uint]*store.MediaMetadata{},
+		eps:      map[uint][]store.Episode{},
+		seasons:  map[uint][]store.SeasonMonitor{},
+		epMons:   map[uint][]store.EpisodeMonitor{},
+		requests: map[uint][]store.MediaRequest{},
 	}
 }
 
 func (m *memStore) clone() *memStore {
 	c := &memStore{
 		ids: m.ids, inTx: m.inTx,
-		items:   map[uint]*store.MediaItem{},
-		metas:   map[uint]*store.MediaMetadata{},
-		eps:     map[uint][]store.Episode{},
-		seasons: map[uint][]store.SeasonMonitor{},
-		epMons:  map[uint][]store.EpisodeMonitor{},
+		items:    map[uint]*store.MediaItem{},
+		metas:    map[uint]*store.MediaMetadata{},
+		eps:      map[uint][]store.Episode{},
+		seasons:  map[uint][]store.SeasonMonitor{},
+		epMons:   map[uint][]store.EpisodeMonitor{},
+		requests: map[uint][]store.MediaRequest{},
 	}
 	for k, v := range m.items {
 		cp := *v
@@ -70,6 +73,9 @@ func (m *memStore) clone() *memStore {
 	for k, v := range m.epMons {
 		c.epMons[k] = append([]store.EpisodeMonitor(nil), v...)
 	}
+	for k, v := range m.requests {
+		c.requests[k] = append([]store.MediaRequest(nil), v...)
+	}
 	return c
 }
 
@@ -81,22 +87,23 @@ func (m *memStore) WithTx(fn func(store.Store) error) error {
 		return err // discard shadow; nothing committed
 	}
 	// Commit: adopt the shadow's state atomically.
-	m.items, m.metas, m.eps, m.seasons, m.epMons = shadow.items, shadow.metas, shadow.eps, shadow.seasons, shadow.epMons
+	m.items, m.metas, m.eps, m.seasons, m.epMons, m.requests = shadow.items, shadow.metas, shadow.eps, shadow.seasons, shadow.epMons, shadow.requests
 	return nil
 }
 
-func (m *memStore) Close() error                             { return nil }
+func (m *memStore) Close() error                              { return nil }
 func (m *memStore) GetSetting(string) (*store.Setting, error) { return nil, store.ErrNotFound }
 
-func (m *memStore) MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error) {
+func (m *memStore) GetMediaItemByExternalID(libraryID uint, source string, externalID int) (*store.MediaItem, error) {
 	for _, meta := range m.metas {
 		if meta.Source == source && meta.ExternalID == externalID {
-			if it, ok := m.items[meta.MediaItemID]; ok && it.LibraryID == libraryID {
-				return true, nil
+			if item, ok := m.items[meta.MediaItemID]; ok && item.LibraryID == libraryID {
+				copy := *item
+				return &copy, nil
 			}
 		}
 	}
-	return false, nil
+	return nil, store.ErrNotFound
 }
 
 func (m *memStore) CreateMediaItem(item *store.MediaItem) error {
@@ -164,6 +171,18 @@ func (m *memStore) ListSeasonMonitorsByMediaItem(itemID uint) ([]store.SeasonMon
 	return append([]store.SeasonMonitor(nil), m.seasons[itemID]...), nil
 }
 
+func (m *memStore) UpdateSeasonMonitor(monitor *store.SeasonMonitor) error {
+	list := m.seasons[monitor.MediaItemID]
+	for i := range list {
+		if list[i].SeasonNumber == monitor.SeasonNumber {
+			list[i] = *monitor
+			m.seasons[monitor.MediaItemID] = list
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
 func (m *memStore) UpsertEpisodeMonitor(em *store.EpisodeMonitor) error {
 	list := m.epMons[em.MediaItemID]
 	for i := range list {
@@ -174,6 +193,39 @@ func (m *memStore) UpsertEpisodeMonitor(em *store.EpisodeMonitor) error {
 	}
 	m.epMons[em.MediaItemID] = append(list, *em)
 	return nil
+}
+
+func (m *memStore) DeleteEpisodeMonitorsBySeason(mediaItemID uint, seasonNumber int) error {
+	monitors := m.epMons[mediaItemID]
+	kept := monitors[:0]
+	for _, monitor := range monitors {
+		if monitor.SeasonNumber != seasonNumber {
+			kept = append(kept, monitor)
+		}
+	}
+	m.epMons[mediaItemID] = kept
+	return nil
+}
+
+func (m *memStore) CreateMediaRequest(request *store.MediaRequest) error {
+	for _, existing := range m.requests[request.MediaItemID] {
+		if existing.UserID != nil && request.UserID != nil && *existing.UserID == *request.UserID &&
+			existing.Scope == request.Scope && equalIntPtr(existing.SeasonNumber, request.SeasonNumber) &&
+			equalIntPtr(existing.EpisodeNumber, request.EpisodeNumber) {
+			return nil
+		}
+	}
+	*m.ids++
+	request.ID = *m.ids
+	m.requests[request.MediaItemID] = append(m.requests[request.MediaItemID], *request)
+	return nil
+}
+
+func equalIntPtr(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }
 
 // fakeTMDBTransport serves canned TMDB responses and records whether any
@@ -264,10 +316,12 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 	lib := &store.Library{ID: 1, Name: "TV", Path: t.TempDir(), MediaType: "series"}
 
 	monitored := true
-	item, meta, err := svc.AddMediaToLibraryFull(st, lib, AddMediaRequest{
-		Source:     "tmdb",
-		ExternalID: 123,
-		Monitored:  &monitored,
+	requesterID := uint(7)
+	item, meta, created, err := svc.AddMediaToLibraryFull(st, lib, AddMediaRequest{
+		Source:      "tmdb",
+		ExternalID:  123,
+		RequesterID: &requesterID,
+		Monitored:   &monitored,
 		SeasonMonitors: []SeasonMonitorReq{
 			{SeasonNumber: 1, Monitored: true},
 			{SeasonNumber: 2, Monitored: true},
@@ -275,6 +329,9 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("AddMediaToLibraryFull: %v", err)
+	}
+	if !created {
+		t.Fatal("new media reported as existing")
 	}
 
 	// No network call may have happened while the transaction was open.
@@ -323,6 +380,167 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 	if len(monitors) != 2 {
 		t.Errorf("persisted %d season monitors, want 2", len(monitors))
 	}
+	requests := st.requests[item.ID]
+	if len(requests) != 1 || requests[0].Scope != "media" || requests[0].UserID == nil || *requests[0].UserID != requesterID {
+		t.Errorf("persisted requests = %+v, want one whole-series attribution", requests)
+	}
+
+	secondRequesterID := uint(8)
+	monitorFuture := false
+	requestsBefore := transport.total
+	st.seasons[item.ID][1].Monitored = false
+	existing, _, created, err := svc.AddMediaToLibraryFull(st, lib, AddMediaRequest{
+		Source:            "tmdb",
+		ExternalID:        123,
+		RequesterID:       &secondRequesterID,
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors: []SeasonMonitorReq{
+			{SeasonNumber: 1, Monitored: false},
+			{SeasonNumber: 2, Monitored: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("second AddMediaToLibraryFull: %v", err)
+	}
+	if created {
+		t.Fatal("existing media reported as newly created")
+	}
+	if existing.ID != item.ID {
+		t.Errorf("existing item ID = %d, want %d", existing.ID, item.ID)
+	}
+	if transport.total != requestsBefore {
+		t.Errorf("duplicate request made %d metadata HTTP calls, want 0", transport.total-requestsBefore)
+	}
+	requests = st.requests[item.ID]
+	if len(requests) != 2 || requests[1].Scope != "season" || requests[1].SeasonNumber == nil || *requests[1].SeasonNumber != 2 {
+		t.Errorf("requests after second requester = %+v, want whole series plus season 2", requests)
+	}
+	if !st.seasons[item.ID][1].Monitored {
+		t.Error("requesting season 2 did not enable its existing season monitor")
+	}
+
+	st.seasons[item.ID][0].Monitored = false
+	st.seasons[item.ID][1].Monitored = false
+	thirdRequesterID := uint(9)
+	_, _, created, err = svc.AddMediaToLibraryFull(st, lib, AddMediaRequest{
+		Source:      "tmdb",
+		ExternalID:  123,
+		RequesterID: &thirdRequesterID,
+		Monitored:   &monitored,
+	})
+	if err != nil {
+		t.Fatalf("request with omitted season monitors: %v", err)
+	}
+	if created {
+		t.Fatal("existing media with defaulted seasons reported as newly created")
+	}
+	for _, season := range st.seasons[item.ID] {
+		if !season.Monitored {
+			t.Errorf("defaulted whole-series request did not enable season %d", season.SeasonNumber)
+		}
+	}
+}
+
+func TestBuildRequestScopesRejectsEmptyAndDoesNotPromotePartialInput(t *testing.T) {
+	monitored := true
+	monitorFuture := true
+	episodes := []episodeData{
+		{seasonNumber: 1, episodeNumber: 1},
+		{seasonNumber: 2, episodeNumber: 1},
+	}
+
+	empty := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors: []SeasonMonitorReq{
+			{SeasonNumber: 1, Monitored: false},
+			{SeasonNumber: 2, Monitored: false},
+		},
+	}, episodes)
+	if len(empty) != 0 {
+		t.Errorf("all-disabled scopes = %+v, want none", empty)
+	}
+
+	partial := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 2, Monitored: true}},
+	}, episodes)
+	if len(partial) != 1 || partial[0].scope != "season" || partial[0].seasonNumber != 2 {
+		t.Errorf("partial scopes = %+v, want season 2 rather than whole media", partial)
+	}
+}
+
+func TestNormalizeSeriesRequestDefaultsKnownSeasonsAndFutureMonitoring(t *testing.T) {
+	monitored := true
+	seasonCount := 2
+	req := normalizeSeriesRequest("series", AddMediaRequest{Monitored: &monitored}, []episodeData{
+		{seasonNumber: 2, episodeNumber: 1},
+		{seasonNumber: 1, episodeNumber: 1},
+		{seasonNumber: 2, episodeNumber: 2},
+	}, &seasonCount)
+
+	if req.MonitorNewSeasons == nil || !*req.MonitorNewSeasons {
+		t.Error("MonitorNewSeasons was not defaulted to true")
+	}
+	if len(req.SeasonMonitors) != 2 || req.SeasonMonitors[0].SeasonNumber != 1 || req.SeasonMonitors[1].SeasonNumber != 2 {
+		t.Errorf("SeasonMonitors = %+v, want known seasons 1 and 2", req.SeasonMonitors)
+	}
+}
+
+func TestNormalizeSeriesRequestFillsSeasonSkippedByProviderFetch(t *testing.T) {
+	monitored := true
+	monitorFuture := true
+	seasonCount := 2
+	req := normalizeSeriesRequest("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 1, Monitored: true}},
+	}, []episodeData{{seasonNumber: 1, episodeNumber: 1}}, &seasonCount)
+
+	if len(req.SeasonMonitors) != 2 || req.SeasonMonitors[0].SeasonNumber != 1 || req.SeasonMonitors[1].SeasonNumber != 2 {
+		t.Fatalf("SeasonMonitors = %+v, want metadata seasons 1 and 2", req.SeasonMonitors)
+	}
+	for _, season := range req.SeasonMonitors {
+		if !season.Monitored {
+			t.Errorf("season %d was not enabled for whole-series request", season.SeasonNumber)
+		}
+	}
+}
+
+func TestBuildRequestScopesUsesEpisodeScopeForPartialSeasons(t *testing.T) {
+	monitored := true
+	monitorFuture := false
+	scopes := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors: []SeasonMonitorReq{
+			{SeasonNumber: 1, Monitored: true},
+			{SeasonNumber: 2, Monitored: false},
+		},
+		EpisodeMonitors: []EpisodeMonitorReq{
+			{SeasonNumber: 1, EpisodeNumber: 2, Monitored: false},
+			{SeasonNumber: 2, EpisodeNumber: 1, Monitored: true},
+		},
+	}, []episodeData{
+		{seasonNumber: 1, episodeNumber: 1},
+		{seasonNumber: 1, episodeNumber: 2},
+		{seasonNumber: 2, episodeNumber: 1},
+	})
+
+	want := []requestScope{
+		{scope: "episode", seasonNumber: 1, episodeNumber: 1},
+		{scope: "episode", seasonNumber: 2, episodeNumber: 1},
+	}
+	if len(scopes) != len(want) {
+		t.Fatalf("scopes = %+v, want %+v", scopes, want)
+	}
+	for i := range want {
+		if scopes[i] != want[i] {
+			t.Errorf("scope %d = %+v, want %+v", i, scopes[i], want[i])
+		}
+	}
 }
 
 // TestAddMediaToLibraryFull_FetchFailureAbortsBeforeWrite proves that when the
@@ -342,7 +560,7 @@ func TestAddMediaToLibraryFull_FetchFailureAbortsBeforeWrite(t *testing.T) {
 
 	svc := NewService(st, set, t.TempDir(), failing)
 
-	_, _, err := svc.AddMediaToLibraryFull(st, &store.Library{ID: 1, MediaType: "series"}, AddMediaRequest{
+	_, _, _, err := svc.AddMediaToLibraryFull(st, &store.Library{ID: 1, MediaType: "series"}, AddMediaRequest{
 		Source:     "tmdb",
 		ExternalID: 999,
 	})

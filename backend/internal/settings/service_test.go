@@ -46,11 +46,15 @@ func (s *settingsStubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, er
 func (s *settingsStubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
 func (s *settingsStubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
 func (s *settingsStubStore) CountMediaItemsByLibrary(uint) (int64, error)               { return 0, nil }
-func (s *settingsStubStore) MediaItemExistsByExternalID(uint, string, int) (bool, error) {
-	return false, nil
+func (s *settingsStubStore) GetMediaItemByExternalID(uint, string, int) (*store.MediaItem, error) {
+	return nil, store.ErrNotFound
 }
 func (s *settingsStubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
 func (s *settingsStubStore) ListRecentMediaItems(int) ([]store.MediaItem, error) { return nil, nil }
+func (s *settingsStubStore) CreateMediaRequest(*store.MediaRequest) error { return nil }
+func (s *settingsStubStore) ListMediaRequestsByMediaItem(uint) ([]store.MediaRequestAttribution, error) {
+	return nil, nil
+}
 
 func (s *settingsStubStore) CreateMediaMetadata(*store.MediaMetadata) error { return nil }
 func (s *settingsStubStore) GetMediaMetadataByMediaItem(uint) (*store.MediaMetadata, error) {

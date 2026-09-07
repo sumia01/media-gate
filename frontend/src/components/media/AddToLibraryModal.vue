@@ -152,11 +152,7 @@ async function handleAdd() {
 
   if (err) {
     const errBody = err as { code?: number; message?: string }
-    if (errBody.code === 409) {
-      error.value = 'This media already exists in the selected library'
-    } else {
-      error.value = 'Failed to add media'
-    }
+    error.value = errBody.message ?? 'Failed to add media'
     // Go back to configure step on error so user can retry
     if (step.value === 'seasons') step.value = 'configure'
     return
@@ -200,6 +196,16 @@ const allSeasonsMonitored = computed(
   () =>
     (props.externalSeasons?.length ?? 0) > 0 &&
     props.externalSeasons!.every((s) => seasonMonitored.value.get(s.seasonNumber)),
+)
+
+const hasRequestedScope = computed(() =>
+  (props.externalSeasons ?? []).some((season) => {
+    const seasonValue = seasonMonitored.value.get(season.seasonNumber) ?? true
+    if (!season.episodes.length) return seasonValue
+    return season.episodes.some(
+      (episode) => episodeMonitored.value.get(`${season.seasonNumber}-${episode.episodeNumber}`) ?? seasonValue,
+    )
+  }),
 )
 
 function toggleAllSeasons() {
@@ -433,12 +439,15 @@ function toggleAllSeasons() {
           </button>
           <button
             class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            :disabled="adding"
+            :disabled="adding || !hasRequestedScope"
             @click="handleAdd"
           >
             {{ adding ? 'Adding...' : 'Add' }}
           </button>
         </div>
+        <p v-if="!hasRequestedScope" class="mt-2 text-xs text-amber-400">
+          Select at least one season or episode, or disable monitoring.
+        </p>
       </template>
     </div>
   </div>

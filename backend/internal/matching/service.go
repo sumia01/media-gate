@@ -28,7 +28,7 @@ const (
 	tmdbPosterBase     = "https://image.tmdb.org/t/p/w500"
 )
 
-var ErrAlreadyExists = errors.New("media already exists in this library")
+var ErrNoRequestedScope = errors.New("select at least one season or episode")
 
 type Candidate struct {
 	Source          string
@@ -356,64 +356,12 @@ func (s *Service) SearchForLibrary(lib *store.Library, query string) ([]Candidat
 	return candidates, nil
 }
 
-// AddMediaToLibrary creates a new requested media item with full metadata from an external source.
-//
-// Deprecated: unused. The add-to-library HTTP handler calls AddMediaToLibraryFull,
-// which fetches before opening a short write transaction. This variant remains a
-// second, diverging copy of that flow and should be removed once confirmed dead.
-func (s *Service) AddMediaToLibrary(lib *store.Library, source string, externalID int) (*store.MediaItem, error) {
-	// Check for duplicates
-	exists, err := s.store.MediaItemExistsByExternalID(lib.ID, source, externalID)
-	if err != nil {
-		return nil, fmt.Errorf("checking for duplicates: %w", err)
-	}
-	if exists {
-		return nil, ErrAlreadyExists
-	}
-
-	apiKey, err := s.resolveAPIKey(source)
-	if err != nil {
-		return nil, fmt.Errorf("no API key configured for %s", source)
-	}
-
-	// Create the media item first (we need the ID for poster filename)
-	item := &store.MediaItem{
-		LibraryID: lib.ID,
-		Title:     "pending", // will be updated from metadata
-		MediaType: lib.MediaType,
-		Status:    "requested",
-		Source:    "request",
-	}
-	if err := s.store.CreateMediaItem(item); err != nil {
-		return nil, fmt.Errorf("creating media item: %w", err)
-	}
-
-	// Apply match (fetches details, creates metadata, downloads the poster)
-	if err := s.applyMatch(item, source, apiKey, lib.MediaType, externalID, 1.0); err != nil {
-		// Clean up on failure
-		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
-		return nil, fmt.Errorf("applying match: %w", err)
-	}
-
-	// Update title and year from metadata
-	meta, err := s.store.GetMediaMetadataByMediaItem(item.ID)
-	if err == nil && meta != nil {
-		item.Title = meta.Title
-		item.Year = meta.Year
-	}
-	item.Status = "requested"
-	if err := s.store.UpdateMediaItem(item); err != nil {
-		return nil, fmt.Errorf("updating media item: %w", err)
-	}
-
-	return item, nil
-}
-
 // AddMediaRequest holds parameters for adding media to a library with optional
 // monitoring configuration.
 type AddMediaRequest struct {
 	Source            string
 	ExternalID        int
+	RequesterID       *uint
 	Monitored         *bool
 	MonitorNewSeasons *bool
 	MediaProfileID    *uint
@@ -447,19 +395,68 @@ type EpisodeMonitorReq struct {
 //     store, so the recalculator can see the committed item (previously it ran
 //     inside the tx against a connection that couldn't see the uncommitted row,
 //     so it silently no-op'd).
-func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, error) {
-	// Duplicate check before any network work (read-only, outside the tx).
-	exists, err := s.store.MediaItemExistsByExternalID(lib.ID, req.Source, req.ExternalID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("checking for duplicates: %w", err)
+func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, bool, error) {
+	// Existing media can receive additional request attribution without another
+	// metadata fetch. Request rows are idempotent for each user and scope.
+	existing, err := s.store.GetMediaItemByExternalID(lib.ID, req.Source, req.ExternalID)
+	if err == nil {
+		meta, _ := topStore.GetMediaMetadataByMediaItem(existing.ID)
+		storedEpisodes, listErr := s.store.ListEpisodesByMediaItem(existing.ID)
+		if listErr != nil {
+			return nil, nil, false, fmt.Errorf("listing existing episodes: %w", listErr)
+		}
+		episodes := make([]episodeData, len(storedEpisodes))
+		for i := range storedEpisodes {
+			episodes[i] = episodeData{
+				seasonNumber:  storedEpisodes[i].SeasonNumber,
+				episodeNumber: storedEpisodes[i].EpisodeNumber,
+			}
+		}
+		var seasonCount *int
+		if meta != nil {
+			seasonCount = meta.Seasons
+		}
+		req = normalizeSeriesRequest(existing.MediaType, req, episodes, seasonCount)
+		scopes := buildRequestScopes(existing.MediaType, req, episodes)
+		if len(scopes) == 0 {
+			return nil, nil, false, ErrNoRequestedScope
+		}
+		if err := topStore.WithTx(func(tx store.Store) error {
+			current, err := tx.GetMediaItem(existing.ID)
+			if err != nil {
+				return err
+			}
+			if err := applyExistingRequest(tx, current, req, scopes); err != nil {
+				return err
+			}
+			return createMediaRequests(tx, current.ID, req.RequesterID, scopes)
+		}); err != nil {
+			return nil, nil, false, err
+		}
+		if req.Monitored != nil && *req.Monitored && s.statusRecalc != nil {
+			if err := s.statusRecalc.RecalcMediaItemStatus(existing.ID); err != nil {
+				slog.Warn("request: status recalc failed", "media_item_id", existing.ID, "error", err)
+			}
+		}
+		if fresh, err := topStore.GetMediaItem(existing.ID); err == nil {
+			existing = fresh
+		}
+		if s.bus != nil {
+			s.bus.Publish(eventbus.MediaRequestAdded, eventbus.MediaItemPayload{
+				MediaItemID: existing.ID,
+				LibraryID:   existing.LibraryID,
+				Title:       existing.Title,
+			})
+		}
+		return existing, meta, false, nil
 	}
-	if exists {
-		return nil, nil, ErrAlreadyExists
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, nil, false, fmt.Errorf("checking for duplicates: %w", err)
 	}
 
 	apiKey, err := s.resolveAPIKey(req.Source)
 	if err != nil {
-		return nil, nil, fmt.Errorf("no API key configured for %s", req.Source)
+		return nil, nil, false, fmt.Errorf("no API key configured for %s", req.Source)
 	}
 
 	// Fetch ALL external metadata and episodes BEFORE opening the transaction.
@@ -467,7 +464,12 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 	// we abort here before any write, so nothing is half-created.
 	meta, episodes, err := s.fetchMatchData(req.Source, apiKey, lib.MediaType, req.ExternalID, 1.0)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fetching metadata: %w", err)
+		return nil, nil, false, fmt.Errorf("fetching metadata: %w", err)
+	}
+	req = normalizeSeriesRequest(lib.MediaType, req, episodes, meta.Seasons)
+	scopes := buildRequestScopes(lib.MediaType, req, episodes)
+	if len(scopes) == 0 {
+		return nil, nil, false, ErrNoRequestedScope
 	}
 
 	var resultItem *store.MediaItem
@@ -531,11 +533,15 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 			}
 		}
 
+		if err := createMediaRequests(tx, item.ID, req.RequesterID, scopes); err != nil {
+			return err
+		}
+
 		resultItem = item
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	// Post-commit side effects on the top-level store. The poster is fetched
@@ -552,13 +558,264 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 	resultMeta, _ := topStore.GetMediaMetadataByMediaItem(resultItem.ID)
 
 	slog.Info("matching: media added to library", "media_item_id", resultItem.ID, "title", resultItem.Title, "library_id", lib.ID, "library", lib.Name)
-	return resultItem, resultMeta, nil
+	return resultItem, resultMeta, true, nil
+}
+
+type requestScope struct {
+	scope         string
+	seasonNumber  int
+	episodeNumber int
+}
+
+func normalizeSeriesRequest(mediaType string, req AddMediaRequest, episodes []episodeData, seasonCount *int) AddMediaRequest {
+	if mediaType != "series" || req.Monitored == nil || !*req.Monitored {
+		return req
+	}
+	if req.MonitorNewSeasons == nil {
+		monitorNewSeasons := true
+		req.MonitorNewSeasons = &monitorNewSeasons
+	}
+	fillKnownSeasons := len(req.SeasonMonitors) == 0
+	if !fillKnownSeasons && *req.MonitorNewSeasons {
+		fillKnownSeasons = true
+		for _, season := range req.SeasonMonitors {
+			fillKnownSeasons = fillKnownSeasons && season.Monitored
+		}
+		for _, episode := range req.EpisodeMonitors {
+			fillKnownSeasons = fillKnownSeasons && episode.Monitored
+		}
+	}
+	if !fillKnownSeasons {
+		return req
+	}
+	seen := make(map[int]struct{})
+	for _, season := range req.SeasonMonitors {
+		seen[season.SeasonNumber] = struct{}{}
+	}
+	addSeason := func(seasonNumber int) {
+		if _, ok := seen[seasonNumber]; ok {
+			return
+		}
+		seen[seasonNumber] = struct{}{}
+		req.SeasonMonitors = append(req.SeasonMonitors, SeasonMonitorReq{
+			SeasonNumber: seasonNumber,
+			Monitored:    true,
+		})
+	}
+	if seasonCount != nil {
+		for season := 1; season <= *seasonCount; season++ {
+			addSeason(season)
+		}
+	}
+	for _, episode := range episodes {
+		addSeason(episode.seasonNumber)
+	}
+	sort.Slice(req.SeasonMonitors, func(i, j int) bool {
+		return req.SeasonMonitors[i].SeasonNumber < req.SeasonMonitors[j].SeasonNumber
+	})
+	return req
+}
+
+func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episodeData) []requestScope {
+	mediaScope := []requestScope{{scope: "media"}}
+	if mediaType != "series" || req.Monitored == nil || !*req.Monitored || len(req.SeasonMonitors) == 0 {
+		return mediaScope
+	}
+
+	type episodeKey struct {
+		season  int
+		episode int
+	}
+	overrides := make(map[episodeKey]bool, len(req.EpisodeMonitors))
+	for _, episode := range req.EpisodeMonitors {
+		overrides[episodeKey{season: episode.SeasonNumber, episode: episode.EpisodeNumber}] = episode.Monitored
+	}
+
+	seasonEpisodes := make(map[int][]int)
+	for _, episode := range episodes {
+		seasonEpisodes[episode.seasonNumber] = append(seasonEpisodes[episode.seasonNumber], episode.episodeNumber)
+	}
+	seasonDefaults := make(map[int]bool, len(req.SeasonMonitors))
+	allSubmittedSeasons := true
+	for _, season := range req.SeasonMonitors {
+		seasonDefaults[season.SeasonNumber] = season.Monitored
+		allSubmittedSeasons = allSubmittedSeasons && season.Monitored
+	}
+	allKnownEpisodes := len(episodes) > 0
+	for _, episode := range episodes {
+		monitored := seasonDefaults[episode.seasonNumber]
+		if override, ok := overrides[episodeKey{season: episode.seasonNumber, episode: episode.episodeNumber}]; ok {
+			monitored = override
+		}
+		if !monitored {
+			allKnownEpisodes = false
+			break
+		}
+	}
+	if len(episodes) == 0 {
+		allKnownEpisodes = allSubmittedSeasons
+		for _, monitored := range overrides {
+			allKnownEpisodes = allKnownEpisodes && monitored
+		}
+	}
+	monitorsFuture := req.MonitorNewSeasons == nil || *req.MonitorNewSeasons
+	if monitorsFuture && allSubmittedSeasons && allKnownEpisodes {
+		return mediaScope
+	}
+
+	seen := make(map[requestScope]struct{})
+	add := func(scope requestScope) {
+		seen[scope] = struct{}{}
+	}
+	for _, season := range req.SeasonMonitors {
+		hasExclusion := false
+		for key, monitored := range overrides {
+			if key.season == season.SeasonNumber && !monitored {
+				hasExclusion = true
+				break
+			}
+		}
+		if season.Monitored && !hasExclusion {
+			add(requestScope{scope: "season", seasonNumber: season.SeasonNumber})
+			continue
+		}
+
+		knownEpisodes := seasonEpisodes[season.SeasonNumber]
+		for _, episodeNumber := range knownEpisodes {
+			monitored := season.Monitored
+			if override, ok := overrides[episodeKey{season: season.SeasonNumber, episode: episodeNumber}]; ok {
+				monitored = override
+			}
+			if monitored {
+				add(requestScope{scope: "episode", seasonNumber: season.SeasonNumber, episodeNumber: episodeNumber})
+			}
+		}
+		if season.Monitored && len(knownEpisodes) == 0 {
+			add(requestScope{scope: "season", seasonNumber: season.SeasonNumber})
+		}
+	}
+	for key, monitored := range overrides {
+		if monitored {
+			add(requestScope{scope: "episode", seasonNumber: key.season, episodeNumber: key.episode})
+		}
+	}
+
+	scopes := make([]requestScope, 0, len(seen))
+	for scope := range seen {
+		scopes = append(scopes, scope)
+	}
+	sort.Slice(scopes, func(i, j int) bool {
+		if scopes[i].seasonNumber != scopes[j].seasonNumber {
+			return scopes[i].seasonNumber < scopes[j].seasonNumber
+		}
+		if scopes[i].episodeNumber != scopes[j].episodeNumber {
+			return scopes[i].episodeNumber < scopes[j].episodeNumber
+		}
+		return scopes[i].scope < scopes[j].scope
+	})
+	return scopes
+}
+
+func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaRequest, scopes []requestScope) error {
+	if req.Monitored == nil || !*req.Monitored {
+		return nil
+	}
+	item.Monitored = true
+	if req.MonitorNewSeasons != nil && *req.MonitorNewSeasons {
+		item.MonitorNewSeasons = true
+	}
+	if item.MediaProfileID == nil && req.MediaProfileID != nil {
+		item.MediaProfileID = req.MediaProfileID
+	}
+	if err := st.UpdateMediaItem(item); err != nil {
+		return fmt.Errorf("updating existing media monitoring: %w", err)
+	}
+
+	monitors, err := st.ListSeasonMonitorsByMediaItem(item.ID)
+	if err != nil {
+		return fmt.Errorf("listing existing season monitors: %w", err)
+	}
+	bySeason := make(map[int]*store.SeasonMonitor, len(monitors))
+	for i := range monitors {
+		bySeason[monitors[i].SeasonNumber] = &monitors[i]
+	}
+	monitorSeason := func(seasonNumber int) error {
+		if monitor := bySeason[seasonNumber]; monitor != nil {
+			if !monitor.Monitored {
+				monitor.Monitored = true
+				return st.UpdateSeasonMonitor(monitor)
+			}
+			return nil
+		}
+		monitor := &store.SeasonMonitor{MediaItemID: item.ID, SeasonNumber: seasonNumber, Monitored: true}
+		if err := st.CreateSeasonMonitor(monitor); err != nil {
+			return err
+		}
+		bySeason[seasonNumber] = monitor
+		return nil
+	}
+
+	for _, scope := range scopes {
+		switch scope.scope {
+		case "media":
+			for _, season := range req.SeasonMonitors {
+				if err := monitorSeason(season.SeasonNumber); err != nil {
+					return fmt.Errorf("monitoring requested season: %w", err)
+				}
+				if err := st.DeleteEpisodeMonitorsBySeason(item.ID, season.SeasonNumber); err != nil {
+					return fmt.Errorf("clearing requested season overrides: %w", err)
+				}
+			}
+		case "season":
+			if err := monitorSeason(scope.seasonNumber); err != nil {
+				return fmt.Errorf("monitoring requested season: %w", err)
+			}
+			if err := st.DeleteEpisodeMonitorsBySeason(item.ID, scope.seasonNumber); err != nil {
+				return fmt.Errorf("clearing requested season overrides: %w", err)
+			}
+		case "episode":
+			if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{
+				MediaItemID:   item.ID,
+				SeasonNumber:  scope.seasonNumber,
+				EpisodeNumber: scope.episodeNumber,
+				Monitored:     true,
+			}); err != nil {
+				return fmt.Errorf("monitoring requested episode: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func createMediaRequests(st store.Store, mediaItemID uint, requesterID *uint, scopes []requestScope) error {
+	if requesterID == nil {
+		return nil
+	}
+	for _, scope := range scopes {
+		request := &store.MediaRequest{
+			MediaItemID: mediaItemID,
+			UserID:      requesterID,
+			Scope:       scope.scope,
+		}
+		if scope.scope == "season" || scope.scope == "episode" {
+			seasonNumber := scope.seasonNumber
+			request.SeasonNumber = &seasonNumber
+		}
+		if scope.scope == "episode" {
+			episodeNumber := scope.episodeNumber
+			request.EpisodeNumber = &episodeNumber
+		}
+		if err := st.CreateMediaRequest(request); err != nil {
+			return fmt.Errorf("recording media request: %w", err)
+		}
+	}
+	return nil
 }
 
 // applyMatch fetches external metadata and episodes, persists them, then runs
 // the post-match side effects (status recalc + event). It is used by the
-// NON-transactional match paths (matchSingleItem, ManualMatch,
-// AddMediaToLibrary) where s.store is the top-level store, so performing the
+// NON-transactional match paths (matchSingleItem and ManualMatch) where s.store
+// is the top-level store, so performing the
 // network fetch here is safe. The transactional add path
 // (AddMediaToLibraryFull) does NOT use this: it fetches BEFORE opening the
 // transaction, persists inside a short transaction, and runs the side effects

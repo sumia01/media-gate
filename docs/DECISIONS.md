@@ -225,7 +225,7 @@ Architecture Decision Records: documenting key choices and their reasoning.
 
 ## ADR-019: Requested media via MediaItem extension (not separate entity)
 **Date**: 2026-03-28
-**Status**: Accepted
+**Status**: Superseded in part by ADR-140
 
 **Context**: Users want to add media to a library before it physically exists on disk (e.g., movies they want to download later). This is the foundation for the future request/download workflow.
 
@@ -2163,3 +2163,13 @@ Download completion is stored separately as nullable `downloads.downloaded_at` (
 6. Add opt-in runtime controls needed for isolation: configurable API bind host, runtime data root, browser launch, dotenv path, and Vite proxy target. Their defaults reproduce the prior production behavior. Harden the production torrent info-hash helper at the same boundary: parse the actual top-level bencode `info` value with length/depth checks, rejecting malformed or decoy data instead of hashing the wrong span or panicking.
 
 **Rationale**: HTTP fakes were chosen over swapping service interfaces because they exercise the real Cardigann and qBittorrent wire clients, authentication, serialization, worker polling, and importer while guaranteeing no torrent-network side effect. A fake qBittorrent alone is insufficient because Media Gate fetches the `.torrent` from the tracker first; pairing it with a local fake tracker closes that safety gap. Sharing seed/smoke logic between hot-reload and built-binary modes prevents local and CI behavior from drifting, while preserving the single-binary production architecture and requiring no harness branch inside production business logic.
+
+## ADR-140: Persist requester attribution separately from media state
+**Date**: 2026-09-07
+**Status**: Accepted; partially supersedes ADR-019
+
+**Context**: `MediaItem.Source=request` identifies how a title entered the library, but cannot identify who requested it or preserve whether a series request covered the whole series, a season, or selected episodes. Monitoring settings cannot serve as request history because users edit them after creation and multiple users may request different scopes.
+
+**Decision**: Keep `MediaItem` as the unified library/catalog entity and add scoped `media_requests` attribution rows through migration `0008`. Each row references a media item, an optional user, and exactly one media, season, or episode scope. User deletion sets the reference to NULL while media deletion cascades. Duplicate user/scope rows are idempotent. A repeat add for existing media records attribution and additively enables the requested monitoring scope without disabling another requester's settings. Whole-series normalization uses the metadata season count so a failed provider episode fetch cannot silently omit a known season. Media details return the attribution list; the frontend shows a deduplicated title-level summary plus exact season and episode labels. Legacy requested items remain unattributed rather than inventing a requester.
+
+**Rationale**: Separating immutable request intent from mutable monitoring state preserves truthful attribution and supports multiple requesters without duplicating library items. Scope rows keep whole-series requests compact while retaining exact partial-series intent. Returning only a display name and ID avoids exposing full user profiles on a detail page available to every authenticated user.

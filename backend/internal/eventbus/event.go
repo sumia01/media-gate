@@ -32,6 +32,7 @@ const (
 const (
 	MediaItemMatched  EventType = "media.item_matched"
 	MediaItemDeleted  EventType = "media.item_deleted"
+	MediaRequestAdded EventType = "media.request_added"
 	ResyncCompleted   EventType = "media.resync_completed"
 	MetadataRefreshed EventType = "media.metadata_refreshed"
 )

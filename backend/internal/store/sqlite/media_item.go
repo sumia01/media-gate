@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"errors"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/store"
+	"gorm.io/gorm"
 )
 
 func (s *SQLiteStore) CreateMediaItem(item *store.MediaItem) error {
@@ -79,14 +81,17 @@ func (s *SQLiteStore) ListRecentMediaItems(limit int) ([]store.MediaItem, error)
 	return items, nil
 }
 
-func (s *SQLiteStore) MediaItemExistsByExternalID(libraryID uint, source string, externalID int) (bool, error) {
-	var count int64
-	err := s.db.Model(&store.MediaMetadata{}).
-		Joins("JOIN media_items ON media_items.id = media_metadata.media_item_id").
+func (s *SQLiteStore) GetMediaItemByExternalID(libraryID uint, source string, externalID int) (*store.MediaItem, error) {
+	var item store.MediaItem
+	err := s.db.
+		Joins("JOIN media_metadata ON media_metadata.media_item_id = media_items.id").
 		Where("media_items.library_id = ? AND media_metadata.source = ? AND media_metadata.external_id = ?", libraryID, source, externalID).
-		Count(&count).Error
-	if err != nil {
-		return false, err
+		First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, store.ErrNotFound
 	}
-	return count > 0, nil
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
 }

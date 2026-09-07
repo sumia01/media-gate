@@ -72,6 +72,7 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 		`DROP TABLE monitor_decisions`,
 		`DROP INDEX idx_episodes_air_date`,
+		`DROP TABLE media_requests`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-baseline schema (%s): %v", stmt, err)
@@ -196,6 +197,7 @@ func TestFreshInstallSchema(t *testing.T) {
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
 	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
 	mustHaveColumn(t, sqlDB, "monitor_decisions", "input_updated_at")
+	mustHaveColumn(t, sqlDB, "media_requests", "requested_at")
 }
 
 func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
@@ -224,6 +226,7 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 		`DROP TABLE monitor_decisions`,
 		`DROP INDEX idx_episodes_air_date`,
+		`DROP TABLE media_requests`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-v3 schema (%s): %v", stmt, err)
@@ -249,6 +252,48 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 	}
 	if got.DownloadedAt != nil {
 		t.Errorf("DownloadedAt = %v, want nil for an existing row", got.DownloadedAt)
+	}
+}
+
+func TestMediaRequestsMigrationPreservesExistingData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+	s1, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 1): %v", err)
+	}
+	item := mustCreateMediaItem(t, s1)
+	user := &store.User{Email: "requester@example.com", PasswordHash: "hash"}
+	if err := s1.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`DROP TABLE media_requests`); err != nil {
+		t.Fatalf("dropping media_requests: %v", err)
+	}
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 7, dirty = 0`); err != nil {
+		t.Fatalf("resetting migration version: %v", err)
+	}
+	_ = s1.Close()
+
+	s2, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 2): %v", err)
+	}
+	defer s2.Close()
+	if _, err := s2.GetMediaItem(item.ID); err != nil {
+		t.Fatalf("GetMediaItem after migration: %v", err)
+	}
+	if _, err := s2.GetUser(user.ID); err != nil {
+		t.Fatalf("GetUser after migration: %v", err)
+	}
+	if err := s2.CreateMediaRequest(&store.MediaRequest{
+		MediaItemID: item.ID,
+		UserID:      &user.ID,
+		Scope:       "media",
+	}); err != nil {
+		t.Fatalf("CreateMediaRequest after migration: %v", err)
 	}
 }
 
