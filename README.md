@@ -82,7 +82,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 - Records who requested each movie or series, including multiple requesters for media already in the library
 - Series requests preserve whole-series, future-season, season, and directly selected episode intent instead of deriving history from current monitoring state
-- Media details show a deduplicated requester summary plus season/episode attribution where applicable
+- Media details show a compact, deduplicated requester summary; scoped intent stays stored as history rather than implying current monitoring state
 - Enabling monitoring later attributes only newly enabled scopes to that user; unchanged or disabled scopes do not rewrite request history
 - Repeat requests are idempotent and additively enable the requested monitoring scope without disabling another user's selections
 - Deleted accounts retain anonymous request history as `Deleted user`; legacy requested items remain unattributed

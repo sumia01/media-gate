@@ -2,14 +2,12 @@
 import { Languages, Search } from 'lucide-vue-next'
 import { onMounted, ref, watch } from 'vue'
 import client from '@/api/client'
-import type { Episode, MediaRequestAttribution, SeasonSummary } from '@/types/api'
-import { mediaRequesterNames } from '@/utils/mediaRequests'
+import type { Episode, SeasonSummary } from '@/types/api'
 
 const props = defineProps<{
   mediaItemId: number
   monitored: boolean
   refreshKey?: number
-  requests?: MediaRequestAttribution[]
 }>()
 
 const emit = defineEmits<{
@@ -67,10 +65,6 @@ function toggleSeason(seasonNumber: number) {
     s.add(seasonNumber)
   }
   expandedSeasons.value = s
-}
-
-function scopedRequesterNames(scope: 'season' | 'episode', seasonNumber: number, episodeNumber?: number): string[] {
-  return mediaRequesterNames(props.requests ?? [], scope, seasonNumber, episodeNumber)
 }
 
 type EpStatus =
@@ -157,12 +151,6 @@ watch(() => props.refreshKey, fetchEpisodes)
             >
               {{ season.availableEpisodes }}/{{ season.totalEpisodes }}
             </span>
-            <span
-              v-if="scopedRequesterNames('season', season.seasonNumber).length"
-              class="break-all text-[11px] text-sky-300/80"
-            >
-              Requested by {{ scopedRequesterNames('season', season.seasonNumber).join(', ') }}
-            </span>
           </button>
 
           <!-- Right: actions -->
@@ -230,12 +218,6 @@ watch(() => props.refreshKey, fetchEpisodes)
               <div class="flex flex-wrap items-center gap-2 mt-0.5">
                 <span v-if="ep.airDate" class="text-[11px] text-gray-500">{{ ep.airDate }}</span>
                 <span v-if="ep.runtime" class="text-[11px] text-gray-500">{{ ep.runtime }}min</span>
-                <span
-                  v-if="scopedRequesterNames('episode', season.seasonNumber, ep.episodeNumber).length"
-                  class="basis-full break-all text-[11px] text-sky-300/80"
-                >
-                  Requested by {{ scopedRequesterNames('episode', season.seasonNumber, ep.episodeNumber).join(', ') }}
-                </span>
               </div>
             </div>
 

@@ -60,8 +60,6 @@ const metadata = computed(() => item.value?.metadata ?? null)
 let itemRequest = 0
 
 const requesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? []))
-const wholeSeriesRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'whole_series'))
-const futureSeasonRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'future_seasons'))
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
 
@@ -639,18 +637,6 @@ watch(() => route.params.id, loadAll)
                 {{ name }}
               </span>
             </div>
-            <p
-              v-if="item.mediaType === 'series' && wholeSeriesRequesterNames.length"
-              class="mt-2 text-[11px] text-gray-500"
-            >
-              Whole series: {{ wholeSeriesRequesterNames.join(', ') }}
-            </p>
-            <p
-              v-if="item.mediaType === 'series' && futureSeasonRequesterNames.length"
-              class="mt-1 text-[11px] text-gray-500"
-            >
-              Future seasons: {{ futureSeasonRequesterNames.join(', ') }}
-            </p>
           </div>
 
           <!-- Overview -->
@@ -897,7 +883,6 @@ watch(() => route.params.id, loadAll)
         :mediaItemId="item.id"
         :monitored="item.monitored ?? false"
         :refreshKey="episodeRefreshKey"
-        :requests="item.requests"
         @search-season="(sn: number) => openIndexerSearch(sn)"
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
         @search-season-subtitles="(sn: number) => openSubtitleSearch(sn)"
