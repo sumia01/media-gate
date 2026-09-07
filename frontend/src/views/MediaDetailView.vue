@@ -60,7 +60,8 @@ const metadata = computed(() => item.value?.metadata ?? null)
 let itemRequest = 0
 
 const requesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? []))
-const wholeMediaRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'media'))
+const wholeSeriesRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'whole_series'))
+const futureSeasonRequesterNames = computed(() => mediaRequesterNames(item.value?.requests ?? [], 'future_seasons'))
 
 const genres = computed(() => parseGenres(metadata.value?.genres))
 
@@ -639,10 +640,16 @@ watch(() => route.params.id, loadAll)
               </span>
             </div>
             <p
-              v-if="item.mediaType === 'series' && wholeMediaRequesterNames.length"
+              v-if="item.mediaType === 'series' && wholeSeriesRequesterNames.length"
               class="mt-2 text-[11px] text-gray-500"
             >
-              Whole series: {{ wholeMediaRequesterNames.join(', ') }}
+              Whole series: {{ wholeSeriesRequesterNames.join(', ') }}
+            </p>
+            <p
+              v-if="item.mediaType === 'series' && futureSeasonRequesterNames.length"
+              class="mt-1 text-[11px] text-gray-500"
+            >
+              Future seasons: {{ futureSeasonRequesterNames.join(', ') }}
             </p>
           </div>
 

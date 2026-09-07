@@ -35,7 +35,7 @@ const (
 	// migration file. Bump this whenever a new NNNN_*.up.sql is added — tests
 	// assert Up() lands here (fresh installs and adopted legacy databases alike,
 	// since Up() always runs to the newest migration after baseline handling).
-	latestMigrationVersion = 8
+	latestMigrationVersion = 9
 )
 
 // glebarezDriver is a golang-migrate database.Driver implemented directly over

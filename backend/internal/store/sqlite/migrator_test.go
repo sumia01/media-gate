@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -295,6 +296,89 @@ func TestMediaRequestsMigrationPreservesExistingData(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateMediaRequest after migration: %v", err)
 	}
+}
+
+func TestRequestIntentScopesMigrationPreservesVersionEightRows(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+	s1, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 1): %v", err)
+	}
+	item := mustCreateMediaItem(t, s1)
+	user := &store.User{Email: "requester-v8@example.com", PasswordHash: "hash"}
+	if err := s1.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	deletedUser := &store.User{Email: "deleted-v8@example.com", PasswordHash: "hash"}
+	if err := s1.CreateUser(deletedUser); err != nil {
+		t.Fatalf("CreateUser deleted fixture: %v", err)
+	}
+
+	sqlDB, _ := s1.db.DB()
+	down, err := migrationsFS.ReadFile(migrationsDir + "/0009_request_intent_scopes.down.sql")
+	if err != nil {
+		t.Fatalf("reading 0009 down migration: %v", err)
+	}
+	if _, err := sqlDB.Exec(string(down)); err != nil {
+		t.Fatalf("restoring version 8 request schema: %v", err)
+	}
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 8, dirty = 0`); err != nil {
+		t.Fatalf("resetting migration version: %v", err)
+	}
+	requestedAt := time.Date(2026, time.September, 7, 12, 0, 0, 0, time.UTC)
+	season, episode := 2, 4
+	for _, request := range []*store.MediaRequest{
+		{MediaItemID: item.ID, UserID: &user.ID, Scope: store.MediaRequestScopeMedia, RequestedAt: requestedAt},
+		{MediaItemID: item.ID, UserID: &user.ID, Scope: store.MediaRequestScopeSeason, SeasonNumber: &season, RequestedAt: requestedAt},
+		{MediaItemID: item.ID, UserID: &deletedUser.ID, Scope: store.MediaRequestScopeEpisode, SeasonNumber: &season, EpisodeNumber: &episode, RequestedAt: requestedAt},
+	} {
+		if err := s1.CreateMediaRequest(request); err != nil {
+			t.Fatalf("seeding version 8 request: %v", err)
+		}
+	}
+	if err := s1.DeleteUser(deletedUser.ID); err != nil {
+		t.Fatalf("deleting request user: %v", err)
+	}
+	before, err := s1.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil {
+		t.Fatalf("listing version 8 requests: %v", err)
+	}
+	_ = s1.Close()
+
+	s2, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 2): %v", err)
+	}
+	defer s2.Close()
+	requests, err := s2.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil || len(requests) != len(before) {
+		t.Fatalf("version 8 requests after migration = %+v, %v", requests, err)
+	}
+	for i := range before {
+		if requests[i].ID != before[i].ID || requests[i].Scope != before[i].Scope ||
+			!equalOptionalInt(requests[i].SeasonNumber, before[i].SeasonNumber) ||
+			!equalOptionalInt(requests[i].EpisodeNumber, before[i].EpisodeNumber) ||
+			!equalOptionalUint(requests[i].UserID, before[i].UserID) ||
+			!requests[i].RequestedAt.Equal(before[i].RequestedAt) {
+			t.Errorf("request %d changed: before=%+v after=%+v", i, before[i], requests[i])
+		}
+	}
+	if err := s2.CreateMediaRequest(&store.MediaRequest{
+		MediaItemID: item.ID,
+		UserID:      &user.ID,
+		Scope:       store.MediaRequestScopeFutureSeasons,
+	}); err != nil {
+		t.Fatalf("creating future-season request after migration: %v", err)
+	}
+}
+
+func equalOptionalInt(left, right *int) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func equalOptionalUint(left, right *uint) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 // TestCleanupRaceOrphanedDownloads_0002 exercises the actual embedded 0002

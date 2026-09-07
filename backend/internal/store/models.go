@@ -2,6 +2,14 @@ package store
 
 import "time"
 
+const (
+	MediaRequestScopeMedia         = "media"
+	MediaRequestScopeWholeSeries   = "whole_series"
+	MediaRequestScopeFutureSeasons = "future_seasons"
+	MediaRequestScopeSeason        = "season"
+	MediaRequestScopeEpisode       = "episode"
+)
+
 type Library struct {
 	ID               uint   `gorm:"primarykey"`
 	Name             string `gorm:"not null"`
@@ -33,7 +41,7 @@ type MediaRequest struct {
 	ID            uint   `gorm:"primarykey"`
 	MediaItemID   uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
 	UserID        *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
-	Scope         string `gorm:"not null"` // media, season, or episode
+	Scope         string `gorm:"not null"`
 	SeasonNumber  *int
 	EpisodeNumber *int
 	RequestedAt   time.Time `gorm:"not null;autoCreateTime"`

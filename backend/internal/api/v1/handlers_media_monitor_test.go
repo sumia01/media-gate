@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -157,6 +158,13 @@ func (s *monitorTransactionStore) DeleteEpisodeMonitorsBySeason(id uint, season 
 	return s.Store.DeleteEpisodeMonitorsBySeason(id, season)
 }
 
+func (s *monitorTransactionStore) CreateMediaRequest(request *store.MediaRequest) error {
+	if s.fail == "attribution" {
+		return monitorWriteError
+	}
+	return s.Store.CreateMediaRequest(request)
+}
+
 func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 	for _, kind := range []string{"season", "episode"} {
 		for _, fault := range []string{"parent", "clear overrides"} {
@@ -223,6 +231,33 @@ func TestMonitorToggleUsesFreshParentInsideTransaction(t *testing.T) {
 	}
 }
 
+func TestAttributionFailureRollsBackMonitoring(t *testing.T) {
+	h, st, item := monitorToggleFixture(t)
+	user := &store.User{Email: "requester@example.com", PasswordHash: "hash"}
+	if err := st.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	before, err := st.ListSeasonMonitorsByMediaItem(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.store = &monitorTransactionStore{Store: st, fail: "attribution"}
+	ctx := auth.ContextWithUserID(context.Background(), user.ID)
+	_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{
+		Id: int64(item.ID), SeasonNumber: 2, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true},
+	})
+	if !errors.Is(err, monitorWriteError) {
+		t.Fatalf("error = %v, want attribution failure", err)
+	}
+	after, err := st.ListSeasonMonitorsByMediaItem(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("attribution failure changed season monitoring: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestMonitorToggleMissingItem(t *testing.T) {
 	h, _, _ := monitorToggleFixture(t)
 	season, err := h.UpdateSeasonMonitor(context.Background(), UpdateSeasonMonitorRequestObject{Id: 999, SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true}})
@@ -238,5 +273,54 @@ func TestMonitorToggleMissingItem(t *testing.T) {
 	}
 	if _, ok := episode.(UpdateEpisodeMonitor404JSONResponse); !ok {
 		t.Fatalf("episode response = %+v", episode)
+	}
+}
+
+func TestMonitorEnablePersistsRequesterAndFutureIntent(t *testing.T) {
+	h, st, item := monitorToggleFixture(t)
+	fresh, err := st.GetMediaItem(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.MonitorNewSeasons = false
+	if err := st.UpdateMediaItem(fresh); err != nil {
+		t.Fatal(err)
+	}
+	user := &store.User{Email: "requester@example.com", PasswordHash: "hash", FirstName: "Agnes"}
+	if err := st.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	ctx := auth.ContextWithUserID(context.Background(), user.ID)
+
+	response, err := h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{
+		Id: int64(item.ID), SeasonNumber: 2, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := response.(UpdateSeasonMonitor200JSONResponse); !ok {
+		t.Fatalf("response = %+v", response)
+	}
+
+	future := true
+	mediaResponse, err := h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{
+		Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{MonitorNewSeasons: &future},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := *mediaResponse.(UpdateMediaItem200JSONResponse).Requests
+	if len(requests) != 3 {
+		t.Fatalf("requests = %+v, want title, season 2, and future seasons", requests)
+	}
+	want := map[MediaRequestAttributionScope]bool{
+		MediaRequestAttributionScope(store.MediaRequestScopeMedia):         true,
+		MediaRequestAttributionScope(store.MediaRequestScopeSeason):        true,
+		MediaRequestAttributionScope(store.MediaRequestScopeFutureSeasons): true,
+	}
+	for _, request := range requests {
+		if !want[request.Scope] || request.Requester.Name != "Agnes" {
+			t.Errorf("unexpected request attribution: %+v", request)
+		}
 	}
 }

@@ -2667,6 +2667,8 @@ components:
           type: string
           enum:
             - media
+            - whole_series
+            - future_seasons
             - season
             - episode
         seasonNumber:

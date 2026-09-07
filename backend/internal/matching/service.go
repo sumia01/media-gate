@@ -417,8 +417,8 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 			seasonCount = meta.Seasons
 		}
 		req = normalizeSeriesRequest(existing.MediaType, req, episodes, seasonCount)
-		scopes := buildRequestScopes(existing.MediaType, req, episodes)
-		if len(scopes) == 0 {
+		scopes := buildRequestScopes(existing.MediaType, req, episodes, seasonCount)
+		if !hasRequestedContent(existing.MediaType, req, scopes) {
 			return nil, nil, false, ErrNoRequestedScope
 		}
 		if err := topStore.WithTx(func(tx store.Store) error {
@@ -467,8 +467,8 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 		return nil, nil, false, fmt.Errorf("fetching metadata: %w", err)
 	}
 	req = normalizeSeriesRequest(lib.MediaType, req, episodes, meta.Seasons)
-	scopes := buildRequestScopes(lib.MediaType, req, episodes)
-	if len(scopes) == 0 {
+	scopes := buildRequestScopes(lib.MediaType, req, episodes, meta.Seasons)
+	if !hasRequestedContent(lib.MediaType, req, scopes) {
 		return nil, nil, false, ErrNoRequestedScope
 	}
 
@@ -616,10 +616,18 @@ func normalizeSeriesRequest(mediaType string, req AddMediaRequest, episodes []ep
 	return req
 }
 
-func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episodeData) []requestScope {
-	mediaScope := []requestScope{{scope: "media"}}
-	if mediaType != "series" || req.Monitored == nil || !*req.Monitored || len(req.SeasonMonitors) == 0 {
-		return mediaScope
+func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episodeData, seasonCount *int) []requestScope {
+	seen := map[requestScope]struct{}{
+		requestScope{scope: store.MediaRequestScopeMedia}: {},
+	}
+	if mediaType != "series" || req.Monitored == nil || !*req.Monitored {
+		return sortedRequestScopes(seen)
+	}
+	if req.MonitorNewSeasons != nil && *req.MonitorNewSeasons {
+		seen[requestScope{scope: store.MediaRequestScopeFutureSeasons}] = struct{}{}
+	}
+	if len(req.SeasonMonitors) == 0 {
+		return sortedRequestScopes(seen)
 	}
 
 	type episodeKey struct {
@@ -641,6 +649,15 @@ func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episod
 		seasonDefaults[season.SeasonNumber] = season.Monitored
 		allSubmittedSeasons = allSubmittedSeasons && season.Monitored
 	}
+	allKnownSeasons := true
+	if seasonCount != nil {
+		for seasonNumber := 1; seasonNumber <= *seasonCount; seasonNumber++ {
+			if !seasonDefaults[seasonNumber] {
+				allKnownSeasons = false
+				break
+			}
+		}
+	}
 	allKnownEpisodes := len(episodes) > 0
 	for _, episode := range episodes {
 		monitored := seasonDefaults[episode.seasonNumber]
@@ -652,18 +669,23 @@ func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episod
 			break
 		}
 	}
+	for _, monitored := range overrides {
+		if !monitored {
+			allKnownEpisodes = false
+			break
+		}
+	}
 	if len(episodes) == 0 {
 		allKnownEpisodes = allSubmittedSeasons
 		for _, monitored := range overrides {
 			allKnownEpisodes = allKnownEpisodes && monitored
 		}
 	}
-	monitorsFuture := req.MonitorNewSeasons == nil || *req.MonitorNewSeasons
-	if monitorsFuture && allSubmittedSeasons && allKnownEpisodes {
-		return mediaScope
+	if allSubmittedSeasons && allKnownSeasons && allKnownEpisodes {
+		seen[requestScope{scope: store.MediaRequestScopeWholeSeries}] = struct{}{}
+		return sortedRequestScopes(seen)
 	}
 
-	seen := make(map[requestScope]struct{})
 	add := func(scope requestScope) {
 		seen[scope] = struct{}{}
 	}
@@ -676,7 +698,7 @@ func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episod
 			}
 		}
 		if season.Monitored && !hasExclusion {
-			add(requestScope{scope: "season", seasonNumber: season.SeasonNumber})
+			add(requestScope{scope: store.MediaRequestScopeSeason, seasonNumber: season.SeasonNumber})
 			continue
 		}
 
@@ -687,19 +709,22 @@ func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episod
 				monitored = override
 			}
 			if monitored {
-				add(requestScope{scope: "episode", seasonNumber: season.SeasonNumber, episodeNumber: episodeNumber})
+				add(requestScope{scope: store.MediaRequestScopeEpisode, seasonNumber: season.SeasonNumber, episodeNumber: episodeNumber})
 			}
 		}
-		if season.Monitored && len(knownEpisodes) == 0 {
-			add(requestScope{scope: "season", seasonNumber: season.SeasonNumber})
+		if season.Monitored && !hasExclusion && len(knownEpisodes) == 0 {
+			add(requestScope{scope: store.MediaRequestScopeSeason, seasonNumber: season.SeasonNumber})
 		}
 	}
 	for key, monitored := range overrides {
 		if monitored {
-			add(requestScope{scope: "episode", seasonNumber: key.season, episodeNumber: key.episode})
+			add(requestScope{scope: store.MediaRequestScopeEpisode, seasonNumber: key.season, episodeNumber: key.episode})
 		}
 	}
+	return sortedRequestScopes(seen)
+}
 
+func sortedRequestScopes(seen map[requestScope]struct{}) []requestScope {
 	scopes := make([]requestScope, 0, len(seen))
 	for scope := range seen {
 		scopes = append(scopes, scope)
@@ -714,6 +739,18 @@ func buildRequestScopes(mediaType string, req AddMediaRequest, episodes []episod
 		return scopes[i].scope < scopes[j].scope
 	})
 	return scopes
+}
+
+func hasRequestedContent(mediaType string, req AddMediaRequest, scopes []requestScope) bool {
+	if mediaType != "series" || req.Monitored == nil || !*req.Monitored {
+		return true
+	}
+	for _, scope := range scopes {
+		if scope.scope != store.MediaRequestScopeMedia {
+			return true
+		}
+	}
+	return false
 }
 
 func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaRequest, scopes []requestScope) error {
@@ -757,7 +794,7 @@ func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaReq
 
 	for _, scope := range scopes {
 		switch scope.scope {
-		case "media":
+		case store.MediaRequestScopeWholeSeries:
 			for _, season := range req.SeasonMonitors {
 				if err := monitorSeason(season.SeasonNumber); err != nil {
 					return fmt.Errorf("monitoring requested season: %w", err)
@@ -766,14 +803,14 @@ func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaReq
 					return fmt.Errorf("clearing requested season overrides: %w", err)
 				}
 			}
-		case "season":
+		case store.MediaRequestScopeSeason:
 			if err := monitorSeason(scope.seasonNumber); err != nil {
 				return fmt.Errorf("monitoring requested season: %w", err)
 			}
 			if err := st.DeleteEpisodeMonitorsBySeason(item.ID, scope.seasonNumber); err != nil {
 				return fmt.Errorf("clearing requested season overrides: %w", err)
 			}
-		case "episode":
+		case store.MediaRequestScopeEpisode:
 			if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{
 				MediaItemID:   item.ID,
 				SeasonNumber:  scope.seasonNumber,
@@ -797,11 +834,11 @@ func createMediaRequests(st store.Store, mediaItemID uint, requesterID *uint, sc
 			UserID:      requesterID,
 			Scope:       scope.scope,
 		}
-		if scope.scope == "season" || scope.scope == "episode" {
+		if scope.scope == store.MediaRequestScopeSeason || scope.scope == store.MediaRequestScopeEpisode {
 			seasonNumber := scope.seasonNumber
 			request.SeasonNumber = &seasonNumber
 		}
-		if scope.scope == "episode" {
+		if scope.scope == store.MediaRequestScopeEpisode {
 			episodeNumber := scope.episodeNumber
 			request.EpisodeNumber = &episodeNumber
 		}

@@ -381,8 +381,10 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 		t.Errorf("persisted %d season monitors, want 2", len(monitors))
 	}
 	requests := st.requests[item.ID]
-	if len(requests) != 1 || requests[0].Scope != "media" || requests[0].UserID == nil || *requests[0].UserID != requesterID {
-		t.Errorf("persisted requests = %+v, want one whole-series attribution", requests)
+	if len(requests) != 3 || !hasRequestScope(requests, requesterID, store.MediaRequestScopeMedia, 0, 0) ||
+		!hasRequestScope(requests, requesterID, store.MediaRequestScopeWholeSeries, 0, 0) ||
+		!hasRequestScope(requests, requesterID, store.MediaRequestScopeFutureSeasons, 0, 0) {
+		t.Errorf("persisted requests = %+v, want title, whole-series, and future-season attribution", requests)
 	}
 
 	secondRequesterID := uint(8)
@@ -413,8 +415,9 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 		t.Errorf("duplicate request made %d metadata HTTP calls, want 0", transport.total-requestsBefore)
 	}
 	requests = st.requests[item.ID]
-	if len(requests) != 2 || requests[1].Scope != "season" || requests[1].SeasonNumber == nil || *requests[1].SeasonNumber != 2 {
-		t.Errorf("requests after second requester = %+v, want whole series plus season 2", requests)
+	if len(requests) != 5 || !hasRequestScope(requests, secondRequesterID, store.MediaRequestScopeMedia, 0, 0) ||
+		!hasRequestScope(requests, secondRequesterID, store.MediaRequestScopeSeason, 2, 0) {
+		t.Errorf("requests after second requester = %+v, want title plus season 2", requests)
 	}
 	if !st.seasons[item.ID][1].Monitored {
 		t.Error("requesting season 2 did not enable its existing season monitor")
@@ -442,9 +445,25 @@ func TestAddMediaToLibraryFull_NoNetworkInTxAndRecalcAfterCommit(t *testing.T) {
 	}
 }
 
+func hasRequestScope(requests []store.MediaRequest, userID uint, scope string, seasonNumber, episodeNumber int) bool {
+	for _, request := range requests {
+		if request.UserID == nil || *request.UserID != userID || request.Scope != scope {
+			continue
+		}
+		if seasonNumber != 0 && (request.SeasonNumber == nil || *request.SeasonNumber != seasonNumber) {
+			continue
+		}
+		if episodeNumber != 0 && (request.EpisodeNumber == nil || *request.EpisodeNumber != episodeNumber) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func TestBuildRequestScopesRejectsEmptyAndDoesNotPromotePartialInput(t *testing.T) {
 	monitored := true
-	monitorFuture := true
+	monitorFuture := false
 	episodes := []episodeData{
 		{seasonNumber: 1, episodeNumber: 1},
 		{seasonNumber: 2, episodeNumber: 1},
@@ -457,18 +476,18 @@ func TestBuildRequestScopesRejectsEmptyAndDoesNotPromotePartialInput(t *testing.
 			{SeasonNumber: 1, Monitored: false},
 			{SeasonNumber: 2, Monitored: false},
 		},
-	}, episodes)
-	if len(empty) != 0 {
-		t.Errorf("all-disabled scopes = %+v, want none", empty)
+	}, episodes, nil)
+	if hasRequestedContent("series", AddMediaRequest{Monitored: &monitored}, empty) {
+		t.Errorf("all-disabled scopes = %+v, want title attribution without monitored content", empty)
 	}
 
 	partial := buildRequestScopes("series", AddMediaRequest{
 		Monitored:         &monitored,
 		MonitorNewSeasons: &monitorFuture,
 		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 2, Monitored: true}},
-	}, episodes)
-	if len(partial) != 1 || partial[0].scope != "season" || partial[0].seasonNumber != 2 {
-		t.Errorf("partial scopes = %+v, want season 2 rather than whole media", partial)
+	}, episodes, nil)
+	if len(partial) != 2 || partial[0].scope != store.MediaRequestScopeMedia || partial[1].scope != store.MediaRequestScopeSeason || partial[1].seasonNumber != 2 {
+		t.Errorf("partial scopes = %+v, want title plus season 2", partial)
 	}
 }
 
@@ -509,6 +528,55 @@ func TestNormalizeSeriesRequestFillsSeasonSkippedByProviderFetch(t *testing.T) {
 	}
 }
 
+func TestBuildRequestScopesDoesNotCompactIncompleteMetadata(t *testing.T) {
+	monitored := true
+	monitorFuture := false
+	seasonCount := 2
+	scopes := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 1, Monitored: true}},
+	}, []episodeData{{seasonNumber: 1, episodeNumber: 1}}, &seasonCount)
+
+	if len(scopes) != 2 || scopes[0].scope != store.MediaRequestScopeMedia ||
+		scopes[1].scope != store.MediaRequestScopeSeason || scopes[1].seasonNumber != 1 {
+		t.Fatalf("scopes = %+v, want title plus season 1", scopes)
+	}
+}
+
+func TestBuildRequestScopesDoesNotCompactUnfetchedEpisodeExclusion(t *testing.T) {
+	monitored := true
+	monitorFuture := false
+	seasonCount := 1
+	scopes := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 1, Monitored: true}},
+		EpisodeMonitors:   []EpisodeMonitorReq{{SeasonNumber: 1, EpisodeNumber: 2, Monitored: false}},
+	}, []episodeData{{seasonNumber: 1, episodeNumber: 1}}, &seasonCount)
+
+	if len(scopes) != 2 || scopes[0].scope != store.MediaRequestScopeMedia ||
+		scopes[1].scope != store.MediaRequestScopeEpisode || scopes[1].episodeNumber != 1 {
+		t.Fatalf("scopes = %+v, want title plus episode 1", scopes)
+	}
+}
+
+func TestBuildRequestScopesDoesNotEnableEmptySeasonWithExclusion(t *testing.T) {
+	monitored := true
+	monitorFuture := false
+	seasonCount := 1
+	scopes := buildRequestScopes("series", AddMediaRequest{
+		Monitored:         &monitored,
+		MonitorNewSeasons: &monitorFuture,
+		SeasonMonitors:    []SeasonMonitorReq{{SeasonNumber: 1, Monitored: true}},
+		EpisodeMonitors:   []EpisodeMonitorReq{{SeasonNumber: 1, EpisodeNumber: 1, Monitored: false}},
+	}, nil, &seasonCount)
+
+	if hasRequestedContent("series", AddMediaRequest{Monitored: &monitored}, scopes) {
+		t.Fatalf("scopes = %+v, want no monitored content attribution", scopes)
+	}
+}
+
 func TestBuildRequestScopesUsesEpisodeScopeForPartialSeasons(t *testing.T) {
 	monitored := true
 	monitorFuture := false
@@ -527,11 +595,12 @@ func TestBuildRequestScopesUsesEpisodeScopeForPartialSeasons(t *testing.T) {
 		{seasonNumber: 1, episodeNumber: 1},
 		{seasonNumber: 1, episodeNumber: 2},
 		{seasonNumber: 2, episodeNumber: 1},
-	})
+	}, nil)
 
 	want := []requestScope{
-		{scope: "episode", seasonNumber: 1, episodeNumber: 1},
-		{scope: "episode", seasonNumber: 2, episodeNumber: 1},
+		{scope: store.MediaRequestScopeMedia},
+		{scope: store.MediaRequestScopeEpisode, seasonNumber: 1, episodeNumber: 1},
+		{scope: store.MediaRequestScopeEpisode, seasonNumber: 2, episodeNumber: 1},
 	}
 	if len(scopes) != len(want) {
 		t.Fatalf("scopes = %+v, want %+v", scopes, want)

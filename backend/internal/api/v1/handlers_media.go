@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
@@ -43,21 +44,11 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 	return GetMediaItem200JSONResponse(apiItem), nil
 }
 
-func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {
-	item, err := h.store.GetMediaItem(uint(req.Id))
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return UpdateMediaItem404JSONResponse{
-				Code:    http.StatusNotFound,
-				Message: "media item not found",
-			}, nil
-		}
-		return nil, err
-	}
-
+func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {
+	var profileID *uint
 	if req.Body.MediaProfileId != nil {
-		profileID := uint(*req.Body.MediaProfileId)
-		if _, err := h.store.GetMediaProfile(profileID); err != nil {
+		id := uint(*req.Body.MediaProfileId)
+		if _, err := h.store.GetMediaProfile(id); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return UpdateMediaItem404JSONResponse{
 					Code:    http.StatusNotFound,
@@ -66,67 +57,121 @@ func (h *Handlers) UpdateMediaItem(_ context.Context, req UpdateMediaItemRequest
 			}
 			return nil, err
 		}
-		item.MediaProfileID = &profileID
+		profileID = &id
 	}
 
-	if req.Body.Monitored != nil {
-		item.Monitored = *req.Body.Monitored
-		// When disabling monitoring, clear all episode-level overrides
-		if !*req.Body.Monitored {
-			_ = h.store.DeleteEpisodeMonitorsByMediaItem(item.ID)
+	monitoringMutation := req.Body.Monitored != nil || req.Body.MonitorNewSeasons != nil || req.Body.SeasonMonitors != nil || req.Body.EpisodeMonitors != nil
+	seasonInputs := make([]mediasync.SeasonMonitorInput, 0)
+	changedSeasons := make([]int, 0)
+	if req.Body.SeasonMonitors != nil {
+		seasonInputs = make([]mediasync.SeasonMonitorInput, len(*req.Body.SeasonMonitors))
+		changedSeasons = make([]int, len(*req.Body.SeasonMonitors))
+		for i, season := range *req.Body.SeasonMonitors {
+			seasonInputs[i] = mediasync.SeasonMonitorInput{SeasonNumber: season.SeasonNumber, Monitored: season.Monitored}
+			changedSeasons[i] = season.SeasonNumber
+		}
+	}
+	episodeInputs := make([]mediasync.EpisodeMonitorInput, 0)
+	changedEpisodes := make([]mediasync.EpisodeRef, 0)
+	if req.Body.EpisodeMonitors != nil {
+		episodeInputs = make([]mediasync.EpisodeMonitorInput, len(*req.Body.EpisodeMonitors))
+		changedEpisodes = make([]mediasync.EpisodeRef, len(*req.Body.EpisodeMonitors))
+		for i, episode := range *req.Body.EpisodeMonitors {
+			episodeInputs[i] = mediasync.EpisodeMonitorInput{
+				SeasonNumber:  episode.SeasonNumber,
+				EpisodeNumber: episode.EpisodeNumber,
+				Monitored:     episode.Monitored,
+			}
+			changedEpisodes[i] = mediasync.EpisodeRef{SeasonNumber: episode.SeasonNumber, EpisodeNumber: episode.EpisodeNumber}
 		}
 	}
 
-	if req.Body.MonitorNewSeasons != nil {
-		item.MonitorNewSeasons = *req.Body.MonitorNewSeasons
-	}
+	userID, attributeRequest := auth.UserIDFromContext(ctx)
+	var item *store.MediaItem
+	requestAttributed := false
+	err := h.store.WithTx(func(tx store.Store) error {
+		current, err := tx.GetMediaItem(uint(req.Id))
+		if err != nil {
+			return err
+		}
+		var before *mediasync.MonitoringState
+		if monitoringMutation && attributeRequest {
+			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+		}
 
-	// Empty string intentionally clears the preferred-release keywords.
-	if req.Body.PreferredRelease != nil {
-		item.PreferredRelease = *req.Body.PreferredRelease
-	}
+		if profileID != nil {
+			current.MediaProfileID = profileID
+		}
+		if req.Body.Monitored != nil {
+			current.Monitored = *req.Body.Monitored
+			if !*req.Body.Monitored {
+				if err := tx.DeleteEpisodeMonitorsByMediaItem(current.ID); err != nil {
+					return err
+				}
+			}
+		}
+		if req.Body.MonitorNewSeasons != nil {
+			current.MonitorNewSeasons = *req.Body.MonitorNewSeasons
+		}
+		if req.Body.PreferredRelease != nil {
+			current.PreferredRelease = *req.Body.PreferredRelease
+		}
+		if err := tx.UpdateMediaItem(current); err != nil {
+			return err
+		}
 
-	if err := h.store.UpdateMediaItem(item); err != nil {
+		txSync := mediasync.NewService(tx)
+		if len(seasonInputs) > 0 {
+			if err := txSync.UpsertSeasonMonitors(current.ID, seasonInputs); err != nil {
+				return err
+			}
+		}
+		if len(episodeInputs) > 0 {
+			if err := txSync.UpsertEpisodeMonitors(current.ID, episodeInputs); err != nil {
+				return err
+			}
+		}
+		if before != nil {
+			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+			requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, changedSeasons, changedEpisodes)
+			if err != nil {
+				return err
+			}
+		}
+		item = current
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return UpdateMediaItem404JSONResponse{Code: http.StatusNotFound, Message: "media item not found"}, nil
+		}
 		return nil, err
 	}
 
-	// Upsert season monitors if provided.
-	if req.Body.SeasonMonitors != nil {
-		monitors := make([]mediasync.SeasonMonitorInput, len(*req.Body.SeasonMonitors))
-		for i, sm := range *req.Body.SeasonMonitors {
-			monitors[i] = mediasync.SeasonMonitorInput{SeasonNumber: sm.SeasonNumber, Monitored: sm.Monitored}
-		}
-		if err := h.syncSvc.UpsertSeasonMonitors(item.ID, monitors); err != nil {
-			return nil, err
-		}
-	}
-
-	// Upsert episode monitors if provided.
-	if req.Body.EpisodeMonitors != nil {
-		epMonitors := make([]mediasync.EpisodeMonitorInput, len(*req.Body.EpisodeMonitors))
-		for i, em := range *req.Body.EpisodeMonitors {
-			epMonitors[i] = mediasync.EpisodeMonitorInput{
-				SeasonNumber:  em.SeasonNumber,
-				EpisodeNumber: em.EpisodeNumber,
-				Monitored:     em.Monitored,
-			}
-		}
-		if err := h.syncSvc.UpsertEpisodeMonitors(item.ID, epMonitors); err != nil {
-			return nil, err
-		}
-	}
-
-	// Monitoring feeds the status state machine — recalculate and reload so
-	// the response carries the fresh status.
-	if req.Body.Monitored != nil || req.Body.SeasonMonitors != nil || req.Body.EpisodeMonitors != nil {
+	if monitoringMutation {
 		h.recalcStatusAfterMonitorChange(item.ID)
 		if fresh, err := h.store.GetMediaItem(item.ID); err == nil {
 			item = fresh
 		}
 	}
+	if requestAttributed {
+		h.syncSvc.PublishRequestAttribution(item)
+	}
 
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
-	return UpdateMediaItem200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
+	requests, err := h.store.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil {
+		return nil, err
+	}
+	apiItem := h.withRatings(mediaItemToAPI(item, meta), meta)
+	apiItem.Requests = mediaRequestsToAPI(requests)
+	return UpdateMediaItem200JSONResponse(apiItem), nil
 }
 
 func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
@@ -373,14 +418,24 @@ func (h *Handlers) ListSeasonMonitors(_ context.Context, req ListSeasonMonitorsR
 	return ListSeasonMonitors200JSONResponse{Monitors: apiMonitors}, nil
 }
 
-func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonitorRequestObject) (UpdateSeasonMonitorResponseObject, error) {
+func (h *Handlers) UpdateSeasonMonitor(ctx context.Context, req UpdateSeasonMonitorRequestObject) (UpdateSeasonMonitorResponseObject, error) {
+	userID, attributeRequest := auth.UserIDFromContext(ctx)
 	var sm store.SeasonMonitor
+	var item *store.MediaItem
+	requestAttributed := false
 	err := h.store.WithTx(func(tx store.Store) error {
-		item, err := tx.GetMediaItem(uint(req.Id))
+		current, err := tx.GetMediaItem(uint(req.Id))
 		if err != nil {
 			return err
 		}
-		monitors, err := tx.ListSeasonMonitorsByMediaItem(item.ID)
+		var before *mediasync.MonitoringState
+		if attributeRequest {
+			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+		}
+		monitors, err := tx.ListSeasonMonitorsByMediaItem(current.ID)
 		if err != nil {
 			return err
 		}
@@ -390,7 +445,7 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 				break
 			}
 		}
-		sm.MediaItemID = item.ID
+		sm.MediaItemID = current.ID
 		sm.SeasonNumber = req.SeasonNumber
 		sm.Monitored = req.Body.Monitored
 		if sm.ID == 0 {
@@ -402,12 +457,26 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 			return err
 		}
 		// Episodes now inherit from the season setting.
-		if err := tx.DeleteEpisodeMonitorsBySeason(item.ID, req.SeasonNumber); err != nil {
+		if err := tx.DeleteEpisodeMonitorsBySeason(current.ID, req.SeasonNumber); err != nil {
 			return err
 		}
 		// Touch the transaction's fresh parent even if status stays unchanged.
-		item.UpdatedAt = time.Now().UTC()
-		return tx.UpdateMediaItem(item)
+		current.UpdatedAt = time.Now().UTC()
+		if err := tx.UpdateMediaItem(current); err != nil {
+			return err
+		}
+		if before != nil {
+			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+			requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, []int{req.SeasonNumber}, nil)
+			if err != nil {
+				return err
+			}
+		}
+		item = current
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -419,6 +488,9 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 		return nil, err
 	}
 	h.recalcStatusAfterMonitorChange(uint(req.Id))
+	if requestAttributed {
+		h.syncSvc.PublishRequestAttribution(item)
+	}
 
 	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 		Id:           int64(sm.ID),
@@ -428,14 +500,24 @@ func (h *Handlers) UpdateSeasonMonitor(_ context.Context, req UpdateSeasonMonito
 	}), nil
 }
 
-func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMonitorRequestObject) (UpdateEpisodeMonitorResponseObject, error) {
+func (h *Handlers) UpdateEpisodeMonitor(ctx context.Context, req UpdateEpisodeMonitorRequestObject) (UpdateEpisodeMonitorResponseObject, error) {
+	userID, attributeRequest := auth.UserIDFromContext(ctx)
+	var item *store.MediaItem
+	requestAttributed := false
 	err := h.store.WithTx(func(tx store.Store) error {
-		item, err := tx.GetMediaItem(uint(req.Id))
+		current, err := tx.GetMediaItem(uint(req.Id))
 		if err != nil {
 			return err
 		}
+		var before *mediasync.MonitoringState
+		if attributeRequest {
+			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+		}
 		if err := tx.UpsertEpisodeMonitor(&store.EpisodeMonitor{
-			MediaItemID:   item.ID,
+			MediaItemID:   current.ID,
 			SeasonNumber:  req.SeasonNumber,
 			EpisodeNumber: req.EpisodeNumber,
 			Monitored:     req.Body.Monitored,
@@ -443,8 +525,23 @@ func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMoni
 			return err
 		}
 		// Keep saved monitor decisions visibly stale after a reload, too.
-		item.UpdatedAt = time.Now().UTC()
-		return tx.UpdateMediaItem(item)
+		current.UpdatedAt = time.Now().UTC()
+		if err := tx.UpdateMediaItem(current); err != nil {
+			return err
+		}
+		if before != nil {
+			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+			if err != nil {
+				return err
+			}
+			changed := []mediasync.EpisodeRef{{SeasonNumber: req.SeasonNumber, EpisodeNumber: req.EpisodeNumber}}
+			requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, nil, changed)
+			if err != nil {
+				return err
+			}
+		}
+		item = current
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -456,6 +553,9 @@ func (h *Handlers) UpdateEpisodeMonitor(_ context.Context, req UpdateEpisodeMoni
 		return nil, err
 	}
 	h.recalcStatusAfterMonitorChange(uint(req.Id))
+	if requestAttributed {
+		h.syncSvc.PublishRequestAttribution(item)
+	}
 
 	return UpdateEpisodeMonitor200JSONResponse{Monitored: req.Body.Monitored}, nil
 }

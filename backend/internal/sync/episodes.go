@@ -232,7 +232,9 @@ func (s *Service) UpsertSeasonMonitors(itemID uint, monitors []SeasonMonitorInpu
 			}
 		}
 		// Clear episode-level overrides — episodes now inherit from the season setting.
-		_ = s.store.DeleteEpisodeMonitorsBySeason(itemID, sm.SeasonNumber)
+		if err := s.store.DeleteEpisodeMonitorsBySeason(itemID, sm.SeasonNumber); err != nil {
+			return err
+		}
 	}
 	return nil
 }

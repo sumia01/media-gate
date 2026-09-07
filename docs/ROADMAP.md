@@ -115,7 +115,7 @@
 
 ## Phase 4: Request System (Overseerr replacement) ✅
 - [x] Requested media items (source: request, status: requested) — foundation
-- [x] Scoped requester attribution — persist whole-media, season, and direct episode request intent; show cumulative and scope-specific requesters on media details; merge repeat requests idempotently into existing media monitoring
+- [x] Scoped requester attribution — distinguish title, whole-series, future-season, season, and direct episode intent; attribute later monitoring enable transitions to the acting user; show cumulative and scope-specific requesters on media details; merge repeat requests idempotently
 - [x] Quality profiles model + CRUD API (data model ready, frontend deferred)
 - [x] Quality profile assignment on media detail page (dropdown + PATCH endpoint)
 - [x] MediaFile model for multi-copy/multi-quality file tracking

@@ -198,14 +198,16 @@ const allSeasonsMonitored = computed(
     props.externalSeasons!.every((s) => seasonMonitored.value.get(s.seasonNumber)),
 )
 
-const hasRequestedScope = computed(() =>
-  (props.externalSeasons ?? []).some((season) => {
-    const seasonValue = seasonMonitored.value.get(season.seasonNumber) ?? true
-    if (!season.episodes.length) return seasonValue
-    return season.episodes.some(
-      (episode) => episodeMonitored.value.get(`${season.seasonNumber}-${episode.episodeNumber}`) ?? seasonValue,
-    )
-  }),
+const hasRequestedScope = computed(
+  () =>
+    monitorNewSeasons.value ||
+    (props.externalSeasons ?? []).some((season) => {
+      const seasonValue = seasonMonitored.value.get(season.seasonNumber) ?? true
+      if (!season.episodes.length) return seasonValue
+      return season.episodes.some(
+        (episode) => episodeMonitored.value.get(`${season.seasonNumber}-${episode.episodeNumber}`) ?? seasonValue,
+      )
+    }),
 )
 
 function toggleAllSeasons() {
@@ -446,7 +448,7 @@ function toggleAllSeasons() {
           </button>
         </div>
         <p v-if="!hasRequestedScope" class="mt-2 text-xs text-amber-400">
-          Select at least one season or episode, or disable monitoring.
+          Select a season or episode, enable future seasons, or disable monitoring.
         </p>
       </template>
     </div>
