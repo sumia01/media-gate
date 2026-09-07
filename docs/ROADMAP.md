@@ -615,7 +615,7 @@ See ADR-135 through ADR-138. Included in v0.40.0; cross-provider identity normal
 - [x] Torrent info-hash parsing hardened to inspect the real top-level bencode `info` value with bounds/depth validation instead of accepting decoys or panicking on malformed tracker data
 
 ## Phase 10.0: Media Activity Log (Initial scope complete)
-See [the implemented design](MEDIA_ACTIVITY_LOG.md) and ADR-141 through ADR-143. Optional automatic lifecycle producers remain deferred.
+See ADR-141 through ADR-143. Optional automatic lifecycle producers remain deferred.
 
 - [x] Explore persistence and action semantics; validate a disposable synthetic UI prototype without changing production data
 - [x] Append-only activity persistence with actor, action, event-time scope, and timestamp, separate from cumulative requester attribution and current monitoring
