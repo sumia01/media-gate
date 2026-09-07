@@ -11,27 +11,28 @@ const (
 )
 
 type Library struct {
-	ID               uint   `gorm:"primarykey"`
-	Name             string `gorm:"not null"`
-	Path             string `gorm:"not null;uniqueIndex"`
-	MediaType        string `gorm:"not null"`
+	ID             uint   `gorm:"primarykey"`
+	Name           string `gorm:"not null"`
+	Path           string `gorm:"not null;uniqueIndex"`
+	MediaType      string `gorm:"not null"`
 	MediaProfileID *uint
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type MediaItem struct {
-	ID                uint   `gorm:"primarykey"`
-	LibraryID         uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
-	Title             string `gorm:"not null"`
-	MediaType        string `gorm:"not null"`
-	Status           string `gorm:"not null;default:new"`
-	Source           string `gorm:"not null;default:disk"`
-	Year             *int
-	MediaProfileID *uint
-	Monitored              bool       `gorm:"not null;default:false"`
-	MonitorNewSeasons      bool       `gorm:"not null;default:true"`
+	ID                     uint   `gorm:"primarykey"`
+	LibraryID              uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	Title                  string `gorm:"not null"`
+	MediaType              string `gorm:"not null"`
+	Status                 string `gorm:"not null;default:new"`
+	Source                 string `gorm:"not null;default:disk"`
+	Year                   *int
+	MediaProfileID         *uint
+	Monitored              bool `gorm:"not null;default:false"`
+	MonitorNewSeasons      bool `gorm:"not null;default:true"`
 	MonitorSearchStartedAt *time.Time
+	DeletionPending        bool   `gorm:"not null;default:false"`
 	PreferredRelease       string `gorm:"not null;default:''"` // comma-separated keywords preferred when auto-grabbing releases
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
@@ -57,13 +58,13 @@ type MediaRequestAttribution struct {
 }
 
 type MediaMetadata struct {
-	ID          uint    `gorm:"primarykey"`
-	MediaItemID uint    `gorm:"not null;uniqueIndex;constraint:OnDelete:CASCADE"`
-	MediaType   string  `gorm:"->;-:migration"` // Read-only projection from media_items, not a metadata column.
-	Source      string  `gorm:"not null"`
-	ExternalID  int     `gorm:"not null"`
+	ID          uint   `gorm:"primarykey"`
+	MediaItemID uint   `gorm:"not null;uniqueIndex;constraint:OnDelete:CASCADE"`
+	MediaType   string `gorm:"->;-:migration"` // Read-only projection from media_items, not a metadata column.
+	Source      string `gorm:"not null"`
+	ExternalID  int    `gorm:"not null"`
 	ImdbID      string
-	Title       string  `gorm:"not null"`
+	Title       string `gorm:"not null"`
 	Overview    string
 	PosterPath  string
 	Genres      string
@@ -81,20 +82,20 @@ type MediaMetadata struct {
 	// country the provider returns is kept here.
 	ContentRatings string
 	TrailerURL     string
-	Confidence  float64
-	MatchedAt   time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Confidence     float64
+	MatchedAt      time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type MediaProfile struct {
 	ID           uint   `gorm:"primarykey"`
 	Name         string `gorm:"not null;uniqueIndex"`
-	Resolutions  string `gorm:"not null"`           // JSON array: ["2160p","1080p"]
-	Languages    string `gorm:"not null"`           // JSON array: ["hun","eng"]
+	Resolutions  string `gorm:"not null"`     // JSON array: ["2160p","1080p"]
+	Languages    string `gorm:"not null"`     // JSON array: ["hun","eng"]
 	LanguageMode string `gorm:"default:'or'"` // "and" or "or"
-	Sources      string                             // JSON array: ["webdl","webrip"]
-	ExcludeTags  string                             // JSON array: ["3d","cam"]
+	Sources      string // JSON array: ["webdl","webrip"]
+	ExcludeTags  string // JSON array: ["3d","cam"]
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -134,10 +135,10 @@ type EpisodeMonitor struct {
 }
 
 type Episode struct {
-	ID            uint   `gorm:"primarykey"`
-	MediaItemID   uint   `gorm:"not null;index;uniqueIndex:idx_episode_unique;constraint:OnDelete:CASCADE"`
-	SeasonNumber  int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
-	EpisodeNumber int    `gorm:"not null;uniqueIndex:idx_episode_unique"`
+	ID            uint `gorm:"primarykey"`
+	MediaItemID   uint `gorm:"not null;index;uniqueIndex:idx_episode_unique;constraint:OnDelete:CASCADE"`
+	SeasonNumber  int  `gorm:"not null;uniqueIndex:idx_episode_unique"`
+	EpisodeNumber int  `gorm:"not null;uniqueIndex:idx_episode_unique"`
 	Title         string
 	Overview      string
 	AirDate       string
@@ -181,9 +182,9 @@ type Indexer struct {
 }
 
 type Download struct {
-	ID                uint   `gorm:"primarykey"`
-	MediaItemID       uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
-	EpisodeID         *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
+	ID                uint  `gorm:"primarykey"`
+	MediaItemID       uint  `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	EpisodeID         *uint `gorm:"index;constraint:OnDelete:SET NULL"`
 	SeasonNumber      *int
 	IndexerID         uint   `gorm:"not null"`
 	IndexerName       string `gorm:"not null"`
@@ -197,7 +198,7 @@ type Download struct {
 	SavePath          string
 	SeedingRequired   bool `gorm:"not null;default:false"`
 	LinkedToLibrary   bool `gorm:"not null;default:false"`
-	RetryCount        int        `gorm:"not null;default:0"`
+	RetryCount        int  `gorm:"not null;default:0"`
 	NextRetryAt       *time.Time
 	LastError         string
 	CreatedAt         time.Time
@@ -217,11 +218,11 @@ type Download struct {
 // torrent (dead URL, qBit error, repeated import failure) is not re-grabbed
 // forever. Managed by the migration schema, never AutoMigrate.
 type DownloadBlocklist struct {
-	ID           uint      `gorm:"primarykey"`
-	MediaItemID  uint      `gorm:"not null;index;uniqueIndex:idx_blocklist_item_url;constraint:OnDelete:CASCADE"`
-	DownloadURL  string    `gorm:"not null;uniqueIndex:idx_blocklist_item_url"`
+	ID           uint   `gorm:"primarykey"`
+	MediaItemID  uint   `gorm:"not null;index;uniqueIndex:idx_blocklist_item_url;constraint:OnDelete:CASCADE"`
+	DownloadURL  string `gorm:"not null;uniqueIndex:idx_blocklist_item_url"`
 	Title        string
-	FailCount    int    `gorm:"not null;default:0"`
+	FailCount    int `gorm:"not null;default:0"`
 	LastError    string
 	LastFailedAt time.Time
 	CreatedAt    time.Time
@@ -249,18 +250,18 @@ type RefreshToken struct {
 }
 
 type Subtitle struct {
-	ID               uint   `gorm:"primarykey"`
-	MediaItemID      uint   `gorm:"not null;index;constraint:OnDelete:CASCADE"`
-	MediaFileID      *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
+	ID               uint  `gorm:"primarykey"`
+	MediaItemID      uint  `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	MediaFileID      *uint `gorm:"index;constraint:OnDelete:SET NULL"`
 	SeasonNumber     *int
 	EpisodeNumber    *int
-	Language         string `gorm:"not null"`           // ISO 639-1 ("en", "hu")
-	Provider         string `gorm:"not null"`           // "opensubtitles"
-	ProviderFileID   string                             // opaque provider ID
+	Language         string `gorm:"not null"` // ISO 639-1 ("en", "hu")
+	Provider         string `gorm:"not null"` // "opensubtitles"
+	ProviderFileID   string // opaque provider ID
 	ReleaseName      string
 	FileName         string `gorm:"not null"`
 	FilePath         string `gorm:"not null;uniqueIndex"`
-	Format           string                             // "srt", "ass", "sub"
+	Format           string // "srt", "ass", "sub"
 	Score            int
 	HearingImpaired  bool   `gorm:"not null;default:false"`
 	ForeignPartsOnly bool   `gorm:"not null;default:false"`
@@ -271,15 +272,15 @@ type Subtitle struct {
 
 type WatchedItem struct {
 	ID          uint   `gorm:"primarykey"`
-	UserID      uint   `gorm:"not null;index;uniqueIndex:idx_watched_user_source_ext;constraint:OnDelete:CASCADE"`
-	Source      string `gorm:"not null;uniqueIndex:idx_watched_user_source_ext"` // "tmdb" or "tvdb"
-	ExternalID  int    `gorm:"not null;uniqueIndex:idx_watched_user_source_ext"`
+	UserID      uint   `gorm:"not null;index;uniqueIndex:idx_watched_user_source_type_ext;constraint:OnDelete:CASCADE"`
+	Source      string `gorm:"not null;uniqueIndex:idx_watched_user_source_type_ext"` // "tmdb" or "tvdb"
+	ExternalID  int    `gorm:"not null;uniqueIndex:idx_watched_user_source_type_ext"`
 	ImdbID      string
 	Title       string `gorm:"not null"`
-	MediaType   string `gorm:"not null"` // "movie" or "series"
+	MediaType   string `gorm:"not null;uniqueIndex:idx_watched_user_source_type_ext"` // "movie" or "series"
 	Year        *int
 	PosterPath  string
-	MediaItemID *uint  `gorm:"index;constraint:OnDelete:SET NULL"`
+	MediaItemID *uint `gorm:"index;constraint:OnDelete:SET NULL"`
 	WatchedAt   time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

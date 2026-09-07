@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
+	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/indexer"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
@@ -102,6 +104,11 @@ func TestDecisionInputFreshnessSurvivesSettingsChangesAndReload(t *testing.T) {
 		for _, when := range []string{"before_cycle_with_old_inputs", "during_search", "after_check"} {
 			t.Run(kind+"/"+when, func(t *testing.T) {
 				svc, st, search, item := newDecisionTest(t, "series")
+				actor := &store.User{Email: kind + "-" + when + "@example.test", PasswordHash: "hash"}
+				if err := st.CreateUser(actor); err != nil {
+					t.Fatal(err)
+				}
+				actorCtx := auth.ContextWithUserID(context.Background(), actor.ID)
 				input := item.UpdatedAt
 				// A cycle can hold an item version older than processItem's entry time.
 				svc.store = &decisionInputListStore{Store: st, inputs: []store.MediaItem{*item}}
@@ -109,11 +116,11 @@ func TestDecisionInputFreshnessSurvivesSettingsChangesAndReload(t *testing.T) {
 					h := decisionHandlers(svc, st)
 					var err error
 					if kind == "season" {
-						_, err = h.UpdateSeasonMonitor(context.Background(), apiv1.UpdateSeasonMonitorRequestObject{
+						_, err = h.UpdateSeasonMonitor(actorCtx, apiv1.UpdateSeasonMonitorRequestObject{
 							Id: int64(item.ID), SeasonNumber: 1, Body: &apiv1.UpdateSeasonMonitorJSONRequestBody{Monitored: false},
 						})
 					} else {
-						_, err = h.UpdateEpisodeMonitor(context.Background(), apiv1.UpdateEpisodeMonitorRequestObject{
+						_, err = h.UpdateEpisodeMonitor(actorCtx, apiv1.UpdateEpisodeMonitorRequestObject{
 							Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &apiv1.UpdateEpisodeMonitorJSONRequestBody{Monitored: false},
 						})
 					}
@@ -204,5 +211,118 @@ func TestDecisionSearchMarkersDoNotMakeUnchangedInputsStale(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAutoDownloadRejectsSelectionWhenParentChangesDuringSearch(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		mediaType string
+		title     string
+		touch     func(*testing.T, *Service, *decisionTestStore, *store.MediaItem)
+	}{
+		{
+			name:      "episode monitor change",
+			mediaType: "series",
+			title:     "Show.S01.Complete.1080p",
+			touch: func(t *testing.T, svc *Service, st *decisionTestStore, item *store.MediaItem) {
+				actor := &store.User{Email: "episode-race@example.test", PasswordHash: "hash"}
+				if err := st.CreateUser(actor); err != nil {
+					t.Fatal(err)
+				}
+				_, err := decisionHandlers(svc, st).UpdateEpisodeMonitor(
+					auth.ContextWithUserID(context.Background(), actor.ID),
+					apiv1.UpdateEpisodeMonitorRequestObject{
+						Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1,
+						Body: &apiv1.UpdateEpisodeMonitorJSONRequestBody{Monitored: false},
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:      "preferred release parent touch",
+			mediaType: "movie",
+			title:     "Show.1080p-OLD",
+			touch: func(t *testing.T, _ *Service, st *decisionTestStore, item *store.MediaItem) {
+				fresh, err := st.GetMediaItem(item.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fresh.PreferredRelease = "NEW"
+				if err := st.UpdateMediaItem(fresh); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, st, search, item := newDecisionTest(t, tc.mediaType)
+			inputVersion := item.UpdatedAt
+			search.results = []indexer.TorrentResult{{Title: tc.title, DownloadURL: "release"}}
+			search.after = func() { tc.touch(t, svc, st, item) }
+
+			svc.processItem(item)
+
+			downloads, err := st.ListDownloads(&item.ID, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			activities, _, err := st.ListMediaActivityPage(item.ID, 1, nil, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, activity := range activities {
+				if activity.Action == store.MediaActivityActionDownloadQueued {
+					t.Fatalf("stale selection appended download activity: %+v", activity)
+				}
+			}
+			decision := latestDecision(t, st, item.ID)
+			if len(downloads) != 0 || decision.Outcome != "no_eligible_targets" {
+				t.Fatalf("stale selection was not suppressed: downloads=%+v activities=%+v decision=%+v", downloads, activities, decision)
+			}
+			if decision.InputUpdatedAt == nil || !decision.InputUpdatedAt.Equal(inputVersion) {
+				t.Fatalf("decision input=%v, want %v", decision.InputUpdatedAt, inputVersion)
+			}
+			found := false
+			for _, detail := range decision.Details {
+				if detail.Outcome == "no_eligible_targets" && detail.SelectedTitle == tc.title &&
+					strings.Contains(detail.Explanation, "changed during the search") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing truthful stale-selection detail: %+v", decision.Details)
+			}
+		})
+	}
+}
+
+func TestAutoDownloadQueuesWhenOnlySearchMarkerChanges(t *testing.T) {
+	svc, st, search, item := newDecisionTest(t, "movie")
+	inputVersion := item.UpdatedAt
+	search.results = []indexer.TorrentResult{{Title: "Show.1080p", DownloadURL: "release"}}
+	search.after = func() {
+		startedAt := time.Now().UTC()
+		if err := st.SetMonitorSearchStartedAt(item.ID, &startedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	svc.processItem(item)
+
+	downloads, err := st.ListDownloads(&item.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.GetMediaItem(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := latestDecision(t, st, item.ID)
+	if len(downloads) != 1 || decision.Outcome != "grabbed" || !current.UpdatedAt.Equal(inputVersion) {
+		t.Fatalf("unchanged input did not queue: downloads=%+v item=%+v decision=%+v", downloads, current, decision)
 	}
 }

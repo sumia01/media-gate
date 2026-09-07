@@ -83,7 +83,7 @@ func (s *Service) processOnce() {
 
 		checked++
 
-		changed, err := s.matchSvc.RefreshSeriesMetadata(item, meta)
+		result, err := s.matchSvc.RefreshSeriesMetadata(item, meta)
 		if err != nil {
 			slog.Warn("metadata-refresh: failed to refresh",
 				"item_id", item.ID, "title", item.Title, "error", err)
@@ -93,36 +93,23 @@ func (s *Service) processOnce() {
 		// Revisit deferred imports even when this refresh discovered no changes.
 		s.resolveOrphanDownloads(item.ID)
 
-		if changed {
-			// Auto-create SeasonMonitor rows for new seasons when MonitorNewSeasons is enabled.
-			if item.MonitorNewSeasons {
-				monitors, _ := s.store.ListSeasonMonitorsByMediaItem(item.ID)
-				monitoredSet := make(map[int]bool, len(monitors))
-				for _, m := range monitors {
-					monitoredSet[m.SeasonNumber] = true
-				}
-				episodes, _ := s.store.ListEpisodesByMediaItem(item.ID)
-				seenSeasons := make(map[int]bool)
-				for _, ep := range episodes {
-					sn := ep.SeasonNumber
-					if !seenSeasons[sn] && !monitoredSet[sn] {
-						_ = s.store.CreateSeasonMonitor(&store.SeasonMonitor{
-							MediaItemID:  item.ID,
-							SeasonNumber: sn,
-							Monitored:    true,
-						})
-						seenSeasons[sn] = true
-					}
+		if result.Changed {
+			updated++
+			if s.syncSvc != nil {
+				if err := s.syncSvc.RecalcMediaItemStatus(item.ID); err != nil {
+					slog.Warn("metadata-refresh: status recalc failed", "item_id", item.ID, "error", err)
 				}
 			}
-
-			updated++
-			_ = s.syncSvc.RecalcMediaItemStatus(item.ID)
-			s.bus.Publish(eventbus.MetadataRefreshed, eventbus.MediaItemPayload{
-				MediaItemID: item.ID,
-				LibraryID:   item.LibraryID,
-				Title:       item.Title,
-			})
+			if s.bus != nil {
+				s.bus.Publish(eventbus.MetadataRefreshed, eventbus.MediaItemPayload{
+					MediaItemID: item.ID,
+					LibraryID:   item.LibraryID,
+					Title:       item.Title,
+				})
+			}
+		}
+		if result.ActivityAdded && s.bus != nil {
+			s.bus.Publish(eventbus.MediaActivityAdded, eventbus.MediaActivityPayload{MediaItemID: item.ID})
 		}
 
 		// Rate-limit API calls: brief pause between items.

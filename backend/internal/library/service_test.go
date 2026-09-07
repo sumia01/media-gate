@@ -24,39 +24,43 @@ func (s *stubStore) ListTimelineEpisodes(string, string) ([]store.TimelineEpisod
 	return nil, nil
 }
 
-func (s *stubStore) Close() error                              { return nil }
-func (s *stubStore) Ping() error                               { return nil }
-func (s *stubStore) IsBlocklisted(uint, string, int) (bool, error) { return false, nil }
+func (s *stubStore) Close() error                                                   { return nil }
+func (s *stubStore) Ping() error                                                    { return nil }
+func (s *stubStore) IsBlocklisted(uint, string, int) (bool, error)                  { return false, nil }
 func (s *stubStore) RecordBlocklistFailure(uint, string, string, string, int) error { return nil }
-func (s *stubStore) CreateLibrary(lib *store.Library) error     { s.created = lib; return nil }
-func (s *stubStore) ListLibraries() ([]store.Library, error)    { return nil, nil }
-func (s *stubStore) GetLibrary(uint) (*store.Library, error)    { return nil, store.ErrNotFound }
-func (s *stubStore) UpdateLibrary(lib *store.Library) error     { s.updated = lib; return nil }
-func (s *stubStore) DeleteLibrary(uint) error                   { return nil }
+func (s *stubStore) CreateLibrary(lib *store.Library) error                         { s.created = lib; return nil }
+func (s *stubStore) ListLibraries() ([]store.Library, error)                        { return nil, nil }
+func (s *stubStore) GetLibrary(uint) (*store.Library, error)                        { return nil, store.ErrNotFound }
+func (s *stubStore) UpdateLibrary(lib *store.Library) error                         { s.updated = lib; return nil }
+func (s *stubStore) DeleteLibrary(uint) error                                       { return nil }
 
-func (s *stubStore) CreateMediaItem(*store.MediaItem) error                     { return nil }
-func (s *stubStore) GetMediaItem(uint) (*store.MediaItem, error)                { return nil, nil }
-func (s *stubStore) UpdateMediaItem(*store.MediaItem) error                     { return nil }
+func (s *stubStore) CreateMediaItem(*store.MediaItem) error                      { return nil }
+func (s *stubStore) GetMediaItem(uint) (*store.MediaItem, error)                 { return nil, nil }
+func (s *stubStore) UpdateMediaItem(*store.MediaItem) error                      { return nil }
 func (s *stubStore) SetMonitorSearchStartedAt(uint, *time.Time) error            { return nil }
-func (s *stubStore) DeleteMediaItem(uint) error                                 { return nil }
-func (s *stubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error)    { return nil, nil }
+func (s *stubStore) DeleteMediaItem(uint) error                                  { return nil }
+func (s *stubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error)     { return nil, nil }
 func (s *stubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
-func (s *stubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
-func (s *stubStore) CountMediaItemsByLibrary(uint) (int64, error)               { return 0, nil }
+func (s *stubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error)  { return nil, nil }
+func (s *stubStore) CountMediaItemsByLibrary(uint) (int64, error)                { return 0, nil }
 func (s *stubStore) GetMediaItemByExternalID(uint, string, int) (*store.MediaItem, error) {
 	return nil, store.ErrNotFound
 }
-func (s *stubStore) ListMonitoredMediaItems() ([]store.MediaItem, error)         { return nil, nil }
-func (s *stubStore) ListRecentMediaItems(int) ([]store.MediaItem, error)         { return nil, nil }
-func (s *stubStore) CreateMediaRequest(*store.MediaRequest) error { return nil }
+func (s *stubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
+func (s *stubStore) ListRecentMediaItems(int) ([]store.MediaItem, error) { return nil, nil }
+func (s *stubStore) CreateMediaRequest(*store.MediaRequest) error        { return nil }
 func (s *stubStore) ListMediaRequestsByMediaItem(uint) ([]store.MediaRequestAttribution, error) {
 	return nil, nil
 }
+func (s *stubStore) AppendMediaActivity(*store.MediaActivity) error { return nil }
+func (s *stubStore) ListMediaActivityPage(uint, uint, *uint, int) ([]store.MediaActivityAttribution, bool, error) {
+	return nil, false, nil
+}
 
-func (s *stubStore) CreateMediaMetadata(*store.MediaMetadata) error                { return nil }
+func (s *stubStore) CreateMediaMetadata(*store.MediaMetadata) error                 { return nil }
 func (s *stubStore) GetMediaMetadataByMediaItem(uint) (*store.MediaMetadata, error) { return nil, nil }
-func (s *stubStore) UpdateMediaMetadata(*store.MediaMetadata) error                { return nil }
-func (s *stubStore) DeleteMediaMetadataByMediaItem(uint) error                     { return nil }
+func (s *stubStore) UpdateMediaMetadata(*store.MediaMetadata) error                 { return nil }
+func (s *stubStore) DeleteMediaMetadataByMediaItem(uint) error                      { return nil }
 func (s *stubStore) ListMediaMetadataByMediaItemIDs([]uint) ([]store.MediaMetadata, error) {
 	return nil, nil
 }
@@ -64,11 +68,11 @@ func (s *stubStore) ListMediaMetadataExternalIDs() ([]store.MediaMetadata, error
 	return nil, nil
 }
 
-func (s *stubStore) CreateMediaProfile(*store.MediaProfile) error              { return nil }
-func (s *stubStore) GetMediaProfile(uint) (*store.MediaProfile, error)         { return nil, nil }
-func (s *stubStore) ListMediaProfiles() ([]store.MediaProfile, error)          { return nil, nil }
-func (s *stubStore) UpdateMediaProfile(*store.MediaProfile) error              { return nil }
-func (s *stubStore) DeleteMediaProfile(uint) error                             { return nil }
+func (s *stubStore) CreateMediaProfile(*store.MediaProfile) error      { return nil }
+func (s *stubStore) GetMediaProfile(uint) (*store.MediaProfile, error) { return nil, nil }
+func (s *stubStore) ListMediaProfiles() ([]store.MediaProfile, error)  { return nil, nil }
+func (s *stubStore) UpdateMediaProfile(*store.MediaProfile) error      { return nil }
+func (s *stubStore) DeleteMediaProfile(uint) error                     { return nil }
 
 func (s *stubStore) CreateMediaFile(*store.MediaFile) error                    { return nil }
 func (s *stubStore) GetMediaFile(uint) (*store.MediaFile, error)               { return nil, nil }
@@ -78,9 +82,11 @@ func (s *stubStore) ListMediaFilesByLibrary(uint) ([]store.MediaFile, error)   {
 func (s *stubStore) DeleteMediaFile(uint) error                                { return nil }
 func (s *stubStore) DeleteMediaFilesByPaths([]string) error                    { return nil }
 
-func (s *stubStore) CreateSeasonMonitor(*store.SeasonMonitor) error                    { return nil }
-func (s *stubStore) ListSeasonMonitorsByMediaItem(uint) ([]store.SeasonMonitor, error) { return nil, nil }
-func (s *stubStore) UpdateSeasonMonitor(*store.SeasonMonitor) error                    { return nil }
+func (s *stubStore) CreateSeasonMonitor(*store.SeasonMonitor) error { return nil }
+func (s *stubStore) ListSeasonMonitorsByMediaItem(uint) ([]store.SeasonMonitor, error) {
+	return nil, nil
+}
+func (s *stubStore) UpdateSeasonMonitor(*store.SeasonMonitor) error { return nil }
 
 func (s *stubStore) CreateEpisode(*store.Episode) error                    { return nil }
 func (s *stubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
@@ -89,63 +95,70 @@ func (s *stubStore) GetEpisodeByNumber(uint, int, int) (*store.Episode, error) {
 }
 func (s *stubStore) DeleteEpisodesByMediaItem(uint) error { return nil }
 
-func (s *stubStore) DeleteEpisodeMonitorsByMediaItem(uint) error                        { return nil }
-func (s *stubStore) DeleteEpisodeMonitorsBySeason(uint, int) error                      { return nil }
-func (s *stubStore) ListEpisodeMonitorsByMediaItem(uint) ([]store.EpisodeMonitor, error) { return nil, nil }
-func (s *stubStore) UpsertEpisodeMonitor(*store.EpisodeMonitor) error                   { return nil }
+func (s *stubStore) DeleteEpisodeMonitorsByMediaItem(uint) error   { return nil }
+func (s *stubStore) DeleteEpisodeMonitorsBySeason(uint, int) error { return nil }
+func (s *stubStore) ListEpisodeMonitorsByMediaItem(uint) ([]store.EpisodeMonitor, error) {
+	return nil, nil
+}
+func (s *stubStore) UpsertEpisodeMonitor(*store.EpisodeMonitor) error { return nil }
 
-func (s *stubStore) GetSetting(string) (*store.Setting, error)              { return nil, store.ErrNotFound }
-func (s *stubStore) SetSetting(*store.Setting) error                        { return nil }
-func (s *stubStore) ListSettings() ([]store.Setting, error)                 { return nil, nil }
-func (s *stubStore) DeleteSetting(string) error                             { return nil }
-func (s *stubStore) DeleteSettingsByPrefix(string) error                    { return nil }
-func (s *stubStore) ListSettingsByPrefix(string) ([]store.Setting, error)   { return nil, nil }
+func (s *stubStore) GetSetting(string) (*store.Setting, error)            { return nil, store.ErrNotFound }
+func (s *stubStore) SetSetting(*store.Setting) error                      { return nil }
+func (s *stubStore) ListSettings() ([]store.Setting, error)               { return nil, nil }
+func (s *stubStore) DeleteSetting(string) error                           { return nil }
+func (s *stubStore) DeleteSettingsByPrefix(string) error                  { return nil }
+func (s *stubStore) ListSettingsByPrefix(string) ([]store.Setting, error) { return nil, nil }
 
 func (s *stubStore) CreateJobRecord(*store.JobRecord) error        { return nil }
 func (s *stubStore) ListJobRecords(int) ([]store.JobRecord, error) { return nil, nil }
 func (s *stubStore) DeleteOldJobRecords(int) error                 { return nil }
 func (s *stubStore) MaxJobRecordID() (uint, error)                 { return 0, nil }
 
-func (s *stubStore) CreateIndexer(*store.Indexer) error              { return nil }
-func (s *stubStore) GetIndexer(uint) (*store.Indexer, error)         { return nil, nil }
-func (s *stubStore) ListIndexers() ([]store.Indexer, error)          { return nil, nil }
-func (s *stubStore) UpdateIndexer(*store.Indexer) error              { return nil }
-func (s *stubStore) DeleteIndexer(uint) error                        { return nil }
+func (s *stubStore) CreateIndexer(*store.Indexer) error      { return nil }
+func (s *stubStore) GetIndexer(uint) (*store.Indexer, error) { return nil, nil }
+func (s *stubStore) ListIndexers() ([]store.Indexer, error)  { return nil, nil }
+func (s *stubStore) UpdateIndexer(*store.Indexer) error      { return nil }
+func (s *stubStore) DeleteIndexer(uint) error                { return nil }
 
-func (s *stubStore) CreateDownload(*store.Download) error                       { return nil }
-func (s *stubStore) GetDownload(uint) (*store.Download, error)                  { return nil, nil }
-func (s *stubStore) UpdateDownload(*store.Download) error                       { return nil }
-func (s *stubStore) ListDownloads(*uint, *string) ([]store.Download, error)     { return nil, nil }
+func (s *stubStore) CreateDownload(*store.Download) error                   { return nil }
+func (s *stubStore) GetDownload(uint) (*store.Download, error)              { return nil, nil }
+func (s *stubStore) UpdateDownload(*store.Download) error                   { return nil }
+func (s *stubStore) ListDownloads(*uint, *string) ([]store.Download, error) { return nil, nil }
 func (s *stubStore) ListDownloadsPage(*uint, *string, int) ([]store.Download, bool, error) {
 	return nil, false, nil
 }
-func (s *stubStore) DeleteDownload(uint) error                                  { return nil }
-func (s *stubStore) HasActiveDownloadByURL(uint, string) (bool, error)          { return false, nil }
-func (s *stubStore) WithTx(fn func(store.Store) error) error                    { return fn(s) }
+func (s *stubStore) DeleteDownload(uint) error                         { return nil }
+func (s *stubStore) HasActiveDownloadByURL(uint, string) (bool, error) { return false, nil }
+func (s *stubStore) WithTx(fn func(store.Store) error) error           { return fn(s) }
 
-func (s *stubStore) CreateUser(*store.User) error                               { return nil }
-func (s *stubStore) GetUser(uint) (*store.User, error)                          { return nil, nil }
-func (s *stubStore) GetUserByEmail(string) (*store.User, error)                 { return nil, store.ErrNotFound }
-func (s *stubStore) ListUsers() ([]store.User, error)                           { return nil, nil }
-func (s *stubStore) UpdateUser(*store.User) error                               { return nil }
-func (s *stubStore) DeleteUser(uint) error                                      { return nil }
-func (s *stubStore) CountUsers() (int64, error)                                 { return 0, nil }
-func (s *stubStore) CreateRefreshToken(*store.RefreshToken) error               { return nil }
-func (s *stubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) { return nil, store.ErrNotFound }
-func (s *stubStore) DeleteRefreshToken(string) error                            { return nil }
-func (s *stubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
-func (s *stubStore) DeleteExpiredRefreshTokens() error                          { return nil }
-func (s *stubStore) CreateWatchedItem(*store.WatchedItem) error                 { return nil }
-func (s *stubStore) DeleteWatchedItem(uint) error                              { return nil }
-func (s *stubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
-func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
-func (s *stubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
-func (s *stubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
+func (s *stubStore) CreateUser(*store.User) error                 { return nil }
+func (s *stubStore) GetUser(uint) (*store.User, error)            { return nil, nil }
+func (s *stubStore) GetUserByEmail(string) (*store.User, error)   { return nil, store.ErrNotFound }
+func (s *stubStore) ListUsers() ([]store.User, error)             { return nil, nil }
+func (s *stubStore) UpdateUser(*store.User) error                 { return nil }
+func (s *stubStore) DeleteUser(uint) error                        { return nil }
+func (s *stubStore) CountUsers() (int64, error)                   { return 0, nil }
+func (s *stubStore) CreateRefreshToken(*store.RefreshToken) error { return nil }
+func (s *stubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) {
+	return nil, store.ErrNotFound
+}
+func (s *stubStore) DeleteRefreshToken(string) error                          { return nil }
+func (s *stubStore) DeleteRefreshTokensByUser(uint) error                     { return nil }
+func (s *stubStore) DeleteExpiredRefreshTokens() error                        { return nil }
+func (s *stubStore) CreateWatchedItem(*store.WatchedItem) error               { return nil }
+func (s *stubStore) GetWatchedItem(uint) (*store.WatchedItem, error)          { return nil, store.ErrNotFound }
+func (s *stubStore) DeleteWatchedItem(uint) error                             { return nil }
+func (s *stubStore) ListWatchedItems() ([]store.WatchedItem, error)           { return nil, nil }
+func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error) { return nil, nil }
+func (s *stubStore) GetWatchedBySourceExternal(*uint, string, string, int) (*store.WatchedItem, error) {
+	return nil, store.ErrNotFound
+}
+func (s *stubStore) ClearWatchedMediaItemID(uint) error { return nil }
 
-func (s *stubStore) CreateSubtitle(*store.Subtitle) error                         { return nil }
-func (s *stubStore) GetSubtitle(uint) (*store.Subtitle, error)                    { return nil, nil }
-func (s *stubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error)      { return nil, nil }
-func (s *stubStore) DeleteSubtitle(uint) error                                    { return nil }
+func (s *stubStore) CreateSubtitle(*store.Subtitle) error                    { return nil }
+func (s *stubStore) GetSubtitle(uint) (*store.Subtitle, error)               { return nil, nil }
+func (s *stubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error) { return nil, nil }
+func (s *stubStore) DeleteSubtitle(uint) error                               { return nil }
 
 // staticBasePath implements BasePathProvider for testing.
 type staticBasePath string

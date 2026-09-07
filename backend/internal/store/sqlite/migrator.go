@@ -35,7 +35,7 @@ const (
 	// migration file. Bump this whenever a new NNNN_*.up.sql is added — tests
 	// assert Up() lands here (fresh installs and adopted legacy databases alike,
 	// since Up() always runs to the newest migration after baseline handling).
-	latestMigrationVersion = 9
+	latestMigrationVersion = 10
 )
 
 // glebarezDriver is a golang-migrate database.Driver implemented directly over
@@ -49,7 +49,10 @@ const (
 // already owns — no second driver, no CGO. It is a thin, real adapter (not a
 // mock): every method delegates to the shared *sql.DB.
 type glebarezDriver struct {
-	db *sql.DB
+	db             *sql.DB
+	pendingVersion int
+	pending        bool
+	pendingApplied bool
 }
 
 func newGlebarezDriver(db *sql.DB) (*glebarezDriver, error) {
@@ -80,7 +83,8 @@ func (d *glebarezDriver) Close() error { return nil }
 func (d *glebarezDriver) Lock() error   { return nil }
 func (d *glebarezDriver) Unlock() error { return nil }
 
-// Run applies one migration file, atomically. glebarez/go-sqlite (a modernc fork)
+// Run applies one migration file and its version marker atomically.
+// glebarez/go-sqlite (a modernc fork)
 // executes every ";"-separated statement in a single Exec — verified — so the
 // whole file runs in one call, wrapped in a transaction so a mid-file failure
 // rolls back cleanly instead of leaving a half-built schema stamped dirty.
@@ -100,30 +104,62 @@ func (d *glebarezDriver) Run(migration io.Reader) error {
 		_ = tx.Rollback()
 		return fmt.Errorf("running migration: %w", err)
 	}
-	return tx.Commit()
+	if d.pending {
+		if err := setVersion(tx, d.pendingVersion, false); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("recording migration version: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if d.pending {
+		d.pendingApplied = true
+	}
+	return nil
 }
 
-// SetVersion records the active version, mirroring golang-migrate's stock
-// semantics: a single row that is deleted and re-inserted.
+// SetVersion defers golang-migrate's pre-run dirty marker so Run can commit the
+// schema and clean target version in one SQLite transaction. Failed migrations
+// therefore leave both the prior schema and prior clean version intact.
 func (d *glebarezDriver) SetVersion(version int, dirty bool) error {
+	if dirty {
+		d.pendingVersion = version
+		d.pending = true
+		d.pendingApplied = false
+		return nil
+	}
+	if d.pending && d.pendingApplied && d.pendingVersion == version {
+		d.pending = false
+		d.pendingApplied = false
+		return nil
+	}
+	d.pending = false
+	d.pendingApplied = false
+
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM "%s"`, migrationsTable)); err != nil {
+	if err := setVersion(tx, version, false); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
-	if version >= 0 || (version == database.NilVersion && dirty) {
-		if _, err := tx.Exec(
-			fmt.Sprintf(`INSERT INTO "%s" (version, dirty) VALUES (?, ?)`, migrationsTable),
-			version, dirty,
-		); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-	}
 	return tx.Commit()
+}
+
+func setVersion(tx *sql.Tx, version int, dirty bool) error {
+	if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM "%s"`, migrationsTable)); err != nil {
+		return err
+	}
+	if version < 0 && !(version == database.NilVersion && dirty) {
+		return nil
+	}
+	_, err := tx.Exec(
+		fmt.Sprintf(`INSERT INTO "%s" (version, dirty) VALUES (?, ?)`, migrationsTable),
+		version, dirty,
+	)
+	return err
 }
 
 func (d *glebarezDriver) Version() (int, bool, error) {

@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  matched: []
+  matched: [mediaItemId: number]
 }>()
 
 const query = ref(props.item.title)
@@ -49,25 +49,27 @@ async function search() {
 }
 
 async function selectCandidate(c: MatchCandidate) {
+  const mediaItemId = props.item.id
   matching.value = true
   const { error: err } = await client.POST('/media/{id}/match', {
-    params: { path: { id: props.item.id } },
+    params: { path: { id: mediaItemId } },
     body: { source: c.source, externalId: c.externalId },
   })
   matching.value = false
   if (!err) {
-    emit('matched')
+    emit('matched', mediaItemId)
   }
 }
 
 async function unmatch() {
+  const mediaItemId = props.item.id
   matching.value = true
   const { error: err } = await client.DELETE('/media/{id}/match', {
-    params: { path: { id: props.item.id } },
+    params: { path: { id: mediaItemId } },
   })
   matching.value = false
   if (!err) {
-    emit('matched')
+    emit('matched', mediaItemId)
   }
 }
 

@@ -16,6 +16,18 @@ var ErrDuplicate = errors.New("duplicate record")
 // that no longer exists.
 var ErrRequesterNotFound = errors.New("requester not found")
 
+// ErrActivityActorNotFound is returned when a user activity references an
+// account that no longer exists.
+var ErrActivityActorNotFound = errors.New("activity actor not found")
+
+// ErrMediaDeletionPending is returned when an operation targets a media item
+// whose external cleanup has already been claimed by deletion.
+var ErrMediaDeletionPending = errors.New("media deletion pending")
+
+// ErrInvalidMediaActivity is returned when activity does not satisfy the
+// bounded actor, action, or details contract.
+var ErrInvalidMediaActivity = errors.New("invalid media activity")
+
 // ActiveDownloadStatuses are download statuses that indicate work is in progress
 // or complete. If a download has one of these statuses, the item/episode should
 // not be re-downloaded.
@@ -60,6 +72,9 @@ type Store interface {
 
 	CreateMediaRequest(request *MediaRequest) error
 	ListMediaRequestsByMediaItem(mediaItemID uint) ([]MediaRequestAttribution, error)
+
+	AppendMediaActivity(activity *MediaActivity) error
+	ListMediaActivityPage(mediaItemID, viewerUserID uint, beforeID *uint, limit int) ([]MediaActivityAttribution, bool, error)
 
 	CreateMediaMetadata(meta *MediaMetadata) error
 	GetMediaMetadataByMediaItem(mediaItemID uint) (*MediaMetadata, error)
@@ -162,10 +177,11 @@ type Store interface {
 
 	// WatchedItem CRUD
 	CreateWatchedItem(item *WatchedItem) error
+	GetWatchedItem(id uint) (*WatchedItem, error)
 	DeleteWatchedItem(id uint) error
 	ListWatchedItems() ([]WatchedItem, error)
 	ListWatchedItemsByUser(userID uint) ([]WatchedItem, error)
-	GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*WatchedItem, error)
+	GetWatchedBySourceExternal(userID *uint, source, mediaType string, externalID int) (*WatchedItem, error)
 	ClearWatchedMediaItemID(mediaItemID uint) error
 
 	// Subtitle CRUD

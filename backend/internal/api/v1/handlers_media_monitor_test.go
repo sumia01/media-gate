@@ -16,7 +16,7 @@ import (
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
-func monitorToggleFixture(t *testing.T) (*Handlers, store.Store, *store.MediaItem) {
+func monitorToggleFixture(t *testing.T) (*Handlers, store.Store, *store.MediaItem, context.Context) {
 	t.Helper()
 	dir := t.TempDir()
 	st, err := sqlite.New(filepath.Join(dir, "monitor-toggle.db"))
@@ -49,14 +49,18 @@ func monitorToggleFixture(t *testing.T) (*Handlers, store.Store, *store.MediaIte
 	if err := st.UpsertMonitorDecision(&store.MonitorDecision{MediaItemID: item.ID, CheckedAt: old.Add(time.Hour), Outcome: "already_present", Summary: "Already present."}); err != nil {
 		t.Fatal(err)
 	}
+	user := &store.User{Email: "actor@example.com", PasswordHash: "hash"}
+	if err := st.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
 	h := &Handlers{store: st, syncSvc: mediasync.NewService(st), settings: settings.NewService(st, dir, nil, "test-key", http.DefaultClient)}
-	return h, st, item
+	return h, st, item, auth.ContextWithUserID(context.Background(), user.ID)
 }
 
 func TestMonitorToggleStaleSnapshotSurvivesRefetch(t *testing.T) {
 	for _, kind := range []string{"season update", "season create", "episode update", "episode create"} {
 		t.Run(kind, func(t *testing.T) {
-			h, st, item := monitorToggleFixture(t)
+			h, st, item, ctx := monitorToggleFixture(t)
 			if kind == "season update" || kind == "episode update" {
 				if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 1, Monitored: true}); err != nil {
 					t.Fatal(err)
@@ -78,7 +82,7 @@ func TestMonitorToggleStaleSnapshotSurvivesRefetch(t *testing.T) {
 				if kind == "season create" {
 					season, enabled = 2, true
 				}
-				response, err := h.UpdateSeasonMonitor(context.Background(), UpdateSeasonMonitorRequestObject{
+				response, err := h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{
 					Id: int64(item.ID), SeasonNumber: season, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: enabled},
 				})
 				if err != nil {
@@ -91,7 +95,7 @@ func TestMonitorToggleStaleSnapshotSurvivesRefetch(t *testing.T) {
 					t.Fatalf("season did not clear overrides: %+v, %v", overrides, err)
 				}
 			} else {
-				response, err := h.UpdateEpisodeMonitor(context.Background(), UpdateEpisodeMonitorRequestObject{
+				response, err := h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{
 					Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: false},
 				})
 				if err != nil {
@@ -165,6 +169,13 @@ func (s *monitorTransactionStore) CreateMediaRequest(request *store.MediaRequest
 	return s.Store.CreateMediaRequest(request)
 }
 
+func (s *monitorTransactionStore) AppendMediaActivity(activity *store.MediaActivity) error {
+	if s.fail == "activity" {
+		return monitorWriteError
+	}
+	return s.Store.AppendMediaActivity(activity)
+}
+
 func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 	for _, kind := range []string{"season", "episode"} {
 		for _, fault := range []string{"parent", "clear overrides"} {
@@ -172,7 +183,7 @@ func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 				continue
 			}
 			t.Run(kind+"/"+fault, func(t *testing.T) {
-				h, st, item := monitorToggleFixture(t)
+				h, st, item, ctx := monitorToggleFixture(t)
 				if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 1, Monitored: true}); err != nil {
 					t.Fatal(err)
 				}
@@ -182,9 +193,9 @@ func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 				h.store = &monitorTransactionStore{Store: st, fail: fault}
 				var err error
 				if kind == "season" {
-					_, err = h.UpdateSeasonMonitor(context.Background(), UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
+					_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
 				} else {
-					_, err = h.UpdateEpisodeMonitor(context.Background(), UpdateEpisodeMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: false}})
+					_, err = h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: false}})
 				}
 				if !errors.Is(err, monitorWriteError) {
 					t.Fatalf("error = %v", err)
@@ -203,7 +214,7 @@ func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 func TestMonitorToggleUsesFreshParentInsideTransaction(t *testing.T) {
 	for _, kind := range []string{"season", "episode"} {
 		t.Run(kind, func(t *testing.T) {
-			h, st, item := monitorToggleFixture(t)
+			h, st, item, ctx := monitorToggleFixture(t)
 			h.store = &monitorTransactionStore{Store: st, beforeTx: func() {
 				fresh, err := st.GetMediaItem(item.ID)
 				if err != nil {
@@ -216,9 +227,9 @@ func TestMonitorToggleUsesFreshParentInsideTransaction(t *testing.T) {
 			}}
 			var err error
 			if kind == "season" {
-				_, err = h.UpdateSeasonMonitor(context.Background(), UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
+				_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
 			} else {
-				_, err = h.UpdateEpisodeMonitor(context.Background(), UpdateEpisodeMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: false}})
+				_, err = h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: false}})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -232,7 +243,7 @@ func TestMonitorToggleUsesFreshParentInsideTransaction(t *testing.T) {
 }
 
 func TestAttributionFailureRollsBackMonitoring(t *testing.T) {
-	h, st, item := monitorToggleFixture(t)
+	h, st, item, _ := monitorToggleFixture(t)
 	user := &store.User{Email: "requester@example.com", PasswordHash: "hash"}
 	if err := st.CreateUser(user); err != nil {
 		t.Fatal(err)
@@ -259,15 +270,15 @@ func TestAttributionFailureRollsBackMonitoring(t *testing.T) {
 }
 
 func TestMonitorToggleMissingItem(t *testing.T) {
-	h, _, _ := monitorToggleFixture(t)
-	season, err := h.UpdateSeasonMonitor(context.Background(), UpdateSeasonMonitorRequestObject{Id: 999, SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true}})
+	h, _, _, ctx := monitorToggleFixture(t)
+	season, err := h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: 999, SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := season.(UpdateSeasonMonitor404JSONResponse); !ok {
 		t.Fatalf("season response = %+v", season)
 	}
-	episode, err := h.UpdateEpisodeMonitor(context.Background(), UpdateEpisodeMonitorRequestObject{Id: 999, SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: true}})
+	episode, err := h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{Id: 999, SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +288,7 @@ func TestMonitorToggleMissingItem(t *testing.T) {
 }
 
 func TestMonitorEnablePersistsRequesterAndFutureIntent(t *testing.T) {
-	h, st, item := monitorToggleFixture(t)
+	h, st, item, _ := monitorToggleFixture(t)
 	fresh, err := st.GetMediaItem(item.ID)
 	if err != nil {
 		t.Fatal(err)

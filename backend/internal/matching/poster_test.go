@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/sumia01/media-gate/internal/store"
 )
 
 // jpeg builds a syntactically complete JPEG of the requested payload size.
@@ -331,5 +334,70 @@ func TestDownloadPosterNonOKStatusKeepsExisting(t *testing.T) {
 	}
 	if !bytes.Equal(got, existing) {
 		t.Errorf("existing poster was clobbered on a failed download")
+	}
+}
+
+func TestCommittedRematchClearsOldPosterWhenReplacementUnavailable(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		posterPath func(*httptest.Server) string
+	}{
+		{name: "missing URL", posterPath: func(*httptest.Server) string { return "" }},
+		{name: "failed download", posterPath: func(server *httptest.Server) string { return server.URL }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "failed", http.StatusBadGateway)
+			}))
+			defer server.Close()
+			st := newMemStore()
+			item := &store.MediaItem{LibraryID: 1, Title: "Poster", MediaType: "movie", Source: "disk"}
+			if err := st.CreateMediaItem(item); err != nil {
+				t.Fatal(err)
+			}
+			meta := &store.MediaMetadata{MediaItemID: item.ID, Source: "tvdb", ExternalID: 123, Title: item.Title, PosterPath: test.posterPath(server), UpdatedAt: time.Unix(10, 0)}
+			if err := st.CreateMediaMetadata(meta); err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			dest := filepath.Join(dir, "1.jpg")
+			if err := os.WriteFile(dest, jpeg(128), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			NewService(st, nil, dir, server.Client()).downloadPosterForCommitted(item.ID, meta, "replacement")
+			if _, err := os.Stat(dest); !os.IsNotExist(err) {
+				t.Fatalf("old poster remains after unavailable replacement: %v", err)
+			}
+		})
+	}
+}
+
+func TestCommittedRematchDoesNotRemovePosterForStaleMetadata(t *testing.T) {
+	st := newMemStore()
+	item := &store.MediaItem{LibraryID: 1, Title: "Poster", MediaType: "movie", Source: "disk"}
+	if err := st.CreateMediaItem(item); err != nil {
+		t.Fatal(err)
+	}
+	expected := &store.MediaMetadata{MediaItemID: item.ID, Source: "tvdb", ExternalID: 123, Title: item.Title, UpdatedAt: time.Unix(10, 0)}
+	if err := st.CreateMediaMetadata(expected); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := st.GetMediaMetadataByMediaItem(item.ID)
+	current.UpdatedAt = current.UpdatedAt.Add(time.Second)
+	if err := st.UpdateMediaMetadata(current); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "1.jpg")
+	want := jpeg(128)
+	if err := os.WriteFile(dest, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	NewService(st, nil, dir, http.DefaultClient).downloadPosterForCommitted(item.ID, expected, "stale")
+	got, err := os.ReadFile(dest)
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("stale rematch removed current poster: err=%v", err)
 	}
 }

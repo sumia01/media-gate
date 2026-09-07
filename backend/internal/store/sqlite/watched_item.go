@@ -2,13 +2,22 @@ package sqlite
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/sumia01/media-gate/internal/store"
 	"gorm.io/gorm"
 )
 
 func (s *SQLiteStore) CreateWatchedItem(item *store.WatchedItem) error {
-	return s.db.Create(item).Error
+	err := s.db.Create(item).Error
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return errors.Join(store.ErrDuplicate, err)
+	}
+	return err
+}
+
+func (s *SQLiteStore) GetWatchedItem(id uint) (*store.WatchedItem, error) {
+	return getByID[store.WatchedItem](s.db, id)
 }
 
 func (s *SQLiteStore) DeleteWatchedItem(id uint) error {
@@ -31,9 +40,9 @@ func (s *SQLiteStore) ListWatchedItemsByUser(userID uint) ([]store.WatchedItem, 
 	return items, nil
 }
 
-func (s *SQLiteStore) GetWatchedBySourceExternal(userID *uint, source string, externalID int) (*store.WatchedItem, error) {
+func (s *SQLiteStore) GetWatchedBySourceExternal(userID *uint, source, mediaType string, externalID int) (*store.WatchedItem, error) {
 	var item store.WatchedItem
-	q := s.db.Where("source = ? AND external_id = ?", source, externalID)
+	q := s.db.Where("source = ? AND media_type = ? AND external_id = ?", source, mediaType, externalID)
 	if userID != nil {
 		q = q.Where("user_id = ?", *userID)
 	}

@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   searchSubtitles: []
+  activityChanged: [mediaItemId: number]
 }>()
 
 const { on, off } = useEventStream()
@@ -19,19 +20,24 @@ const subtitles = ref<Subtitle[]>([])
 const loading = ref(false)
 
 async function fetchSubtitles() {
+  const mediaItemId = props.mediaItemId
   if (!subtitles.value.length) loading.value = true
   const { data } = await client.GET('/subtitles', {
-    params: { query: { mediaItemId: props.mediaItemId } },
+    params: { query: { mediaItemId } },
   })
+  if (props.mediaItemId !== mediaItemId) return
   subtitles.value = data?.items ?? []
   loading.value = false
 }
 
 async function deleteSubtitle(id: number) {
-  await client.DELETE('/subtitles/{id}', {
+  const mediaItemId = props.mediaItemId
+  const { error } = await client.DELETE('/subtitles/{id}', {
     params: { path: { id } },
   })
+  if (error || props.mediaItemId !== mediaItemId) return
   subtitles.value = subtitles.value.filter((s) => s.id !== id)
+  emit('activityChanged', mediaItemId)
 }
 
 function handleSubtitleEvent(data: any) {

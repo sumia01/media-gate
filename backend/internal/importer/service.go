@@ -144,6 +144,10 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		}
 		return
 	}
+	if item.DeletionPending {
+		slog.Info("importer: media deletion pending, abandoning import", "download_id", dl.ID, "media_item_id", dl.MediaItemID)
+		return
+	}
 
 	lib, err := s.store.GetLibrary(item.LibraryID)
 	if err != nil {

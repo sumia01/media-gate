@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, ChevronRight, ExternalLink, Eye, EyeOff, Pencil, Play } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import ContentRatingTile from '@/components/ContentRatingTile.vue'
@@ -9,6 +9,7 @@ import DownloadList from '@/components/media/DownloadList.vue'
 import EpisodeGrid from '@/components/media/EpisodeGrid.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
 import MatchPanel from '@/components/media/MatchPanel.vue'
+import MediaActivityPanel from '@/components/media/MediaActivityPanel.vue'
 import MonitorDecisionPanel from '@/components/media/MonitorDecisionPanel.vue'
 import MonitorSettingsModal, { type MonitorSettingsPayload } from '@/components/media/MonitorSettingsModal.vue'
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
@@ -44,6 +45,7 @@ const showSeasonMonitorModal = ref(false)
 const seasonMonitorSeasons = ref<SeasonSummary[]>([])
 const seasonMonitorRespectState = ref(false)
 const seasonMonitorNewSeasons = ref(true)
+const seasonMonitorMediaItemId = ref<number | null>(null)
 const showMonitorSettings = ref(false)
 // Settings carried from the edit dialog into the season-selection step, merged
 // into the single PATCH the season modal's confirm sends.
@@ -51,6 +53,12 @@ const pendingMonitorSettings = ref<{ mediaProfileId?: number; preferredRelease: 
 const showSubtitleSearch = ref(false)
 const subtitleSearchSeason = ref<number | undefined>()
 const subtitleSearchEpisode = ref<number | undefined>()
+const subtitleSearchMediaItemId = ref<number | null>(null)
+const indexerSearchMediaItemId = ref<number | null>(null)
+const activeTab = ref<'details' | 'activity'>('details')
+const detailsTab = ref<HTMLButtonElement | null>(null)
+const activityTab = ref<HTMLButtonElement | null>(null)
+const activityPanel = ref<{ markDirty: () => void } | null>(null)
 
 const isWatched = ref(false)
 const watchedId = ref<number | null>(null)
@@ -97,7 +105,7 @@ const credits = computed(() => metadata.value?.credits ?? [])
 const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
 const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 
-async function fetchItem(id: number) {
+async function fetchItem(id: number, includeRelated = true) {
   const request = ++itemRequest
   loading.value = true
   error.value = ''
@@ -112,9 +120,11 @@ async function fetchItem(id: number) {
   }
   if (data) {
     item.value = data
-    fetchLibrary(data.libraryId, data.id)
-    fetchFiles(data.id)
-    checkWatched()
+    if (includeRelated) {
+      fetchLibrary(data.libraryId, data.id)
+      fetchFiles(data.id)
+      checkWatched()
+    }
   }
 }
 
@@ -153,7 +163,13 @@ async function checkWatched() {
   const mediaItemId = item.value?.id
   if (!meta || !mediaItemId) return
   const { data } = await client.GET('/watched/check', {
-    params: { query: { source: meta.source as 'tmdb' | 'tvdb', externalId: meta.externalId } },
+    params: {
+      query: {
+        source: meta.source as 'tmdb' | 'tvdb',
+        externalId: meta.externalId,
+        mediaType: item.value!.mediaType as 'movie' | 'series',
+      },
+    },
   })
   if (data && item.value?.id === mediaItemId) {
     isWatched.value = data.watched
@@ -162,67 +178,86 @@ async function checkWatched() {
 }
 
 async function toggleWatched() {
-  const meta = metadata.value
-  if (!meta) return
+  const currentItem = item.value
+  const meta = currentItem?.metadata
+  if (!currentItem || !meta) return
+  const mediaItemId = currentItem.id
+  const mediaType = currentItem.mediaType as 'movie' | 'series'
+  const currentWatchedId = watchedId.value
+  const currentlyWatched = isWatched.value
   watchedLoading.value = true
-  if (isWatched.value && watchedId.value) {
-    await client.DELETE('/watched/{id}', { params: { path: { id: watchedId.value } } })
-    isWatched.value = false
-    watchedId.value = null
-  } else {
-    const { data } = await client.POST('/watched', {
-      body: {
-        source: meta.source as 'tmdb' | 'tvdb',
-        externalId: meta.externalId,
-        imdbId: meta.imdbId ?? undefined,
-        title: meta.title,
-        mediaType: (item.value?.mediaType ?? 'movie') as 'movie' | 'series',
-        year: meta.year ?? undefined,
-        posterPath: meta.posterPath ?? undefined,
-        mediaItemId: item.value?.id,
-      },
-    })
-    if (data) {
-      isWatched.value = true
-      watchedId.value = data.id
+  try {
+    if (currentlyWatched && currentWatchedId) {
+      const { error: err } = await client.DELETE('/watched/{id}', {
+        params: { path: { id: currentWatchedId } },
+      })
+      if (!err && item.value?.id === mediaItemId) {
+        isWatched.value = false
+        watchedId.value = null
+        markActivityDirty(mediaItemId)
+      }
+    } else {
+      const { data } = await client.POST('/watched', {
+        body: {
+          source: meta.source as 'tmdb' | 'tvdb',
+          externalId: meta.externalId,
+          imdbId: meta.imdbId ?? undefined,
+          title: meta.title,
+          mediaType,
+          year: meta.year ?? undefined,
+          posterPath: meta.posterPath ?? undefined,
+          mediaItemId,
+        },
+      })
+      if (data && item.value?.id === mediaItemId) {
+        isWatched.value = true
+        watchedId.value = data.id
+        markActivityDirty(mediaItemId)
+      }
     }
+  } finally {
+    if (item.value?.id === mediaItemId) watchedLoading.value = false
   }
-  watchedLoading.value = false
 }
 
-async function updateMediaItem(update: MediaItemUpdate) {
-  if (!item.value) return
-  const mediaItemId = item.value.id
+async function updateMediaItem(update: MediaItemUpdate, mediaItemId = item.value?.id): Promise<boolean> {
+  if (mediaItemId == null || item.value?.id !== mediaItemId) return false
   const { data } = await client.PATCH('/media/{id}', {
     params: { path: { id: mediaItemId } },
     body: update,
   })
   if (data && item.value?.id === mediaItemId) {
     item.value = { ...data, requests: data.requests ?? item.value.requests }
+    markActivityDirty(mediaItemId)
+    return true
   }
+  return false
 }
 
 // Direct save: movie, or a series with monitoring turned off — no season step.
 async function onMonitorSettingsSave(payload: MonitorSettingsPayload) {
+  const mediaItemId = item.value?.id
   showMonitorSettings.value = false
-  await updateMediaItem(payload)
-  episodeRefreshKey.value++
+  if (mediaItemId != null && (await updateMediaItem(payload, mediaItemId))) episodeRefreshKey.value++
 }
 
 // Monitored series: continue to the season-selection step (like the add flow).
 async function onMonitorSettingsNext(payload: MonitorSettingsPayload) {
+  const currentItem = item.value
   showMonitorSettings.value = false
-  if (!item.value) return
+  if (!currentItem) return
 
-  const alreadyMonitored = item.value.monitored ?? false
+  const mediaItemId = currentItem.id
+  const alreadyMonitored = currentItem.monitored ?? false
   const { data } = await client.GET('/media/{id}/episodes', {
-    params: { path: { id: item.value.id } },
+    params: { path: { id: mediaItemId } },
   })
+  if (item.value?.id !== mediaItemId) return
   const seasons = data?.seasons ?? []
 
   // Nothing to choose from — persist settings directly.
   if (!seasons.length) {
-    await onMonitorSettingsSave(payload)
+    if (await updateMediaItem(payload, mediaItemId)) episodeRefreshKey.value++
     return
   }
 
@@ -234,6 +269,7 @@ async function onMonitorSettingsNext(payload: MonitorSettingsPayload) {
   seasonMonitorNewSeasons.value = payload.monitorNewSeasons
   // Edit of an already-monitored series → seed toggles from current state.
   seasonMonitorRespectState.value = alreadyMonitored
+  seasonMonitorMediaItemId.value = mediaItemId
   showSeasonMonitorModal.value = true
 }
 
@@ -243,24 +279,27 @@ async function onProfileChange(event: Event) {
 }
 
 async function onMonitoredToggle() {
-  if (!item.value) return
+  const currentItem = item.value
+  if (!currentItem) return
+  const mediaItemId = currentItem.id
   // Main-toggle enable never carries edit-dialog settings.
   pendingMonitorSettings.value = null
-  const newVal = !(item.value.monitored ?? false)
-  if (newVal && item.value.mediaType === 'series') {
+  const newVal = !(currentItem.monitored ?? false)
+  if (newVal && currentItem.mediaType === 'series') {
     // Fetch seasons to show in modal
     const { data } = await client.GET('/media/{id}/episodes', {
-      params: { path: { id: item.value.id } },
+      params: { path: { id: mediaItemId } },
     })
+    if (item.value?.id !== mediaItemId) return
     seasonMonitorSeasons.value = data?.seasons ?? []
-    seasonMonitorNewSeasons.value = item.value.monitorNewSeasons ?? true
+    seasonMonitorNewSeasons.value = currentItem.monitorNewSeasons ?? true
     // Enabling from scratch → default everything on.
     seasonMonitorRespectState.value = false
+    seasonMonitorMediaItemId.value = mediaItemId
     showSeasonMonitorModal.value = true
     return
   }
-  await updateMediaItem({ monitored: newVal })
-  episodeRefreshKey.value++
+  if (await updateMediaItem({ monitored: newVal }, mediaItemId)) episodeRefreshKey.value++
 }
 
 async function onSeasonMonitorConfirm(
@@ -268,7 +307,10 @@ async function onSeasonMonitorConfirm(
   monitorNewSeasons: boolean,
   episodeMonitors: { seasonNumber: number; episodeNumber: number; monitored: boolean }[],
 ) {
+  const mediaItemId = seasonMonitorMediaItemId.value
   showSeasonMonitorModal.value = false
+  seasonMonitorMediaItemId.value = null
+  if (mediaItemId == null || item.value?.id !== mediaItemId) return
   const update: MediaItemUpdate = {
     monitored: true,
     seasonMonitors: monitors,
@@ -283,12 +325,12 @@ async function onSeasonMonitorConfirm(
     update.preferredRelease = pendingMonitorSettings.value.preferredRelease
     pendingMonitorSettings.value = null
   }
-  await updateMediaItem(update)
-  episodeRefreshKey.value++
+  if (await updateMediaItem(update, mediaItemId)) episodeRefreshKey.value++
 }
 
 function onSeasonMonitorCancel() {
   showSeasonMonitorModal.value = false
+  seasonMonitorMediaItemId.value = null
   pendingMonitorSettings.value = null
 }
 
@@ -300,38 +342,49 @@ const searchDaysAgo = computed(() => {
 })
 
 async function handleResync() {
-  if (!item.value) return
+  const mediaItemId = item.value?.id
+  if (mediaItemId == null) return
   resyncing.value = true
-  await client.POST('/media/{id}/resync', {
-    params: { path: { id: item.value.id } },
-  })
-  await fetchFiles(item.value.id)
-  resyncing.value = false
+  try {
+    const { error: err } = await client.POST('/media/{id}/resync', {
+      params: { path: { id: mediaItemId } },
+    })
+    if (item.value?.id !== mediaItemId) return
+    if (!err) markActivityDirty(mediaItemId)
+    await fetchFiles(mediaItemId)
+  } finally {
+    if (item.value?.id === mediaItemId) resyncing.value = false
+  }
 }
 
 async function handleUnmatch() {
-  if (!item.value) return
+  const mediaItemId = item.value?.id
+  if (mediaItemId == null) return
   const { error: err } = await client.DELETE('/media/{id}/match', {
-    params: { path: { id: item.value.id } },
+    params: { path: { id: mediaItemId } },
   })
-  if (!err) {
-    await fetchItem(item.value.id)
+  if (!err && item.value?.id === mediaItemId) {
+    markActivityDirty(mediaItemId)
+    await fetchItem(mediaItemId)
   }
 }
 
 async function handleDelete() {
-  if (!item.value) return
+  const currentItem = item.value
+  if (!currentItem) return
+  const mediaItemId = currentItem.id
+  const libraryId = library.value?.id
   if (
     !confirm(
-      `Delete "${item.value.title}"? This will remove all files from the library, torrents from the download client, and all associated data.`,
+      `Delete "${currentItem.title}"? This will remove all files from the library, torrents from the download client, and all associated data.`,
     )
   )
     return
   const { error: err } = await client.DELETE('/media/{id}', {
-    params: { path: { id: item.value.id } },
+    params: { path: { id: mediaItemId } },
   })
-  if (!err && library.value) {
-    router.replace({ name: 'library-detail', params: { id: library.value.id } })
+  if (!err && libraryId != null && item.value?.id === mediaItemId) {
+    router.replace({ name: 'library-detail', params: { id: libraryId } })
   }
 }
 
@@ -343,14 +396,16 @@ function closeMatchPanel() {
   showMatchPanel.value = false
 }
 
-async function onMatchDone() {
+async function onMatchDone(mediaItemId: number) {
+  if (item.value?.id !== mediaItemId) return
   showMatchPanel.value = false
-  if (item.value) {
-    await fetchItem(item.value.id)
-  }
+  markActivityDirty(mediaItemId)
+  await fetchItem(mediaItemId)
 }
 
 function openIndexerSearch(season?: number, episode?: number, episodeId?: number) {
+  if (!item.value) return
+  indexerSearchMediaItemId.value = item.value.id
   indexerSearchSeason.value = season
   indexerSearchEpisode.value = episode
   indexerSearchEpisodeId.value = episodeId
@@ -358,53 +413,103 @@ function openIndexerSearch(season?: number, episode?: number, episodeId?: number
 }
 
 async function closeIndexerSearch() {
+  const mediaItemId = indexerSearchMediaItemId.value
   const oldId = replacingDownloadId.value
   showIndexerSearch.value = false
   indexerSearchSeason.value = undefined
   indexerSearchEpisode.value = undefined
   indexerSearchEpisodeId.value = undefined
+  indexerSearchMediaItemId.value = null
   replacingDownloadId.value = null
-  episodeRefreshKey.value++
+  if (mediaItemId != null && item.value?.id === mediaItemId) episodeRefreshKey.value++
 
   // If replacing, delete old download after modal closes (new download was already created in modal)
   if (oldId) {
-    await client.DELETE('/downloads/{id}', {
+    const { error: err } = await client.DELETE('/downloads/{id}', {
       params: { path: { id: oldId } },
     })
+    if (!err && mediaItemId != null) markActivityDirty(mediaItemId)
   }
-  downloadRefreshKey.value++
+  if (mediaItemId != null && item.value?.id === mediaItemId) downloadRefreshKey.value++
 }
 
 function openSubtitleSearch(season?: number, episode?: number) {
+  if (!item.value) return
+  subtitleSearchMediaItemId.value = item.value.id
   subtitleSearchSeason.value = season
   subtitleSearchEpisode.value = episode
   showSubtitleSearch.value = true
 }
 
 function closeSubtitleSearch() {
+  const mediaItemId = subtitleSearchMediaItemId.value
   showSubtitleSearch.value = false
   subtitleSearchSeason.value = undefined
   subtitleSearchEpisode.value = undefined
-  subtitleRefreshKey.value++
+  subtitleSearchMediaItemId.value = null
+  if (mediaItemId != null && item.value?.id === mediaItemId) subtitleRefreshKey.value++
 }
 
-function onDownloadReplace(downloadId: number, seasonNumber?: number, episodeNumber?: number, episodeId?: number) {
+function onSubtitleDownloaded(mediaItemId: number) {
+  if (item.value?.id !== mediaItemId) return
+  subtitleRefreshKey.value++
+  markActivityDirty(mediaItemId)
+}
+
+function onDownloadReplace(
+  mediaItemId: number,
+  downloadId: number,
+  seasonNumber?: number,
+  episodeNumber?: number,
+  episodeId?: number,
+) {
+  if (item.value?.id !== mediaItemId) return
   replacingDownloadId.value = downloadId
   openIndexerSearch(seasonNumber, episodeNumber, episodeId)
 }
 
-function onDownloadsChanged() {
-  if (item.value) {
-    fetchItem(item.value.id)
-    fetchFiles(item.value.id)
-    episodeRefreshKey.value++
+function onDownloadsChanged(mediaItemId: number) {
+  if (item.value?.id !== mediaItemId) return
+  fetchItem(mediaItemId)
+  fetchFiles(mediaItemId)
+  episodeRefreshKey.value++
+}
+
+function onMonitorsChanged(mediaItemId: number) {
+  if (item.value?.id !== mediaItemId) return
+  markActivityDirty(mediaItemId)
+  fetchItem(mediaItemId)
+}
+
+function markActivityDirty(expectedMediaItemId: number) {
+  if (item.value?.id !== expectedMediaItemId) return
+  activityPanel.value?.markDirty()
+}
+
+function selectTab(tab: 'details' | 'activity', focus = false) {
+  activeTab.value = tab
+  if (!focus) return
+  void nextTick(() => (tab === 'details' ? detailsTab.value : activityTab.value)?.focus())
+}
+
+function onTabKeydown(event: KeyboardEvent) {
+  let tab: 'details' | 'activity' | undefined
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    tab = activeTab.value === 'details' ? 'activity' : 'details'
+  } else if (event.key === 'Home') {
+    tab = 'details'
+  } else if (event.key === 'End') {
+    tab = 'activity'
   }
+  if (!tab) return
+  event.preventDefault()
+  selectTab(tab, true)
 }
 
 // SSE: refresh media item when import/resync/match events affect this item
 function handleMediaEvent(data: any) {
   if (item.value && data.mediaItemId === item.value.id) {
-    fetchItem(item.value.id)
+    fetchItem(item.value.id, false)
   }
 }
 
@@ -415,7 +520,14 @@ function handleImportEvent(data: any) {
   }
 }
 
-const mediaEvents = ['media.item_matched', 'media.request_added', 'media.resync_completed', 'monitor.grabbed']
+const mediaEvents = [
+  'media.item_matched',
+  'media.request_added',
+  'media.resync_completed',
+  'monitor.grabbed',
+  'media.activity_added',
+  'media.metadata_refreshed',
+]
 
 const importEvents = ['download.import_completed']
 
@@ -430,9 +542,24 @@ function handleSubtitleEvent(data: any) {
 function loadAll() {
   const id = Number(route.params.id)
   if (item.value?.id !== id) {
+    activeTab.value = 'details'
     item.value = null
     library.value = null
     files.value = []
+    isWatched.value = false
+    watchedId.value = null
+    watchedLoading.value = false
+    resyncing.value = false
+    showMatchPanel.value = false
+    showMonitorSettings.value = false
+    showSeasonMonitorModal.value = false
+    seasonMonitorMediaItemId.value = null
+    pendingMonitorSettings.value = null
+    showIndexerSearch.value = false
+    indexerSearchMediaItemId.value = null
+    replacingDownloadId.value = null
+    showSubtitleSearch.value = false
+    subtitleSearchMediaItemId.value = null
   }
   fetchItem(id)
   fetchProfiles()
@@ -467,8 +594,8 @@ watch(() => route.params.id, loadAll)
 
 <template>
   <div>
-    <!-- Top bar: back nav + actions -->
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
+    <!-- Shared media identity -->
+    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <router-link
         v-if="library"
         :to="{ name: 'library-detail', params: { id: library.id } }"
@@ -477,72 +604,11 @@ watch(() => route.params.id, loadAll)
         <ArrowLeft class="w-4 h-4" />
         Back to {{ library.name }}
       </router-link>
-
-      <div v-if="item" class="flex items-center gap-2 flex-wrap">
-        <!-- Watched toggle -->
-        <button
-          v-if="metadata"
-          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200"
-          :class="isWatched
-            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
-            : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
-          :disabled="watchedLoading"
-          @click="toggleWatched"
-        >
-          <Eye v-if="isWatched" class="w-3.5 h-3.5" />
-          <EyeOff v-if="!isWatched" class="w-3.5 h-3.5" />
-          <span>{{ isWatched ? 'Watched' : 'Unseen' }}</span>
-        </button>
-
-        <!-- Divider -->
-        <div class="w-px h-6 bg-violet-900/30 hidden md:block"></div>
-
-        <!-- Action buttons -->
-        <button
-          class="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors duration-200"
-          @click="openMatchPanel"
-        >
-          {{ metadata ? 'Re-match' : 'Match' }}
-        </button>
-        <button
-          v-if="metadata?.imdbId"
-          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
-          @click="openIndexerSearch()"
-        >
-          Search Indexers
-        </button>
-        <router-link
-          v-if="metadata"
-          :to="{
-            name: 'discover-similar',
-            params: { source: metadata.source, externalId: metadata.externalId },
-            query: { mediaType: item.mediaType, title: metadata.title || item.title },
-          }"
-          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
-        >
-          Discover Similar
-        </router-link>
-        <button
-          v-if="item.source === 'disk'"
-          class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
-          :disabled="resyncing"
-          @click="handleResync"
-        >
-          {{ resyncing ? 'Rescanning...' : 'Rescan Files' }}
-        </button>
-        <button
-          v-if="metadata"
-          class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
-          @click="handleUnmatch"
-        >
-          Unmatch
-        </button>
-        <button
-          class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
-          @click="handleDelete"
-        >
-          Delete
-        </button>
+      <div v-if="item" class="min-w-0 sm:text-right">
+        <p class="truncate text-base font-semibold text-gray-100">{{ item.title }}</p>
+        <p class="mt-0.5 text-xs text-gray-500">
+          {{ item.mediaType }}<template v-if="item.year || metadata?.year"> · {{ item.year || metadata?.year }}</template>
+        </p>
       </div>
     </div>
 
@@ -553,6 +619,111 @@ watch(() => route.params.id, loadAll)
 
     <!-- Content -->
     <div v-else-if="item">
+      <div
+        role="tablist"
+        aria-label="Media detail sections"
+        class="mb-6 flex border-b border-violet-900/30"
+        @keydown="onTabKeydown"
+      >
+        <button
+          :id="`media-details-tab-${item.id}`"
+          ref="detailsTab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'details'"
+          :aria-controls="`media-details-panel-${item.id}`"
+          :tabindex="activeTab === 'details' ? 0 : -1"
+          class="-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+          :class="activeTab === 'details' ? 'border-violet-400 text-violet-200' : 'border-transparent text-gray-500 hover:text-gray-300'"
+          @click="selectTab('details')"
+        >
+          Details
+        </button>
+        <button
+          :id="`media-activity-tab-${item.id}`"
+          ref="activityTab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'activity'"
+          :aria-controls="`media-activity-panel-${item.id}`"
+          :tabindex="activeTab === 'activity' ? 0 : -1"
+          class="-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+          :class="activeTab === 'activity' ? 'border-violet-400 text-violet-200' : 'border-transparent text-gray-500 hover:text-gray-300'"
+          @click="selectTab('activity')"
+        >
+          Activity
+        </button>
+      </div>
+
+      <section
+        :id="`media-details-panel-${item.id}`"
+        role="tabpanel"
+        :aria-labelledby="`media-details-tab-${item.id}`"
+        :hidden="activeTab !== 'details'"
+      >
+        <!-- Operational actions stay on Details. -->
+        <div class="mb-6 flex flex-wrap items-center gap-2">
+          <button
+            v-if="metadata"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200"
+            :class="isWatched
+              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+              : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
+            :disabled="watchedLoading"
+            @click="toggleWatched"
+          >
+            <Eye v-if="isWatched" class="w-3.5 h-3.5" />
+            <EyeOff v-if="!isWatched" class="w-3.5 h-3.5" />
+            <span>{{ isWatched ? 'Watched' : 'Unseen' }}</span>
+          </button>
+          <div class="w-px h-6 bg-violet-900/30 hidden md:block"></div>
+          <button
+            class="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors duration-200"
+            @click="openMatchPanel"
+          >
+            {{ metadata ? 'Re-match' : 'Match' }}
+          </button>
+          <button
+            v-if="metadata?.imdbId"
+            class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+            @click="openIndexerSearch()"
+          >
+            Search Indexers
+          </button>
+          <router-link
+            v-if="metadata"
+            :to="{
+              name: 'discover-similar',
+              params: { source: metadata.source, externalId: metadata.externalId },
+              query: { mediaType: item.mediaType, title: metadata.title || item.title },
+            }"
+            class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+          >
+            Discover Similar
+          </router-link>
+          <button
+            v-if="item.source === 'disk'"
+            class="px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 text-xs font-medium transition-colors duration-200"
+            :disabled="resyncing"
+            @click="handleResync"
+          >
+            {{ resyncing ? 'Rescanning...' : 'Rescan Files' }}
+          </button>
+          <button
+            v-if="metadata"
+            class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+            @click="handleUnmatch"
+          >
+            Unmatch
+          </button>
+          <button
+            class="hidden md:inline-flex px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors duration-200"
+            @click="handleDelete"
+          >
+            Delete
+          </button>
+        </div>
+
       <!-- Hero section -->
       <div class="flex flex-col md:flex-row gap-6 md:gap-8">
         <!-- Poster -->
@@ -869,14 +1040,6 @@ watch(() => route.params.id, loadAll)
         </div>
       </div>
 
-      <MonitorDecisionPanel
-        :key="item.id"
-        :mediaItemId="item.id"
-        :monitored="item.monitored ?? false"
-        :updatedAt="item.updatedAt"
-        class="mt-3"
-      />
-
       <!-- Episodes section (series only) -->
       <EpisodeGrid
         v-if="item.mediaType === 'series' && metadata"
@@ -887,7 +1050,7 @@ watch(() => route.params.id, loadAll)
         @search-episode="(sn: number, en: number, eid: number) => openIndexerSearch(sn, en, eid)"
         @search-season-subtitles="(sn: number) => openSubtitleSearch(sn)"
         @search-episode-subtitles="(sn: number, en: number) => openSubtitleSearch(sn, en)"
-        @monitors-changed="item && fetchItem(item.id)"
+        @monitors-changed="onMonitorsChanged"
         class="mt-8"
       />
 
@@ -901,6 +1064,7 @@ watch(() => route.params.id, loadAll)
         :refreshKey="downloadRefreshKey"
         @replace="onDownloadReplace"
         @downloadsChanged="onDownloadsChanged"
+        @activity-changed="markActivityDirty"
         class="mt-8"
       />
 
@@ -910,6 +1074,7 @@ watch(() => route.params.id, loadAll)
         :mediaItemId="item.id"
         :refreshKey="subtitleRefreshKey"
         @search-subtitles="openSubtitleSearch()"
+        @activity-changed="markActivityDirty"
         class="mt-8"
       />
 
@@ -971,7 +1136,6 @@ watch(() => route.params.id, loadAll)
           </div>
         </div>
       </div>
-    </div>
 
     <!-- Match Panel -->
     <MatchPanel
@@ -994,6 +1158,7 @@ watch(() => route.params.id, loadAll)
       :profileId="activeProfile?.id"
       :preferredRelease="item.preferredRelease"
       @close="closeIndexerSearch"
+      @download-queued="markActivityDirty"
     />
 
     <!-- Subtitle Search Modal -->
@@ -1004,7 +1169,7 @@ watch(() => route.params.id, loadAll)
       :seasonNumber="subtitleSearchSeason"
       :episodeNumber="subtitleSearchEpisode"
       @close="closeSubtitleSearch"
-      @downloaded="subtitleRefreshKey++"
+      @downloaded="onSubtitleDownloaded"
     />
 
     <!-- Season monitor modal (shown when enabling monitoring on a series) -->
@@ -1026,5 +1191,29 @@ watch(() => route.params.id, loadAll)
       @next="onMonitorSettingsNext"
       @close="showMonitorSettings = false"
     />
+      </section>
+
+      <section
+        :id="`media-activity-panel-${item.id}`"
+        role="tabpanel"
+        :aria-labelledby="`media-activity-tab-${item.id}`"
+        :hidden="activeTab !== 'activity'"
+        class="space-y-3"
+      >
+        <MonitorDecisionPanel
+          :key="`decision-${item.id}`"
+          :mediaItemId="item.id"
+          :monitored="item.monitored ?? false"
+          :updatedAt="item.updatedAt"
+          :active="activeTab === 'activity'"
+        />
+        <MediaActivityPanel
+          :key="`activity-${item.id}`"
+          ref="activityPanel"
+          :mediaItemId="item.id"
+          :active="activeTab === 'activity'"
+        />
+      </section>
+    </div>
   </div>
 </template>

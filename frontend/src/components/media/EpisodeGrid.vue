@@ -15,7 +15,7 @@ const emit = defineEmits<{
   searchEpisode: [seasonNumber: number, episodeNumber: number, episodeId: number]
   searchSeasonSubtitles: [seasonNumber: number]
   searchEpisodeSubtitles: [seasonNumber: number, episodeNumber: number]
-  monitorsChanged: []
+  monitorsChanged: [mediaItemId: number]
 }>()
 
 const seasons = ref<SeasonSummary[]>([])
@@ -37,24 +37,28 @@ async function fetchEpisodes() {
 }
 
 async function toggleSeasonMonitor(seasonNumber: number, currentMonitored: boolean) {
-  await client.PUT('/media/{id}/season-monitors/{seasonNumber}', {
-    params: { path: { id: props.mediaItemId, seasonNumber } },
+  const mediaItemId = props.mediaItemId
+  const { error } = await client.PUT('/media/{id}/season-monitors/{seasonNumber}', {
+    params: { path: { id: mediaItemId, seasonNumber } },
     body: { monitored: !currentMonitored },
   })
+  if (error || props.mediaItemId !== mediaItemId) return
   // Refetch to reflect cascade (season toggle clears episode overrides)
   await fetchEpisodes()
   // Monitoring feeds the item's status — let the parent refresh the badge.
-  emit('monitorsChanged')
+  if (props.mediaItemId === mediaItemId) emit('monitorsChanged', mediaItemId)
 }
 
 async function toggleEpisodeMonitor(ep: Episode) {
+  const mediaItemId = props.mediaItemId
   const newVal = !(ep.monitored ?? true)
-  await client.PUT('/media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor', {
-    params: { path: { id: props.mediaItemId, seasonNumber: ep.seasonNumber, episodeNumber: ep.episodeNumber } },
+  const { error } = await client.PUT('/media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor', {
+    params: { path: { id: mediaItemId, seasonNumber: ep.seasonNumber, episodeNumber: ep.episodeNumber } },
     body: { monitored: newVal },
   })
+  if (error || props.mediaItemId !== mediaItemId) return
   ep.monitored = newVal
-  emit('monitorsChanged')
+  emit('monitorsChanged', mediaItemId)
 }
 
 function toggleSeason(seasonNumber: number) {

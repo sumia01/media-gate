@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/sumia01/media-gate/internal/ratelimit"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
+	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
 const (
@@ -28,7 +30,11 @@ const (
 	tmdbPosterBase     = "https://image.tmdb.org/t/p/w500"
 )
 
-var ErrNoRequestedScope = errors.New("select at least one season or episode")
+var (
+	ErrNoRequestedScope      = errors.New("select at least one season or episode")
+	ErrStaleMatchCandidate   = errors.New("stale match candidate")
+	ErrStaleRefreshCandidate = errors.New("stale metadata refresh candidate")
+)
 
 type Candidate struct {
 	Source          string
@@ -54,6 +60,8 @@ type Service struct {
 	httpClient   *http.Client
 	statusRecalc StatusRecalculator
 	bus          *eventbus.Bus
+	posterMu     *sync.Mutex
+	requestMu    *sync.Mutex
 
 	tmdbMu     sync.Mutex
 	tmdbKey    string
@@ -70,6 +78,8 @@ func NewService(s store.Store, set *settings.Service, posterDir string, httpClie
 		settings:   set,
 		posterDir:  posterDir,
 		httpClient: httpClient,
+		posterMu:   &sync.Mutex{},
+		requestMu:  &sync.Mutex{},
 	}
 }
 
@@ -94,6 +104,8 @@ func (s *Service) WithStore(st store.Store) *Service {
 		httpClient:   s.httpClient,
 		statusRecalc: s.statusRecalc,
 		bus:          s.bus,
+		posterMu:     s.posterMu,
+		requestMu:    s.requestMu,
 		tmdbKey:      s.tmdbKey,
 		tmdbCached:   s.tmdbCached,
 		tvdbKey:      s.tvdbKey,
@@ -136,7 +148,6 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 
 	ctx := context.Background()
 	matched := 0
-
 	for i := range items {
 		if err := limiter.Wait(ctx); err != nil {
 			return err
@@ -148,9 +159,9 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 			progressFn(i+1, len(items), items[i].ID)
 		}
 
-		if err := s.matchSingleItem(&items[i], source, apiKey, lib.MediaType, fullRematch); err != nil {
+		if err := s.matchSingleItem(items[i].ID, source, apiKey, lib.MediaType, fullRematch); err != nil {
 			slog.Warn("match failed for item", "item_id", items[i].ID, "title", items[i].Title, "error", err)
-		} else if items[i].Status == "available" {
+		} else if current, err := s.store.GetMediaItem(items[i].ID); err == nil && current.Status == "available" {
 			matched++
 		}
 	}
@@ -159,8 +170,16 @@ func (s *Service) MatchLibrary(lib *store.Library, fullRematch bool, progressFn 
 	return nil
 }
 
-func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaType string, fullRematch bool) error {
-	candidates, err := s.searchSource(item.Title, mediaType, item.Year, source, apiKey)
+func (s *Service) matchSingleItem(mediaItemID uint, source, apiKey, mediaType string, fullRematch bool) error {
+	expected, err := s.captureMatchVersion(mediaItemID)
+	if err != nil {
+		return err
+	}
+	if !fullRematch && (expected.metadata != nil || expected.item.Status != "new") {
+		return nil
+	}
+
+	candidates, err := s.searchSource(expected.item.Title, mediaType, expected.item.Year, source, apiKey)
 	if err != nil {
 		return err
 	}
@@ -174,15 +193,12 @@ func (s *Service) matchSingleItem(item *store.MediaItem, source, apiKey, mediaTy
 		return nil
 	}
 
-	// For full rematch, clear existing metadata and episodes first
-	if fullRematch {
-		_ = s.store.DeleteMediaMetadataByMediaItem(item.ID)
-		_ = s.store.DeleteEpisodesByMediaItem(item.ID)
+	meta, episodes, err := s.fetchMatchData(source, apiKey, mediaType, best.ExternalID, best.Confidence)
+	if err != nil {
+		return err
 	}
-
-	// Fetch full details and save metadata
-	// applyMatch downloads the poster before publishing the matched event.
-	return s.applyMatch(item, source, apiKey, mediaType, best.ExternalID, best.Confidence)
+	_, _, err = s.replaceMatch(expected, meta, episodes, matchActor{component: "matching"})
+	return err
 }
 
 func (s *Service) SearchCandidates(query, mediaType string, year *int, source string) ([]Candidate, error) {
@@ -258,8 +274,11 @@ func (s *Service) GetExternalDetail(source, mediaType string, externalID int) (*
 	}, nil
 }
 
-func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) (*store.MediaItem, *store.MediaMetadata, error) {
-	item, err := s.store.GetMediaItem(mediaItemID)
+func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int, actorUserID uint) (*store.MediaItem, *store.MediaMetadata, error) {
+	if err := validateMatchActor(s.store, matchActor{userID: actorUserID}); err != nil {
+		return nil, nil, err
+	}
+	expected, err := s.captureMatchVersion(mediaItemID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -269,48 +288,90 @@ func (s *Service) ManualMatch(mediaItemID uint, source string, externalID int) (
 		return nil, nil, fmt.Errorf("no API key configured for %s", source)
 	}
 
-	// Delete existing metadata if any
-	_ = s.store.DeleteMediaMetadataByMediaItem(mediaItemID)
-	// Delete existing episodes
-	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
-
-	// applyMatch downloads the poster before publishing the matched event.
-	if err := s.applyMatch(item, source, apiKey, item.MediaType, externalID, 1.0); err != nil {
-		return nil, nil, err
-	}
-
-	// Re-fetch updated item and metadata to return current state.
-	item, err = s.store.GetMediaItem(mediaItemID)
+	meta, episodes, err := s.fetchMatchData(source, apiKey, expected.item.MediaType, externalID, 1.0)
 	if err != nil {
 		return nil, nil, err
 	}
-	meta, _ := s.store.GetMediaMetadataByMediaItem(mediaItemID)
-	return item, meta, nil
+	return s.replaceMatch(expected, meta, episodes, matchActor{userID: actorUserID})
 }
 
-func (s *Service) Unmatch(mediaItemID uint) error {
-	item, err := s.store.GetMediaItem(mediaItemID)
+func (s *Service) Unmatch(mediaItemID, actorUserID uint) error {
+	s.posterMu.Lock()
+	defer s.posterMu.Unlock()
+	err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateMatchActor(tx, matchActor{userID: actorUserID}); err != nil {
+			return err
+		}
+		item, err := tx.GetMediaItem(mediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		meta, err := tx.GetMediaMetadataByMediaItem(mediaItemID)
+		if err != nil {
+			return err
+		}
+		episodes, err := tx.ListEpisodesByMediaItem(mediaItemID)
+		if err != nil {
+			return fmt.Errorf("listing episodes: %w", err)
+		}
+		overrides, err := tx.ListEpisodeMonitorsByMediaItem(mediaItemID)
+		if err != nil {
+			return fmt.Errorf("listing episode overrides: %w", err)
+		}
+		beforeMonitoring, err := mediasync.SnapshotMonitoring(tx, mediaItemID)
+		if err != nil {
+			return fmt.Errorf("snapshotting monitoring before unmatch: %w", err)
+		}
+
+		if err := tx.DeleteMediaMetadataByMediaItem(mediaItemID); err != nil {
+			return fmt.Errorf("deleting metadata: %w", err)
+		}
+		if err := tx.DeleteEpisodesByMediaItem(mediaItemID); err != nil {
+			return fmt.Errorf("deleting episodes: %w", err)
+		}
+		if err := tx.DeleteEpisodeMonitorsByMediaItem(mediaItemID); err != nil {
+			return fmt.Errorf("deleting episode overrides: %w", err)
+		}
+		if item.Source == "request" {
+			item.Status = "requested"
+		} else {
+			item.Status = "new"
+		}
+		if err := tx.UpdateMediaItem(item); err != nil {
+			return fmt.Errorf("updating unmatched item: %w", err)
+		}
+		afterMonitoring, err := mediasync.SnapshotMonitoring(tx, mediaItemID)
+		if err != nil {
+			return fmt.Errorf("snapshotting monitoring after unmatch: %w", err)
+		}
+
+		details := mediasync.BuildMonitoringActivityDetails(beforeMonitoring, afterMonitoring)
+		details.OldProvider = providerIdentity(meta)
+		details.Removed = len(episodes)
+		details.DatabaseRecordsRemoved = 1 + len(episodes) + len(overrides)
+		details.Targets, details.Truncated = boundedEpisodeTargets(episodeKeysFromStored(episodes), details.Truncated)
+		details.Total += len(episodes)
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		activity, err := store.NewUserMediaActivity(item, actorUserID, store.MediaActivityActionUnmatched, operationID, store.MediaActivityVisibilityShared, details)
+		if err != nil {
+			return fmt.Errorf("creating unmatch activity: %w", err)
+		}
+		if err := tx.AppendMediaActivity(activity); err != nil {
+			return fmt.Errorf("recording unmatch activity: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-
-	if err := s.store.DeleteMediaMetadataByMediaItem(mediaItemID); err != nil {
-		return fmt.Errorf("deleting metadata: %w", err)
-	}
-
-	// Delete episode records
-	_ = s.store.DeleteEpisodesByMediaItem(mediaItemID)
-
-	// Delete episode monitor overrides (season monitors are kept)
-	_ = s.store.DeleteEpisodeMonitorsByMediaItem(mediaItemID)
-
-	// Requested items stay "requested" when unmatched (they have no disk presence to fall back to "new")
-	if item.Source == "request" {
-		item.Status = "requested"
-	} else {
-		item.Status = "new"
-	}
-	return s.store.UpdateMediaItem(item)
+	s.publishActivityAdded(mediaItemID)
+	return nil
 }
 
 // SearchForLibrary searches external sources based on library media type.
@@ -398,57 +459,9 @@ type EpisodeMonitorReq struct {
 func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, bool, error) {
 	// Existing media can receive additional request attribution without another
 	// metadata fetch. Request rows are idempotent for each user and scope.
-	existing, err := s.store.GetMediaItemByExternalID(lib.ID, req.Source, req.ExternalID)
+	existing, err := topStore.GetMediaItemByExternalID(lib.ID, req.Source, req.ExternalID)
 	if err == nil {
-		meta, _ := topStore.GetMediaMetadataByMediaItem(existing.ID)
-		storedEpisodes, listErr := s.store.ListEpisodesByMediaItem(existing.ID)
-		if listErr != nil {
-			return nil, nil, false, fmt.Errorf("listing existing episodes: %w", listErr)
-		}
-		episodes := make([]episodeData, len(storedEpisodes))
-		for i := range storedEpisodes {
-			episodes[i] = episodeData{
-				seasonNumber:  storedEpisodes[i].SeasonNumber,
-				episodeNumber: storedEpisodes[i].EpisodeNumber,
-			}
-		}
-		var seasonCount *int
-		if meta != nil {
-			seasonCount = meta.Seasons
-		}
-		req = normalizeSeriesRequest(existing.MediaType, req, episodes, seasonCount)
-		scopes := buildRequestScopes(existing.MediaType, req, episodes, seasonCount)
-		if !hasRequestedContent(existing.MediaType, req, scopes) {
-			return nil, nil, false, ErrNoRequestedScope
-		}
-		if err := topStore.WithTx(func(tx store.Store) error {
-			current, err := tx.GetMediaItem(existing.ID)
-			if err != nil {
-				return err
-			}
-			if err := applyExistingRequest(tx, current, req, scopes); err != nil {
-				return err
-			}
-			return createMediaRequests(tx, current.ID, req.RequesterID, scopes)
-		}); err != nil {
-			return nil, nil, false, err
-		}
-		if req.Monitored != nil && *req.Monitored && s.statusRecalc != nil {
-			if err := s.statusRecalc.RecalcMediaItemStatus(existing.ID); err != nil {
-				slog.Warn("request: status recalc failed", "media_item_id", existing.ID, "error", err)
-			}
-		}
-		if fresh, err := topStore.GetMediaItem(existing.ID); err == nil {
-			existing = fresh
-		}
-		if s.bus != nil {
-			s.bus.Publish(eventbus.MediaRequestAdded, eventbus.MediaItemPayload{
-				MediaItemID: existing.ID,
-				LibraryID:   existing.LibraryID,
-				Title:       existing.Title,
-			})
-		}
-		return existing, meta, false, nil
+		return s.addRequestToExisting(topStore, existing.ID, req)
 	}
 	if !errors.Is(err, store.ErrNotFound) {
 		return nil, nil, false, fmt.Errorf("checking for duplicates: %w", err)
@@ -466,6 +479,7 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("fetching metadata: %w", err)
 	}
+	originalReq := req
 	req = normalizeSeriesRequest(lib.MediaType, req, episodes, meta.Seasons)
 	scopes := buildRequestScopes(lib.MediaType, req, episodes, meta.Seasons)
 	if !hasRequestedContent(lib.MediaType, req, scopes) {
@@ -473,10 +487,27 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 	}
 
 	var resultItem *store.MediaItem
+	activityAdded := false
+	racedExisting := false
+	retryExisting := false
 
 	// Short write transaction: only DB writes from the already-fetched data.
 	// If anything fails the whole tx rolls back — nothing is half-written.
+	s.requestMu.Lock()
 	err = topStore.WithTx(func(tx store.Store) error {
+		existing, err := tx.GetMediaItemByExternalID(lib.ID, originalReq.Source, originalReq.ExternalID)
+		if err == nil {
+			if existing.DeletionPending {
+				return store.ErrMediaDeletionPending
+			}
+			resultItem, activityAdded, err = applyRequestToExistingTx(tx, existing.ID, originalReq)
+			racedExisting = err == nil
+			return err
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("rechecking for duplicates: %w", err)
+		}
+
 		txSvc := s.WithStore(tx)
 
 		item := &store.MediaItem{
@@ -500,10 +531,16 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 			item.MonitorNewSeasons = *req.MonitorNewSeasons
 		}
 		if req.MediaProfileID != nil {
-			item.MediaProfileID = req.MediaProfileID
+			profileID := *req.MediaProfileID
+			item.MediaProfileID = &profileID
+		}
+		assignedProfile, err := requestedProfile(tx, item.MediaProfileID)
+		if err != nil {
+			return err
 		}
 
 		if err := tx.CreateMediaItem(item); err != nil {
+			retryExisting = true
 			return fmt.Errorf("creating media item: %w", err)
 		}
 
@@ -536,12 +573,38 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 		if err := createMediaRequests(tx, item.ID, req.RequesterID, scopes); err != nil {
 			return err
 		}
+		if req.RequesterID != nil {
+			after, err := mediasync.SnapshotMonitoring(tx, item.ID)
+			if err != nil {
+				return fmt.Errorf("snapshotting monitoring after request: %w", err)
+			}
+			before := mediasync.NewInitialMonitoringState(*item)
+			if err := appendRequestActivity(tx, item, *req.RequesterID, scopes, true, before, after, assignedProfile); err != nil {
+				return err
+			}
+			activityAdded = true
+		}
 
 		resultItem = item
 		return nil
 	})
+	s.requestMu.Unlock()
 	if err != nil {
+		// A separately-constructed service or process can win after our recheck.
+		// Retry only a failed first write; later failures must remain atomic errors.
+		if retryExisting {
+			if existing, lookupErr := topStore.GetMediaItemByExternalID(lib.ID, originalReq.Source, originalReq.ExternalID); lookupErr == nil {
+				return s.addRequestToExisting(topStore, existing.ID, originalReq)
+			}
+		}
 		return nil, nil, false, err
+	}
+	if racedExisting {
+		return s.finishExistingRequest(topStore, resultItem, originalReq, activityAdded)
+	}
+
+	if activityAdded {
+		s.publishActivityAdded(resultItem.ID)
 	}
 
 	// Post-commit side effects on the top-level store. The poster is fetched
@@ -556,9 +619,104 @@ func (s *Service) AddMediaToLibraryFull(topStore store.Store, lib *store.Library
 
 	// Re-read metadata to include poster path and any post-commit changes.
 	resultMeta, _ := topStore.GetMediaMetadataByMediaItem(resultItem.ID)
-
 	slog.Info("matching: media added to library", "media_item_id", resultItem.ID, "title", resultItem.Title, "library_id", lib.ID, "library", lib.Name)
 	return resultItem, resultMeta, true, nil
+}
+
+func (s *Service) addRequestToExisting(topStore store.Store, itemID uint, req AddMediaRequest) (*store.MediaItem, *store.MediaMetadata, bool, error) {
+	var resultItem *store.MediaItem
+	activityAdded := false
+	s.requestMu.Lock()
+	err := topStore.WithTx(func(tx store.Store) error {
+		var err error
+		resultItem, activityAdded, err = applyRequestToExistingTx(tx, itemID, req)
+		return err
+	})
+	s.requestMu.Unlock()
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return s.finishExistingRequest(topStore, resultItem, req, activityAdded)
+}
+
+func applyRequestToExistingTx(tx store.Store, itemID uint, req AddMediaRequest) (*store.MediaItem, bool, error) {
+	current, err := tx.GetMediaItem(itemID)
+	if err != nil {
+		return nil, false, err
+	}
+	if current.DeletionPending {
+		return nil, false, store.ErrMediaDeletionPending
+	}
+	storedEpisodes, err := tx.ListEpisodesByMediaItem(current.ID)
+	if err != nil {
+		return nil, false, fmt.Errorf("listing existing episodes: %w", err)
+	}
+	episodes := make([]episodeData, len(storedEpisodes))
+	for i := range storedEpisodes {
+		episodes[i] = episodeData{seasonNumber: storedEpisodes[i].SeasonNumber, episodeNumber: storedEpisodes[i].EpisodeNumber}
+	}
+	var seasonCount *int
+	meta, err := tx.GetMediaMetadataByMediaItem(current.ID)
+	if err == nil {
+		seasonCount = meta.Seasons
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return nil, false, fmt.Errorf("loading existing metadata: %w", err)
+	}
+
+	req = normalizeSeriesRequest(current.MediaType, req, episodes, seasonCount)
+	scopes := buildRequestScopes(current.MediaType, req, episodes, seasonCount)
+	if !hasRequestedContent(current.MediaType, req, scopes) {
+		return nil, false, ErrNoRequestedScope
+	}
+
+	var before *mediasync.MonitoringState
+	if req.RequesterID != nil {
+		before, err = mediasync.SnapshotMonitoring(tx, current.ID)
+		if err != nil {
+			return nil, false, fmt.Errorf("snapshotting monitoring before request: %w", err)
+		}
+	}
+	assignedProfile, err := applyExistingRequest(tx, current, req, scopes)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := createMediaRequests(tx, current.ID, req.RequesterID, scopes); err != nil {
+		return nil, false, err
+	}
+	if req.RequesterID == nil {
+		return current, false, nil
+	}
+	after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+	if err != nil {
+		return nil, false, fmt.Errorf("snapshotting monitoring after request: %w", err)
+	}
+	if err := appendRequestActivity(tx, current, *req.RequesterID, scopes, false, before, after, assignedProfile); err != nil {
+		return nil, false, err
+	}
+	return current, true, nil
+}
+
+func (s *Service) finishExistingRequest(topStore store.Store, resultItem *store.MediaItem, req AddMediaRequest, activityAdded bool) (*store.MediaItem, *store.MediaMetadata, bool, error) {
+	if activityAdded {
+		s.publishActivityAdded(resultItem.ID)
+	}
+	if req.Monitored != nil && *req.Monitored && s.statusRecalc != nil {
+		if err := s.statusRecalc.RecalcMediaItemStatus(resultItem.ID); err != nil {
+			slog.Warn("request: status recalc failed", "media_item_id", resultItem.ID, "error", err)
+		}
+	}
+	if fresh, err := topStore.GetMediaItem(resultItem.ID); err == nil {
+		resultItem = fresh
+	}
+	meta, _ := topStore.GetMediaMetadataByMediaItem(resultItem.ID)
+	if s.bus != nil {
+		s.bus.Publish(eventbus.MediaRequestAdded, eventbus.MediaItemPayload{
+			MediaItemID: resultItem.ID,
+			LibraryID:   resultItem.LibraryID,
+			Title:       resultItem.Title,
+		})
+	}
+	return resultItem, meta, false, nil
 }
 
 type requestScope struct {
@@ -753,24 +911,37 @@ func hasRequestedContent(mediaType string, req AddMediaRequest, scopes []request
 	return false
 }
 
-func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaRequest, scopes []requestScope) error {
+func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaRequest, scopes []requestScope) (*store.MediaProfile, error) {
+	var assignedProfile *store.MediaProfile
+	if item.MediaProfileID == nil && req.MediaProfileID != nil {
+		profileID := *req.MediaProfileID
+		var err error
+		assignedProfile, err = requestedProfile(st, &profileID)
+		if err != nil {
+			return nil, err
+		}
+		item.MediaProfileID = &profileID
+	}
 	if req.Monitored == nil || !*req.Monitored {
-		return nil
+		if assignedProfile == nil {
+			return nil, nil
+		}
+		if err := st.UpdateMediaItem(item); err != nil {
+			return nil, fmt.Errorf("updating existing media profile: %w", err)
+		}
+		return assignedProfile, nil
 	}
 	item.Monitored = true
 	if req.MonitorNewSeasons != nil && *req.MonitorNewSeasons {
 		item.MonitorNewSeasons = true
 	}
-	if item.MediaProfileID == nil && req.MediaProfileID != nil {
-		item.MediaProfileID = req.MediaProfileID
-	}
 	if err := st.UpdateMediaItem(item); err != nil {
-		return fmt.Errorf("updating existing media monitoring: %w", err)
+		return nil, fmt.Errorf("updating existing media monitoring: %w", err)
 	}
 
 	monitors, err := st.ListSeasonMonitorsByMediaItem(item.ID)
 	if err != nil {
-		return fmt.Errorf("listing existing season monitors: %w", err)
+		return nil, fmt.Errorf("listing existing season monitors: %w", err)
 	}
 	bySeason := make(map[int]*store.SeasonMonitor, len(monitors))
 	for i := range monitors {
@@ -797,18 +968,18 @@ func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaReq
 		case store.MediaRequestScopeWholeSeries:
 			for _, season := range req.SeasonMonitors {
 				if err := monitorSeason(season.SeasonNumber); err != nil {
-					return fmt.Errorf("monitoring requested season: %w", err)
+					return nil, fmt.Errorf("monitoring requested season: %w", err)
 				}
 				if err := st.DeleteEpisodeMonitorsBySeason(item.ID, season.SeasonNumber); err != nil {
-					return fmt.Errorf("clearing requested season overrides: %w", err)
+					return nil, fmt.Errorf("clearing requested season overrides: %w", err)
 				}
 			}
 		case store.MediaRequestScopeSeason:
 			if err := monitorSeason(scope.seasonNumber); err != nil {
-				return fmt.Errorf("monitoring requested season: %w", err)
+				return nil, fmt.Errorf("monitoring requested season: %w", err)
 			}
 			if err := st.DeleteEpisodeMonitorsBySeason(item.ID, scope.seasonNumber); err != nil {
-				return fmt.Errorf("clearing requested season overrides: %w", err)
+				return nil, fmt.Errorf("clearing requested season overrides: %w", err)
 			}
 		case store.MediaRequestScopeEpisode:
 			if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{
@@ -817,11 +988,22 @@ func applyExistingRequest(st store.Store, item *store.MediaItem, req AddMediaReq
 				EpisodeNumber: scope.episodeNumber,
 				Monitored:     true,
 			}); err != nil {
-				return fmt.Errorf("monitoring requested episode: %w", err)
+				return nil, fmt.Errorf("monitoring requested episode: %w", err)
 			}
 		}
 	}
-	return nil
+	return assignedProfile, nil
+}
+
+func requestedProfile(st store.Store, profileID *uint) (*store.MediaProfile, error) {
+	if profileID == nil {
+		return nil, nil
+	}
+	profile, err := st.GetMediaProfile(*profileID)
+	if err != nil {
+		return nil, fmt.Errorf("loading requested media profile: %w", err)
+	}
+	return profile, nil
 }
 
 func createMediaRequests(st store.Store, mediaItemID uint, requesterID *uint, scopes []requestScope) error {
@@ -849,32 +1031,379 @@ func createMediaRequests(st store.Store, mediaItemID uint, requesterID *uint, sc
 	return nil
 }
 
-// applyMatch fetches external metadata and episodes, persists them, then runs
-// the post-match side effects (status recalc + event). It is used by the
-// NON-transactional match paths (matchSingleItem and ManualMatch) where s.store
-// is the top-level store, so performing the
-// network fetch here is safe. The transactional add path
-// (AddMediaToLibraryFull) does NOT use this: it fetches BEFORE opening the
-// transaction, persists inside a short transaction, and runs the side effects
-// AFTER commit (see fetchMatchData / persistMatch / afterMatch).
-func (s *Service) applyMatch(item *store.MediaItem, source, apiKey, mediaType string, externalID int, confidence float64) error {
-	meta, episodes, err := s.fetchMatchData(source, apiKey, mediaType, externalID, confidence)
+func appendRequestActivity(st store.Store, item *store.MediaItem, requesterID uint, scopes []requestScope, mediaAdded bool, before, after *mediasync.MonitoringState, assignedProfile *store.MediaProfile) error {
+	details := mediasync.BuildMonitoringActivityDetails(before, after)
+	details.MediaAdded = &mediaAdded
+	targets := make([]store.MediaActivityTarget, 0, min(len(scopes), store.MediaActivityMaxDetails))
+	for _, scope := range scopes {
+		if len(targets) == store.MediaActivityMaxDetails {
+			details.Truncated = true
+			if len(scopes) > details.Total {
+				details.Total = len(scopes)
+			}
+			break
+		}
+		target := store.MediaActivityTarget{Scope: scope.scope}
+		if scope.scope == store.MediaRequestScopeSeason || scope.scope == store.MediaRequestScopeEpisode {
+			seasonNumber := scope.seasonNumber
+			target.SeasonNumber = &seasonNumber
+		}
+		if scope.scope == store.MediaRequestScopeEpisode {
+			episodeNumber := scope.episodeNumber
+			target.EpisodeNumber = &episodeNumber
+		}
+		targets = append(targets, target)
+	}
+	if len(targets) == 1 {
+		details.Target = &targets[0]
+	} else {
+		details.Targets = targets
+	}
+
+	operationID, err := store.NewMediaActivityOperationID()
 	if err != nil {
 		return err
 	}
-	// Ahead of persistMatch, using the in-memory metadata: persistMatch bumps
-	// media_items.updated_at, which is the frontend's poster cache-buster, and
-	// afterMatch then publishes MediaItemMatched to trigger a refetch. Both the
-	// new URL and the event must become visible only once the new image is
-	// already on disk, or a refetch caches the old poster under the new URL for
-	// the endpoint's full max-age.
-	s.downloadPosterFor(item.ID, meta)
+	activity, err := store.NewUserMediaActivity(item, requesterID, store.MediaActivityActionRequestMade, operationID, store.MediaActivityVisibilityShared, details)
+	if err != nil {
+		return fmt.Errorf("creating request activity: %w", err)
+	}
+	if err := st.AppendMediaActivity(activity); err != nil {
+		return fmt.Errorf("recording request activity: %w", err)
+	}
+	if assignedProfile != nil {
+		label := requestedProfileActivityLabel(assignedProfile)
+		settingsDetails := store.MediaActivityDetails{
+			FieldChanges: []store.MediaActivityFieldChange{{Field: "media_profile", After: &label}},
+			Total:        1,
+		}
+		settingsActivity, err := store.NewUserMediaActivity(item, requesterID, store.MediaActivityActionSettingsChanged, operationID, store.MediaActivityVisibilityShared, settingsDetails)
+		if err != nil {
+			return fmt.Errorf("creating request profile activity: %w", err)
+		}
+		if err := st.AppendMediaActivity(settingsActivity); err != nil {
+			return fmt.Errorf("recording request profile activity: %w", err)
+		}
+	}
+	return nil
+}
 
-	if err := s.persistMatch(item, meta, episodes); err != nil {
+func requestedProfileActivityLabel(profile *store.MediaProfile) string {
+	suffix := fmt.Sprintf(" (ID %d)", profile.ID)
+	name := store.BoundMediaActivityText(profile.Name, store.MediaActivityMaxTitleBytes-len(suffix))
+	return name + suffix
+}
+
+type matchActor struct {
+	userID    uint
+	component string
+}
+
+type matchVersion struct {
+	item     *store.MediaItem
+	metadata *store.MediaMetadata
+}
+
+type episodeKey struct {
+	season  int
+	episode int
+}
+
+func (s *Service) captureMatchVersion(mediaItemID uint) (*matchVersion, error) {
+	item, err := s.store.GetMediaItem(mediaItemID)
+	if err != nil {
+		return nil, err
+	}
+	if item.DeletionPending {
+		return nil, store.ErrMediaDeletionPending
+	}
+	meta, err := s.store.GetMediaMetadataByMediaItem(mediaItemID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		meta = nil
+	}
+	return &matchVersion{item: item, metadata: meta}, nil
+}
+
+func validateMatchActor(st store.Store, actor matchActor) error {
+	if actor.userID == 0 {
+		if actor.component == "" {
+			return store.ErrInvalidMediaActivity
+		}
+		return nil
+	}
+	if _, err := st.GetUser(actor.userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrActivityActorNotFound
+		}
 		return err
 	}
-	s.afterMatch(item, meta, source, externalID)
 	return nil
+}
+
+func sameMatchItemVersion(expected, current *store.MediaItem) bool {
+	return expected != nil && current != nil && expected.ID == current.ID &&
+		expected.LibraryID == current.LibraryID && expected.MediaType == current.MediaType &&
+		expected.Source == current.Source && expected.UpdatedAt.Equal(current.UpdatedAt)
+}
+
+func sameMatchMetadataVersion(expected, current *store.MediaMetadata) bool {
+	if expected == nil || current == nil {
+		return expected == current
+	}
+	return expected.ID == current.ID && expected.MediaItemID == current.MediaItemID &&
+		expected.Source == current.Source && expected.ExternalID == current.ExternalID &&
+		expected.UpdatedAt.Equal(current.UpdatedAt)
+}
+
+func (s *Service) replaceMatch(expected *matchVersion, candidate *store.MediaMetadata, episodes []episodeData, actor matchActor) (*store.MediaItem, *store.MediaMetadata, error) {
+	operationID, err := store.NewMediaActivityOperationID()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var resultItem *store.MediaItem
+	var resultMeta *store.MediaMetadata
+	activityAdded := false
+	s.posterMu.Lock()
+	defer s.posterMu.Unlock()
+	err = s.store.WithTx(func(tx store.Store) error {
+		if err := validateMatchActor(tx, actor); err != nil {
+			return err
+		}
+		currentItem, err := tx.GetMediaItem(expected.item.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return ErrStaleMatchCandidate
+			}
+			return err
+		}
+		if currentItem.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		if !sameMatchItemVersion(expected.item, currentItem) {
+			return ErrStaleMatchCandidate
+		}
+		currentMeta, err := tx.GetMediaMetadataByMediaItem(currentItem.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			currentMeta = nil
+		}
+		if !sameMatchMetadataVersion(expected.metadata, currentMeta) {
+			return ErrStaleMatchCandidate
+		}
+		currentEpisodes, err := tx.ListEpisodesByMediaItem(currentItem.ID)
+		if err != nil {
+			return fmt.Errorf("listing current episodes: %w", err)
+		}
+
+		persistedMeta := *candidate
+		persistedMeta.ID = 0
+		persistedMeta.MediaItemID = currentItem.ID
+		persistedMeta.CreatedAt = time.Time{}
+		persistedMeta.UpdatedAt = time.Time{}
+		if actor.component != "" && sameTrackedMatchSemantics(currentMeta, &persistedMeta, currentEpisodes, episodes) {
+			itemCopy, metaCopy := *currentItem, *currentMeta
+			resultItem, resultMeta = &itemCopy, &metaCopy
+			return nil
+		}
+		details := buildMatchActivityDetails(currentMeta, &persistedMeta, currentEpisodes, episodes, actor.component != "")
+		if currentMeta != nil {
+			if err := tx.DeleteMediaMetadataByMediaItem(currentItem.ID); err != nil {
+				return fmt.Errorf("deleting previous metadata: %w", err)
+			}
+		}
+		if err := tx.DeleteEpisodesByMediaItem(currentItem.ID); err != nil {
+			return fmt.Errorf("deleting previous episodes: %w", err)
+		}
+		if err := tx.CreateMediaMetadata(&persistedMeta); err != nil {
+			return fmt.Errorf("saving metadata: %w", err)
+		}
+		for _, episode := range episodes {
+			if err := tx.CreateEpisode(newEpisodeFromData(currentItem.ID, episode)); err != nil {
+				return fmt.Errorf("creating episode S%02dE%02d: %w", episode.seasonNumber, episode.episodeNumber, err)
+			}
+		}
+		if currentItem.Source != "request" {
+			currentItem.Status = "available"
+		}
+		if err := tx.UpdateMediaItem(currentItem); err != nil {
+			return fmt.Errorf("updating matched item: %w", err)
+		}
+
+		var activity *store.MediaActivity
+		if actor.userID != 0 {
+			activity, err = store.NewUserMediaActivity(currentItem, actor.userID, store.MediaActivityActionMatchChanged, operationID, store.MediaActivityVisibilityShared, details)
+		} else {
+			activity, err = store.NewSystemMediaActivity(currentItem, actor.component, store.MediaActivityActionMatchChanged, operationID, details)
+		}
+		if err != nil {
+			return fmt.Errorf("creating match activity: %w", err)
+		}
+		if err := tx.AppendMediaActivity(activity); err != nil {
+			return fmt.Errorf("recording match activity: %w", err)
+		}
+		activityAdded = true
+		itemCopy, metaCopy := *currentItem, persistedMeta
+		resultItem, resultMeta = &itemCopy, &metaCopy
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if !activityAdded {
+		return resultItem, resultMeta, nil
+	}
+
+	s.publishActivityAdded(resultItem.ID)
+	s.downloadPosterForCommitted(resultItem.ID, resultMeta, operationID)
+	s.afterMatch(resultItem, resultMeta, resultMeta.Source, resultMeta.ExternalID)
+	if fresh, err := s.store.GetMediaItem(resultItem.ID); err == nil {
+		resultItem = fresh
+	}
+	if fresh, err := s.store.GetMediaMetadataByMediaItem(resultItem.ID); err == nil {
+		resultMeta = fresh
+	}
+	return resultItem, resultMeta, nil
+}
+
+func sameTrackedMatchSemantics(oldMeta, newMeta *store.MediaMetadata, oldEpisodes []store.Episode, newEpisodes []episodeData) bool {
+	if oldMeta == nil || newMeta == nil || oldMeta.Source != newMeta.Source || oldMeta.ExternalID != newMeta.ExternalID ||
+		strings.TrimSpace(oldMeta.Title) != strings.TrimSpace(newMeta.Title) ||
+		strings.TrimSpace(oldMeta.Status) != strings.TrimSpace(newMeta.Status) ||
+		!sameOptionalInt(oldMeta.Year, newMeta.Year) || !sameOptionalInt(oldMeta.Seasons, newMeta.Seasons) || !sameOptionalInt(oldMeta.Runtime, newMeta.Runtime) {
+		return false
+	}
+	added, removed := changedEpisodeKeys(oldEpisodes, newEpisodes)
+	return len(added) == 0 && len(removed) == 0
+}
+
+func sameOptionalInt(left, right *int) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func buildMatchActivityDetails(oldMeta, newMeta *store.MediaMetadata, oldEpisodes []store.Episode, newEpisodes []episodeData, automatic bool) store.MediaActivityDetails {
+	added, removed := changedEpisodeKeys(oldEpisodes, newEpisodes)
+	changedTargets := append(append([]episodeKey(nil), added...), removed...)
+	sortEpisodeKeys(changedTargets)
+	fieldChanges := matchFieldChanges(oldMeta, newMeta)
+	details := store.MediaActivityDetails{
+		OldProvider:  providerIdentity(oldMeta),
+		NewProvider:  providerIdentity(newMeta),
+		Automatic:    &automatic,
+		Added:        len(added),
+		Removed:      len(removed),
+		FieldChanges: fieldChanges,
+		Total:        len(added) + len(removed) + len(fieldChanges),
+	}
+	details.Targets, details.Truncated = boundedEpisodeTargets(changedTargets, false)
+	return details
+}
+
+func matchFieldChanges(oldMeta, newMeta *store.MediaMetadata) []store.MediaActivityFieldChange {
+	changes := make([]store.MediaActivityFieldChange, 0, 5)
+	appendChange := func(field string, before, after *string) {
+		if sameActivityString(before, after) {
+			return
+		}
+		changes = append(changes, store.MediaActivityFieldChange{Field: field, Before: before, After: after})
+	}
+	appendChange("title", metadataString(oldMeta, func(meta *store.MediaMetadata) string { return meta.Title }), metadataString(newMeta, func(meta *store.MediaMetadata) string { return meta.Title }))
+	appendChange("year", metadataInt(oldMeta, func(meta *store.MediaMetadata) *int { return meta.Year }), metadataInt(newMeta, func(meta *store.MediaMetadata) *int { return meta.Year }))
+	appendChange("status", metadataString(oldMeta, func(meta *store.MediaMetadata) string { return meta.Status }), metadataString(newMeta, func(meta *store.MediaMetadata) string { return meta.Status }))
+	appendChange("season_count", metadataInt(oldMeta, func(meta *store.MediaMetadata) *int { return meta.Seasons }), metadataInt(newMeta, func(meta *store.MediaMetadata) *int { return meta.Seasons }))
+	appendChange("runtime", metadataInt(oldMeta, func(meta *store.MediaMetadata) *int { return meta.Runtime }), metadataInt(newMeta, func(meta *store.MediaMetadata) *int { return meta.Runtime }))
+	return changes
+}
+
+func metadataString(meta *store.MediaMetadata, value func(*store.MediaMetadata) string) *string {
+	if meta == nil {
+		return nil
+	}
+	bounded := store.BoundMediaActivityText(strings.TrimSpace(value(meta)), store.MediaActivityMaxTitleBytes)
+	if bounded == "" {
+		return nil
+	}
+	return &bounded
+}
+
+func metadataInt(meta *store.MediaMetadata, value func(*store.MediaMetadata) *int) *string {
+	if meta == nil || value(meta) == nil {
+		return nil
+	}
+	formatted := strconv.Itoa(*value(meta))
+	return &formatted
+}
+
+func sameActivityString(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func providerIdentity(meta *store.MediaMetadata) *store.MediaActivityProviderIdentity {
+	if meta == nil {
+		return nil
+	}
+	return &store.MediaActivityProviderIdentity{
+		Source:     meta.Source,
+		ExternalID: meta.ExternalID,
+		Title:      store.BoundMediaActivityText(meta.Title, store.MediaActivityMaxTitleBytes),
+	}
+}
+
+func changedEpisodeKeys(oldEpisodes []store.Episode, newEpisodes []episodeData) (added, removed []episodeKey) {
+	oldSet := make(map[episodeKey]struct{}, len(oldEpisodes))
+	newSet := make(map[episodeKey]struct{}, len(newEpisodes))
+	for _, episode := range oldEpisodes {
+		oldSet[episodeKey{season: episode.SeasonNumber, episode: episode.EpisodeNumber}] = struct{}{}
+	}
+	for _, episode := range newEpisodes {
+		newSet[episodeKey{season: episode.seasonNumber, episode: episode.episodeNumber}] = struct{}{}
+	}
+	for key := range newSet {
+		if _, ok := oldSet[key]; !ok {
+			added = append(added, key)
+		}
+	}
+	for key := range oldSet {
+		if _, ok := newSet[key]; !ok {
+			removed = append(removed, key)
+		}
+	}
+	sortEpisodeKeys(added)
+	sortEpisodeKeys(removed)
+	return added, removed
+}
+
+func episodeKeysFromStored(episodes []store.Episode) []episodeKey {
+	keys := make([]episodeKey, 0, len(episodes))
+	for _, episode := range episodes {
+		keys = append(keys, episodeKey{season: episode.SeasonNumber, episode: episode.EpisodeNumber})
+	}
+	sortEpisodeKeys(keys)
+	return keys
+}
+
+func sortEpisodeKeys(keys []episodeKey) {
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].season != keys[j].season {
+			return keys[i].season < keys[j].season
+		}
+		return keys[i].episode < keys[j].episode
+	})
+}
+
+func boundedEpisodeTargets(keys []episodeKey, alreadyTruncated bool) ([]store.MediaActivityTarget, bool) {
+	limit := min(len(keys), store.MediaActivityMaxDetails)
+	targets := make([]store.MediaActivityTarget, limit)
+	for i := 0; i < limit; i++ {
+		season, episode := keys[i].season, keys[i].episode
+		targets[i] = store.MediaActivityTarget{Scope: store.MediaActivityScopeEpisode, SeasonNumber: &season, EpisodeNumber: &episode}
+	}
+	return targets, alreadyTruncated || len(keys) > limit
 }
 
 // fetchMatchData fetches full metadata and, for series, the episode lists for
@@ -902,13 +1431,15 @@ func (s *Service) fetchMatchData(source, apiKey, mediaType string, externalID in
 		}
 	}
 
-	// For series with season info, fetch episode lists into memory.
-	var episodes []episodeData
 	if mediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
-		episodes = s.fetchEpisodesForSeasons(source, apiKey, externalID, *meta.Seasons)
+		episodes, err := s.fetchEpisodesForSeasons(source, apiKey, externalID, *meta.Seasons)
+		if err != nil {
+			return nil, nil, err
+		}
+		return meta, episodes, nil
 	}
 
-	return meta, episodes, nil
+	return meta, nil, nil
 }
 
 // persistMatch writes the already-fetched metadata and episodes for item. It
@@ -931,9 +1462,13 @@ func (s *Service) persistMatch(item *store.MediaItem, meta *store.MediaMetadata,
 
 	// For series with season info, replace episode records with the fetched set.
 	if item.MediaType == "series" && meta.Seasons != nil && *meta.Seasons > 0 {
-		_ = s.store.DeleteEpisodesByMediaItem(item.ID)
+		if err := s.store.DeleteEpisodesByMediaItem(item.ID); err != nil {
+			return fmt.Errorf("deleting existing episodes: %w", err)
+		}
 		for _, ep := range episodes {
-			_ = s.store.CreateEpisode(newEpisodeFromData(item.ID, ep))
+			if err := s.store.CreateEpisode(newEpisodeFromData(item.ID, ep)); err != nil {
+				return fmt.Errorf("creating episode S%02dE%02d: %w", ep.seasonNumber, ep.episodeNumber, err)
+			}
 		}
 	}
 
@@ -966,24 +1501,34 @@ func (s *Service) afterMatch(item *store.MediaItem, meta *store.MediaMetadata, s
 	}
 }
 
+func (s *Service) publishActivityAdded(mediaItemID uint) {
+	if s.bus != nil {
+		s.bus.Publish(eventbus.MediaActivityAdded, eventbus.MediaActivityPayload{MediaItemID: mediaItemID})
+	}
+}
+
 // DownloadPoster fetches the poster image for a media item by loading its
 // stored metadata first. This is intentionally separate from applyMatch so it
 // can run outside a DB transaction.
 func (s *Service) DownloadPoster(itemID uint) {
+	s.posterMu.Lock()
+	defer s.posterMu.Unlock()
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil || item.DeletionPending {
+		return
+	}
 	meta, err := s.store.GetMediaMetadataByMediaItem(itemID)
 	if err != nil || meta == nil {
 		return
 	}
 	s.downloadPosterFor(itemID, meta)
+	if current, err := s.store.GetMediaItem(itemID); err != nil || current.DeletionPending {
+		_ = os.Remove(filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID)))
+	}
 }
 
-// downloadPosterFor fetches the poster described by meta, which the caller may
-// hold in memory before it has been persisted. applyMatch relies on that: the
-// poster has to land on disk BEFORE persistMatch bumps media_items.updated_at,
-// because that timestamp is the frontend's cache-busting key. Writing the file
-// afterwards leaves a window where the new URL is already visible while the old
-// image is still on disk — a refetch in that window pins the stale poster for
-// the endpoint's full max-age.
+// downloadPosterFor fetches and atomically installs the poster described by
+// already-persisted metadata.
 func (s *Service) downloadPosterFor(itemID uint, meta *store.MediaMetadata) {
 	posterURL := s.posterURL(meta.Source, meta)
 	if posterURL == "" {
@@ -995,6 +1540,59 @@ func (s *Service) downloadPosterFor(itemID uint, meta *store.MediaMetadata) {
 		slog.Warn("poster download failed", "item_id", itemID, "error", err)
 		return
 	}
+}
+
+// downloadPosterForCommitted stages provider I/O away from the database and
+// installs the image only if the committed metadata candidate is still current.
+func (s *Service) downloadPosterForCommitted(itemID uint, expected *store.MediaMetadata, operationID string) {
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	posterURL := s.posterURL(expected.Source, expected)
+	if posterURL == "" {
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	staged := filepath.Join(s.posterDir, fmt.Sprintf(".poster-%d-%s.jpg", itemID, operationID))
+	defer func() { _ = os.Remove(staged) }()
+	if err := downloadPoster(s.httpClient, posterURL, staged); err != nil {
+		slog.Warn("poster download failed", "item_id", itemID, "error", err)
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := os.Rename(staged, dest); err != nil {
+		slog.Warn("poster install failed", "item_id", itemID, "error", err)
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	if !s.posterCandidateCurrent(itemID, expected) {
+		if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("stale poster cleanup failed", "item_id", itemID, "error", err)
+		}
+	}
+}
+
+func (s *Service) removePosterForCommitted(itemID uint, expected *store.MediaMetadata) {
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Warn("old poster cleanup failed", "item_id", itemID, "error", err)
+	}
+}
+
+func (s *Service) posterCandidateCurrent(itemID uint, expected *store.MediaMetadata) bool {
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil || item.DeletionPending {
+		return false
+	}
+	current, err := s.store.GetMediaMetadataByMediaItem(itemID)
+	return err == nil && sameMatchMetadataVersion(expected, current)
 }
 
 type episodeData struct {
@@ -1055,22 +1653,18 @@ func (s *Service) FetchExternalEpisodes(source string, externalID, seasonCount i
 	return result, nil
 }
 
-// fetchEpisodesForSeasons fetches episode lists for seasons 1..seasonCount from
-// the external source into memory. It performs NO database writes (persistence
-// is handled by persistMatch), so it is safe to call before a transaction is
-// opened. Per-season fetch failures are logged and skipped, matching the
-// previous fetch-and-store behavior.
-func (s *Service) fetchEpisodesForSeasons(source, apiKey string, externalID, seasonCount int) []episodeData {
+// fetchEpisodesForSeasons requires every provider window so a replacement can
+// never turn a transient season failure into catalog deletion.
+func (s *Service) fetchEpisodesForSeasons(source, apiKey string, externalID, seasonCount int) ([]episodeData, error) {
 	var all []episodeData
 	for season := 1; season <= seasonCount; season++ {
 		episodes, err := s.fetchEpisodesFromSource(source, apiKey, externalID, season)
 		if err != nil {
-			slog.Warn("failed to fetch episodes", "season", season, "source", source, "error", err)
-			continue
+			return nil, fmt.Errorf("fetching %s season %d episodes: %w", source, season, err)
 		}
 		all = append(all, episodes...)
 	}
-	return all
+	return all, nil
 }
 
 func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, season int) ([]episodeData, error) {
@@ -1319,155 +1913,286 @@ func (s *Service) TMDBClient() *tmdb.Client {
 	return s.cachedTMDB(apiKey)
 }
 
-// RefreshSeriesMetadata checks TMDB/TVDB for new seasons and new episodes on a
-// matched series. When the season count increases, it fetches episodes for the
-// brand-new seasons and backfills the previous last season. When it stays the
-// same, it re-fetches ALL known seasons and inserts any episodes not yet in the
-// database (covers providers adding episodes to any season after the initial
-// match). Also corrects stale season counts (e.g. after TVDB counting fix).
-// Returns true if the metadata was updated.
-func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.MediaMetadata) (bool, error) {
-	apiKey, err := s.resolveAPIKey(meta.Source)
-	if err != nil {
-		return false, err
-	}
-
-	var newSeasons int
-	var newStatus string
-
-	switch meta.Source {
-	case "tmdb":
-		details, err := s.cachedTMDB(apiKey).GetTV(meta.ExternalID)
-		if err != nil {
-			return false, fmt.Errorf("fetching TMDB TV %d: %w", meta.ExternalID, err)
-		}
-		newSeasons = details.NumberOfSeasons
-		newStatus = details.Status
-	case "tvdb":
-		details, err := s.cachedTVDB(apiKey).GetSeries(meta.ExternalID)
-		if err != nil {
-			return false, fmt.Errorf("fetching TVDB series %d: %w", meta.ExternalID, err)
-		}
-		newSeasons = details.MaxSeasonNumber()
-		newStatus = details.Status.Name
-	default:
-		return false, fmt.Errorf("unknown source: %s", meta.Source)
-	}
-
-	oldSeasons := 0
-	if meta.Seasons != nil {
-		oldSeasons = *meta.Seasons
-	}
-
-	statusChanged := newStatus != "" && newStatus != meta.Status
-	seasonsChanged := newSeasons > oldSeasons
-
-	changed := false
-
-	if seasonsChanged {
-		// Backfill the previous last season — it may have gained episodes
-		// since the last refresh (e.g. still airing when a new season appeared).
-		if oldSeasons > 0 {
-			if n := s.backfillSeasonEpisodes(item.ID, meta, apiKey, oldSeasons); n > 0 {
-				slog.Info("metadata refresh: backfilled old last season",
-					"item_id", item.ID, "season", oldSeasons, "new_episodes", n)
-			}
-		}
-		// Fetch episodes for brand-new seasons only.
-		for season := oldSeasons + 1; season <= newSeasons; season++ {
-			episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
-			if err != nil {
-				slog.Warn("metadata refresh: failed to fetch episodes",
-					"item_id", item.ID, "season", season, "source", meta.Source, "error", err)
-				continue
-			}
-			for _, ep := range episodes {
-				if err := s.store.CreateEpisode(newEpisodeFromData(item.ID, ep)); err != nil {
-					slog.Warn("metadata refresh: failed to create episode",
-						"item_id", item.ID, "season", ep.seasonNumber,
-						"episode", ep.episodeNumber, "error", err)
-				}
-			}
-		}
-		meta.Seasons = &newSeasons
-		changed = true
-	} else if oldSeasons > 0 {
-		// Season count unchanged — re-check ALL known seasons for new
-		// episodes that the provider may have added since the initial match
-		// (e.g. a currently-airing season gaining new episode listings).
-		for season := 1; season <= oldSeasons; season++ {
-			newEps := s.backfillSeasonEpisodes(item.ID, meta, apiKey, season)
-			if newEps > 0 {
-				changed = true
-			}
-		}
-	}
-
-	// Correct stale season count when the provider reports fewer seasons than
-	// stored (e.g. after fixing TVDB counting that previously included specials).
-	if newSeasons > 0 && newSeasons < oldSeasons {
-		meta.Seasons = &newSeasons
-		changed = true
-	}
-
-	if statusChanged {
-		meta.Status = newStatus
-		changed = true
-	}
-
-	if !changed {
-		return false, nil
-	}
-
-	if err := s.store.UpdateMediaMetadata(meta); err != nil {
-		return false, fmt.Errorf("updating metadata: %w", err)
-	}
-
-	slog.Info("metadata refreshed",
-		"item_id", item.ID, "title", item.Title,
-		"old_seasons", oldSeasons, "new_seasons", newSeasons,
-		"status", meta.Status)
-
-	return true, nil
+type MetadataRefreshResult struct {
+	Changed       bool
+	ActivityAdded bool
 }
 
-// backfillSeasonEpisodes fetches episodes for the given season from the
-// provider and inserts any that are missing from the database. Returns the
-// number of new episodes inserted.
-func (s *Service) backfillSeasonEpisodes(mediaItemID uint, meta *store.MediaMetadata, apiKey string, season int) int {
-	episodes, err := s.fetchEpisodesFromSource(meta.Source, apiKey, meta.ExternalID, season)
+type refreshWindow struct {
+	episodes []episodeData
+}
+
+// RefreshSeriesMetadata fetches provider candidates without a write lock, then
+// atomically applies the semantic status/season/episode diff and future-season
+// policy against the same fresh transaction snapshot.
+func (s *Service) RefreshSeriesMetadata(item *store.MediaItem, meta *store.MediaMetadata) (MetadataRefreshResult, error) {
+	var result MetadataRefreshResult
+	if item == nil || meta == nil {
+		return result, ErrStaleRefreshCandidate
+	}
+	if item.DeletionPending {
+		return result, store.ErrMediaDeletionPending
+	}
+	expectedItem, expectedMeta := *item, *meta
+	apiKey, err := s.resolveAPIKey(expectedMeta.Source)
 	if err != nil {
-		slog.Warn("metadata refresh: failed to fetch episodes for backfill",
-			"item_id", mediaItemID, "season", season, "source", meta.Source, "error", err)
+		return result, err
+	}
+
+	var providerSeasons int
+	var providerStatus string
+	switch expectedMeta.Source {
+	case "tmdb":
+		details, err := s.cachedTMDB(apiKey).GetTV(expectedMeta.ExternalID)
+		if err != nil {
+			return result, fmt.Errorf("fetching TMDB TV %d: %w", expectedMeta.ExternalID, err)
+		}
+		providerSeasons, providerStatus = details.NumberOfSeasons, details.Status
+	case "tvdb":
+		details, err := s.cachedTVDB(apiKey).GetSeries(expectedMeta.ExternalID)
+		if err != nil {
+			return result, fmt.Errorf("fetching TVDB series %d: %w", expectedMeta.ExternalID, err)
+		}
+		providerSeasons, providerStatus = details.MaxSeasonNumber(), details.Status.Name
+	default:
+		return result, fmt.Errorf("unknown source: %s", expectedMeta.Source)
+	}
+
+	oldSeasons := metadataSeasonCount(&expectedMeta)
+	windows := refreshSeasonWindows(oldSeasons, providerSeasons)
+	successful := make([]refreshWindow, 0, len(windows))
+	failedWindows := 0
+	for _, season := range windows {
+		episodes, err := s.fetchEpisodesFromSource(expectedMeta.Source, apiKey, expectedMeta.ExternalID, season)
+		if err != nil {
+			failedWindows++
+			slog.Warn("metadata refresh: failed provider window", "item_id", expectedItem.ID, "season", season, "source", expectedMeta.Source, "error", err)
+			continue
+		}
+		successful = append(successful, refreshWindow{episodes: episodes})
+	}
+
+	err = s.store.WithTx(func(tx store.Store) error {
+		currentItem, err := tx.GetMediaItem(expectedItem.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return ErrStaleRefreshCandidate
+			}
+			return err
+		}
+		if currentItem.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		currentMeta, err := tx.GetMediaMetadataByMediaItem(expectedItem.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return ErrStaleRefreshCandidate
+			}
+			return err
+		}
+		if !sameMatchItemVersion(&expectedItem, currentItem) || !sameMatchMetadataVersion(&expectedMeta, currentMeta) {
+			return ErrStaleRefreshCandidate
+		}
+		storedEpisodes, err := tx.ListEpisodesByMediaItem(currentItem.ID)
+		if err != nil {
+			return fmt.Errorf("listing episodes: %w", err)
+		}
+		seasonMonitors, err := tx.ListSeasonMonitorsByMediaItem(currentItem.ID)
+		if err != nil {
+			return fmt.Errorf("listing season monitors: %w", err)
+		}
+
+		currentSeasons := metadataSeasonCount(currentMeta)
+		newSeasons := providerSeasons
+		if newSeasons <= 0 {
+			newSeasons = currentSeasons
+		}
+		currentStatus := strings.TrimSpace(currentMeta.Status)
+		newStatus := strings.TrimSpace(providerStatus)
+		if newStatus == "" {
+			newStatus = currentStatus
+		}
+
+		fieldChanges := make([]store.MediaActivityFieldChange, 0, 2)
+		if currentStatus != newStatus {
+			before, after := activityString(currentStatus), activityString(newStatus)
+			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{Field: "status", Before: before, After: after})
+			currentMeta.Status = newStatus
+		}
+		if currentSeasons != newSeasons {
+			before, after := strconv.Itoa(currentSeasons), strconv.Itoa(newSeasons)
+			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{Field: "season_count", Before: &before, After: &after})
+			currentMeta.Seasons = &newSeasons
+		}
+
+		existing := make(map[episodeKey]struct{}, len(storedEpisodes))
+		for _, episode := range storedEpisodes {
+			existing[episodeKey{season: episode.SeasonNumber, episode: episode.EpisodeNumber}] = struct{}{}
+		}
+		additions := make([]episodeData, 0)
+		for _, window := range successful {
+			for _, episode := range window.episodes {
+				key := episodeKey{season: episode.seasonNumber, episode: episode.episodeNumber}
+				if _, ok := existing[key]; ok {
+					continue
+				}
+				existing[key] = struct{}{}
+				additions = append(additions, episode)
+			}
+		}
+		sort.Slice(additions, func(i, j int) bool {
+			if additions[i].seasonNumber != additions[j].seasonNumber {
+				return additions[i].seasonNumber < additions[j].seasonNumber
+			}
+			return additions[i].episodeNumber < additions[j].episodeNumber
+		})
+		policyChanges, err := applyFutureSeasonPolicy(tx, currentItem, seasonMonitors, currentSeasons, newSeasons)
+		if err != nil {
+			return err
+		}
+		if len(fieldChanges) == 0 && len(additions) == 0 && len(policyChanges) == 0 {
+			return nil
+		}
+
+		// Bump both versions for every semantic refresh change. Metadata protects
+		// match candidates; the item version invalidates saved monitor decisions.
+		if err := tx.UpdateMediaMetadata(currentMeta); err != nil {
+			return fmt.Errorf("updating metadata: %w", err)
+		}
+		for _, episode := range additions {
+			if err := tx.CreateEpisode(newEpisodeFromData(currentItem.ID, episode)); err != nil {
+				return fmt.Errorf("creating episode S%02dE%02d: %w", episode.seasonNumber, episode.episodeNumber, err)
+			}
+		}
+		if err := tx.UpdateMediaItem(currentItem); err != nil {
+			return fmt.Errorf("touching refreshed media item: %w", err)
+		}
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		targetKeys := make([]episodeKey, len(additions))
+		for i, episode := range additions {
+			targetKeys[i] = episodeKey{season: episode.seasonNumber, episode: episode.episodeNumber}
+		}
+		targets, truncated := boundedEpisodeTargets(targetKeys, false)
+		metadataDetails := store.MediaActivityDetails{
+			FieldChanges:              fieldChanges,
+			Targets:                   targets,
+			Added:                     len(additions),
+			Total:                     len(fieldChanges) + len(additions),
+			Truncated:                 truncated,
+			Partial:                   failedWindows > 0,
+			FailedProviderWindows:     failedWindows,
+			SuccessfulProviderWindows: len(successful),
+		}
+		activity, err := store.NewSystemMediaActivity(currentItem, "metarefresh", store.MediaActivityActionMetadataChanged, operationID, metadataDetails)
+		if err != nil {
+			return fmt.Errorf("creating metadata activity: %w", err)
+		}
+		if err := tx.AppendMediaActivity(activity); err != nil {
+			return fmt.Errorf("recording metadata activity: %w", err)
+		}
+		if len(policyChanges) > 0 {
+			policyDetails := store.MediaActivityDetails{
+				Reason:            "future_season_policy",
+				MonitoringChanges: policyChanges[:min(len(policyChanges), store.MediaActivityMaxDetails)],
+				Total:             len(policyChanges),
+				Truncated:         len(policyChanges) > store.MediaActivityMaxDetails,
+			}
+			policyActivity, err := store.NewSystemMediaActivity(currentItem, "metarefresh", store.MediaActivityActionMonitoringChanged, operationID, policyDetails)
+			if err != nil {
+				return fmt.Errorf("creating future-season activity: %w", err)
+			}
+			if err := tx.AppendMediaActivity(policyActivity); err != nil {
+				return fmt.Errorf("recording future-season activity: %w", err)
+			}
+		}
+		result.Changed = true
+		result.ActivityAdded = true
+		return nil
+	})
+	if err != nil {
+		return MetadataRefreshResult{}, err
+	}
+	return result, nil
+}
+
+func metadataSeasonCount(meta *store.MediaMetadata) int {
+	if meta == nil || meta.Seasons == nil || *meta.Seasons < 0 {
 		return 0
 	}
+	return *meta.Seasons
+}
 
-	inserted := 0
-	for _, ep := range episodes {
-		// Skip episodes that already exist in the database.
-		_, err := s.store.GetEpisodeByNumber(mediaItemID, ep.seasonNumber, ep.episodeNumber)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, store.ErrNotFound) {
-			slog.Warn("metadata refresh: failed to check existing episode",
-				"item_id", mediaItemID, "season", ep.seasonNumber,
-				"episode", ep.episodeNumber, "error", err)
-			continue
-		}
-
-		if err := s.store.CreateEpisode(newEpisodeFromData(mediaItemID, ep)); err != nil {
-			slog.Warn("metadata refresh: failed to create backfill episode",
-				"item_id", mediaItemID, "season", ep.seasonNumber,
-				"episode", ep.episodeNumber, "error", err)
-			continue
-		}
-		inserted++
-		slog.Info("metadata refresh: backfilled new episode",
-			"item_id", mediaItemID, "season", ep.seasonNumber,
-			"episode", ep.episodeNumber, "title", ep.title)
+func refreshSeasonWindows(oldSeasons, providerSeasons int) []int {
+	if oldSeasons <= 0 && providerSeasons <= 0 {
+		return nil
 	}
-	return inserted
+	if providerSeasons > oldSeasons {
+		windows := make([]int, 0, providerSeasons-oldSeasons+1)
+		if oldSeasons > 0 {
+			windows = append(windows, oldSeasons)
+		}
+		for season := oldSeasons + 1; season <= providerSeasons; season++ {
+			windows = append(windows, season)
+		}
+		return windows
+	}
+	windows := make([]int, oldSeasons)
+	for season := 1; season <= oldSeasons; season++ {
+		windows[season-1] = season
+	}
+	return windows
+}
+
+func applyFutureSeasonPolicy(st store.Store, item *store.MediaItem, monitors []store.SeasonMonitor, oldSeasons, newSeasons int) ([]store.MediaActivityMonitoringChange, error) {
+	if !item.Monitored || !item.MonitorNewSeasons || newSeasons <= oldSeasons {
+		return nil, nil
+	}
+	bySeason := make(map[int]*store.SeasonMonitor, len(monitors))
+	for i := range monitors {
+		bySeason[monitors[i].SeasonNumber] = &monitors[i]
+	}
+	changes := make([]store.MediaActivityMonitoringChange, 0, newSeasons-oldSeasons)
+	for season := oldSeasons + 1; season <= newSeasons; season++ {
+		monitor := bySeason[season]
+		var before *bool
+		if monitor == nil {
+			monitor = &store.SeasonMonitor{MediaItemID: item.ID, SeasonNumber: season, Monitored: true}
+			if err := st.CreateSeasonMonitor(monitor); err != nil {
+				return nil, fmt.Errorf("creating future season %d monitor: %w", season, err)
+			}
+		} else {
+			value := monitor.Monitored
+			before = &value
+			if monitor.Monitored {
+				continue
+			}
+			monitor.Monitored = true
+			if err := st.UpdateSeasonMonitor(monitor); err != nil {
+				return nil, fmt.Errorf("enabling future season %d monitor: %w", season, err)
+			}
+		}
+		after := true
+		seasonNumber := season
+		changes = append(changes, store.MediaActivityMonitoringChange{
+			Target:          store.MediaActivityTarget{Scope: store.MediaActivityScopeSeason, SeasonNumber: &seasonNumber},
+			Before:          before,
+			After:           &after,
+			EffectiveBefore: false,
+			EffectiveAfter:  true,
+		})
+	}
+	return changes, nil
+}
+
+func activityString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	bounded := store.BoundMediaActivityText(value, store.MediaActivityMaxTitleBytes)
+	return &bounded
 }
 
 // newEpisodeFromData converts an episodeData (provider response) into a

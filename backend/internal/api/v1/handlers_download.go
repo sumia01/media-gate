@@ -9,7 +9,11 @@ import (
 	"github.com/sumia01/media-gate/internal/store"
 )
 
-func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestObject) (CreateDownloadResponseObject, error) {
+func (h *Handlers) CreateDownload(ctx context.Context, req CreateDownloadRequestObject) (CreateDownloadResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	dl := &store.Download{
 		MediaItemID: uint(req.Body.MediaItemId),
 		IndexerID:   uint(req.Body.IndexerId),
@@ -35,7 +39,7 @@ func (h *Handlers) CreateDownload(_ context.Context, req CreateDownloadRequestOb
 		dl.ImdbID = *req.Body.ImdbId
 	}
 
-	if err := h.downloadSvc.Create(dl); err != nil {
+	if err := h.downloadSvc.Create(userID, dl); err != nil {
 		return CreateDownload400JSONResponse{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
@@ -94,8 +98,12 @@ func (h *Handlers) GetDownload(_ context.Context, req GetDownloadRequestObject) 
 	return GetDownload200JSONResponse(downloadToAPI(dl)), nil
 }
 
-func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadStatusRequestObject) (UpdateDownloadStatusResponseObject, error) {
-	dl, err := h.downloadSvc.UpdateStatus(uint(req.Id), string(req.Body.Status))
+func (h *Handlers) UpdateDownloadStatus(ctx context.Context, req UpdateDownloadStatusRequestObject) (UpdateDownloadStatusResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dl, err := h.downloadSvc.UpdateStatus(userID, uint(req.Id), string(req.Body.Status))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateDownloadStatus404JSONResponse{
@@ -108,9 +116,13 @@ func (h *Handlers) UpdateDownloadStatus(_ context.Context, req UpdateDownloadSta
 	return UpdateDownloadStatus200JSONResponse(downloadToAPI(dl)), nil
 }
 
-func (h *Handlers) DeleteDownload(_ context.Context, req DeleteDownloadRequestObject) (DeleteDownloadResponseObject, error) {
+func (h *Handlers) DeleteDownload(ctx context.Context, req DeleteDownloadRequestObject) (DeleteDownloadResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	deleteFiles := req.Params.DeleteFiles != nil && *req.Params.DeleteFiles
-	if err := h.mediaSvc.DeleteDownload(uint(req.Id), deleteFiles); err != nil {
+	if err := h.mediaSvc.DeleteDownload(userID, uint(req.Id), deleteFiles); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteDownload404JSONResponse{
 				Code:    http.StatusNotFound,

@@ -60,7 +60,13 @@ const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
 async function checkWatched(d = detail.value, request = detailRequest) {
   if (!d) return
   const { data } = await client.GET('/watched/check', {
-    params: { query: { source: d.source as 'tmdb' | 'tvdb', externalId: d.externalId } },
+    params: {
+      query: {
+        source: d.source as 'tmdb' | 'tvdb',
+        externalId: d.externalId,
+        mediaType: d.mediaType as 'movie' | 'series',
+      },
+    },
   })
   if (request !== detailRequest) return
   if (data) {

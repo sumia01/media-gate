@@ -590,6 +590,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /media/{id}/activity:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getMediaActivity
+      tags: [media]
+      summary: Recorded activity for a media item, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: before
+          in: query
+          description: Opaque exclusive cursor returned by the previous page
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        "200":
+          description: Authorized activity page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaActivityPage"
+        "400":
+          description: Invalid limit or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Media item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /media/{id}:
     parameters:
       - name: id
@@ -2110,6 +2156,12 @@ paths:
           required: true
           schema:
             type: integer
+        - name: mediaType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [movie, series]
       responses:
         "200":
           description: Watched check result
@@ -2453,6 +2505,198 @@ components:
         downloadId:
           type: integer
           format: int64
+
+    MediaActivityPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaActivity"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+
+    MediaActivity:
+      type: object
+      required: [id, recordedAt, actor, action, operationId, mediaTitle, detailsVersion]
+      properties:
+        id:
+          type: integer
+          format: int64
+        recordedAt:
+          type: string
+          format: date-time
+        actor:
+          $ref: "#/components/schemas/MediaActivityActor"
+        action:
+          type: string
+          description: Stable action identifier; clients must safely handle unknown future values
+        operationId:
+          type: string
+        mediaTitle:
+          type: string
+        detailsVersion:
+          type: integer
+        details:
+          $ref: "#/components/schemas/MediaActivityDetails"
+
+    MediaActivityActor:
+      type: object
+      required: [kind, name]
+      properties:
+        kind:
+          type: string
+          enum: [user, system]
+        name:
+          type: string
+        userId:
+          type: integer
+          format: int64
+        component:
+          type: string
+
+    MediaActivityTarget:
+      type: object
+      required: [scope]
+      properties:
+        scope:
+          type: string
+          enum: [media, whole_series, future_seasons, season, episode, unknown]
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        objectId:
+          type: integer
+          format: int64
+        title:
+          type: string
+
+    MediaActivityMonitoringChange:
+      type: object
+      required: [target, effectiveBefore, effectiveAfter]
+      properties:
+        target:
+          $ref: "#/components/schemas/MediaActivityTarget"
+        before:
+          type: boolean
+          nullable: true
+        after:
+          type: boolean
+          nullable: true
+        effectiveBefore:
+          type: boolean
+        effectiveAfter:
+          type: boolean
+
+    MediaActivityFieldChange:
+      type: object
+      required: [field]
+      properties:
+        field:
+          type: string
+        before:
+          type: string
+          nullable: true
+        after:
+          type: string
+          nullable: true
+        target:
+          $ref: "#/components/schemas/MediaActivityTarget"
+
+    MediaActivityProviderIdentity:
+      type: object
+      required: [source, externalId]
+      properties:
+        source:
+          type: string
+        externalId:
+          type: integer
+        title:
+          type: string
+
+    MediaActivityDetails:
+      type: object
+      properties:
+        reason:
+          type: string
+        target:
+          $ref: "#/components/schemas/MediaActivityTarget"
+        targets:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/MediaActivityTarget"
+        monitoringChanges:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/MediaActivityMonitoringChange"
+        fieldChanges:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/MediaActivityFieldChange"
+        mediaAdded:
+          type: boolean
+        automatic:
+          type: boolean
+        releaseName:
+          type: string
+        indexerName:
+          type: string
+        downloadId:
+          type: integer
+          format: int64
+        oldStatus:
+          type: string
+        newStatus:
+          type: string
+        oldProvider:
+          $ref: "#/components/schemas/MediaActivityProviderIdentity"
+        newProvider:
+          $ref: "#/components/schemas/MediaActivityProviderIdentity"
+        language:
+          type: string
+        provider:
+          type: string
+        fileName:
+          type: string
+        cleanupOutcome:
+          type: string
+        requestedDeleteFiles:
+          type: boolean
+        recordRemoved:
+          type: boolean
+        torrentCleanupOutcome:
+          type: string
+        fileCleanupOutcome:
+          type: string
+        physicalFilesRemoved:
+          type: integer
+        physicalFilesFailed:
+          type: integer
+        databaseRecordsRemoved:
+          type: integer
+        added:
+          type: integer
+        updated:
+          type: integer
+        removed:
+          type: integer
+        total:
+          type: integer
+        truncated:
+          type: boolean
+        partial:
+          type: boolean
+        failedProviderWindows:
+          type: integer
+        successfulProviderWindows:
+          type: integer
 
     HealthResponse:
       type: object

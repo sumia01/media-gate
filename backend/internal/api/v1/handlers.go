@@ -24,6 +24,7 @@ import (
 	"github.com/sumia01/media-gate/internal/subtitle"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 	"github.com/sumia01/media-gate/internal/updater"
+	"github.com/sumia01/media-gate/internal/watched"
 	"github.com/sumia01/media-gate/internal/worker"
 )
 
@@ -53,6 +54,7 @@ type Handlers struct {
 	updaterSvc     *updater.Service
 	plexProvider   *plex.Provider
 	workerRegistry *worker.Registry
+	watchedSvc     *watched.Service
 	posterDir      string
 	dbPath         string
 	secureCookies  bool
@@ -67,7 +69,11 @@ type Handlers struct {
 }
 
 func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, plexProvider *plex.Provider, workerReg *worker.Registry, version string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, plexProvider: plexProvider, workerRegistry: workerReg, version: version}
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, plexProvider: plexProvider, workerRegistry: workerReg, watchedSvc: watched.NewService(s, nil), version: version}
+}
+
+func (h *Handlers) SetWatchedActivityPublisher(publisher watched.ActivityPublisher) {
+	h.watchedSvc.SetActivityPublisher(publisher)
 }
 
 func (h *Handlers) PosterHandler() http.HandlerFunc {

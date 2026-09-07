@@ -16,8 +16,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   openSearch: [seasonNumber?: number, episodeNumber?: number, episodeId?: number]
-  replace: [downloadId: number, seasonNumber?: number, episodeNumber?: number, episodeId?: number]
-  downloadsChanged: []
+  replace: [mediaItemId: number, downloadId: number, seasonNumber?: number, episodeNumber?: number, episodeId?: number]
+  downloadsChanged: [mediaItemId: number]
+  activityChanged: [mediaItemId: number]
 }>()
 
 const downloads = ref<Download[]>([])
@@ -82,10 +83,11 @@ watch(hasActiveDownloads, (active) => {
   else stopProgressPoll()
 })
 
-async function fetchDownloads() {
+async function fetchDownloads(mediaItemId = props.mediaItemId) {
   const { data } = await client.GET('/downloads', {
-    params: { query: { mediaItemId: props.mediaItemId } },
+    params: { query: { mediaItemId } },
   })
+  if (props.mediaItemId !== mediaItemId) return
   const newDownloads = data?.downloads ?? []
 
   // Detect if any download transitioned to "seeding" or "completed" (import just finished).
@@ -106,7 +108,7 @@ async function fetchDownloads() {
   downloads.value = newDownloads
 
   if (importFinished) {
-    emit('downloadsChanged')
+    emit('downloadsChanged', mediaItemId)
   }
 }
 
@@ -135,26 +137,33 @@ function toggleFiles(id: number) {
 }
 
 async function retryDownload(id: number) {
-  await client.PUT('/downloads/{id}', {
+  const mediaItemId = props.mediaItemId
+  const { error } = await client.PUT('/downloads/{id}', {
     params: { path: { id } },
     body: { status: 'pending' },
   })
-  await fetchDownloads()
+  if (error || props.mediaItemId !== mediaItemId) return
+  await fetchDownloads(mediaItemId)
+  if (props.mediaItemId === mediaItemId) emit('activityChanged', mediaItemId)
 }
 
 async function deleteDownload(id: number, deleteFiles = false) {
-  await client.DELETE('/downloads/{id}', {
+  const mediaItemId = props.mediaItemId
+  const { error } = await client.DELETE('/downloads/{id}', {
     params: { path: { id }, query: { deleteFiles } },
   })
+  if (error || props.mediaItemId !== mediaItemId) return
   const newMap = new Map(torrentFiles.value)
   newMap.delete(id)
   torrentFiles.value = newMap
-  await fetchDownloads()
-  emit('downloadsChanged')
+  await fetchDownloads(mediaItemId)
+  if (props.mediaItemId !== mediaItemId) return
+  emit('downloadsChanged', mediaItemId)
+  emit('activityChanged', mediaItemId)
 }
 
 function replaceDownload(dl: Download) {
-  emit('replace', dl.id, dl.seasonNumber ?? undefined, undefined, dl.episodeId ?? undefined)
+  emit('replace', props.mediaItemId, dl.id, dl.seasonNumber ?? undefined, undefined, dl.episodeId ?? undefined)
 }
 
 function confirmDeleteCopy(id: number) {

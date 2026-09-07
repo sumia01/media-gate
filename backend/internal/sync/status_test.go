@@ -283,7 +283,7 @@ func TestSyncLibraryRecalcsStatusWhenFilesRemoved(t *testing.T) {
 	stalePath := libRoot + "/My Show/Season 01/My Show S01E01.mkv" // not present on disk
 
 	item := &store.MediaItem{
-		ID: 1, LibraryID: 1, MediaType: "series", Source: "disk",
+		ID: 1, LibraryID: 1, Title: "My Show", MediaType: "series", Source: "disk",
 		Status: "available", Monitored: true,
 	}
 	fs := &fakeStore{

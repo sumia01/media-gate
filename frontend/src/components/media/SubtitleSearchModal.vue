@@ -15,7 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  downloaded: []
+  downloaded: [mediaItemId: number]
 }>()
 
 const results = ref<SubtitleSearchResult[]>([])
@@ -60,13 +60,14 @@ async function search() {
 }
 
 async function download(result: SubtitleSearchResult, idx: number) {
+  const mediaItemId = props.mediaItemId
   if (downloadingIdx.value.has(idx) || downloadedIdx.value.has(idx)) return
 
   downloadingIdx.value = new Set([...downloadingIdx.value, idx])
 
   const { error: err } = await client.POST('/subtitles/download', {
     body: {
-      mediaItemId: props.mediaItemId,
+      mediaItemId,
       providerName: result.providerName,
       providerFileId: result.providerFileId,
       language: result.language,
@@ -85,7 +86,7 @@ async function download(result: SubtitleSearchResult, idx: number) {
   }
 
   downloadedIdx.value = new Set([...downloadedIdx.value, idx])
-  emit('downloaded')
+  emit('downloaded', mediaItemId)
 }
 
 function scoreColor(score: number): string {

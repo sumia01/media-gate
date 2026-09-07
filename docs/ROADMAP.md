@@ -614,15 +614,17 @@ See ADR-135 through ADR-138. Included in v0.40.0; cross-provider identity normal
 - [x] Harness-specific configuration remains opt-in (`API_HOST`, `DATA_DIR`, `BROWSER_OPEN`, `MEDIAGATE_ENV_FILE`, `VITE_API_PROXY_TARGET`); production defaults and single-binary deployment remain unchanged
 - [x] Torrent info-hash parsing hardened to inspect the real top-level bencode `info` value with bounds/depth validation instead of accepting decoys or panicking on malformed tracker data
 
-## Phase 10.0: Media Activity Log (Proposed)
-See [the design proposal](MEDIA_ACTIVITY_LOG.md). The activity-log feature is not implemented.
+## Phase 10.0: Media Activity Log (Initial scope complete)
+See [the implemented design](MEDIA_ACTIVITY_LOG.md) and ADR-141 through ADR-143. Optional automatic lifecycle producers remain deferred.
 
 - [x] Explore persistence and action semantics; validate a disposable synthetic UI prototype without changing production data
-- [ ] Append-only activity persistence with actor, action, event-time scope, and timestamp, separate from cumulative requester attribution and current monitoring
-- [ ] Accurate monitoring enables/disables, automatic queued grabs, changed-metadata diffs, and direct manual media actions
-- [ ] Transactional mutation/history boundaries, safe external-operation outcomes, and global/per-user watched visibility
-- [ ] Collapsed-by-default media-detail panel with lazy cursor pagination, live invalidation, and bounded history rendering
-- [ ] Migration, service, API, frontend, and disposable-harness regression coverage
+- [x] Append-only activity persistence with actor, action, event-time scope, and timestamp, separate from cumulative requester attribution and current monitoring
+- [x] Accurate monitoring enables/disables, automatic queued grabs, changed-metadata diffs, and direct manual media actions
+- [x] Transactional mutation/history boundaries, safe external-operation outcomes, and global/per-user watched visibility
+- [x] Details/Activity tabs: keep media controls and cumulative requesters on Details; place the toggleable saved auto-download check list and activity log on Activity
+- [x] Lazy diagnostic/history loading only for the active tab's expanded panels, with cursor pagination, live invalidation, and bounded history rendering
+- [x] Migration, service, API, frontend, and disposable-harness regression coverage
+- [ ] Optional follow-up: automatic payload/import completion and terminal failure history, plus automatic subtitle outcomes
 
 ## Known Bugs ⬜
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

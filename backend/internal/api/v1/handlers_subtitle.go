@@ -31,12 +31,17 @@ func (h *Handlers) SearchSubtitles(ctx context.Context, req SearchSubtitlesReque
 }
 
 func (h *Handlers) DownloadSubtitle(ctx context.Context, req DownloadSubtitleRequestObject) (DownloadSubtitleResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	body := req.Body
 	if body == nil {
 		return DownloadSubtitle400JSONResponse{Code: http.StatusBadRequest, Message: "request body required"}, nil
 	}
 
 	sub, err := h.subtitleSvc.Download(ctx,
+		userID,
 		uint(body.MediaItemId),
 		body.ProviderName,
 		body.ProviderFileId,
@@ -65,8 +70,12 @@ func (h *Handlers) ListSubtitles(_ context.Context, req ListSubtitlesRequestObje
 	return ListSubtitles200JSONResponse{Items: items}, nil
 }
 
-func (h *Handlers) DeleteSubtitle(_ context.Context, req DeleteSubtitleRequestObject) (DeleteSubtitleResponseObject, error) {
-	if err := h.subtitleSvc.Delete(uint(req.Id)); err != nil {
+func (h *Handlers) DeleteSubtitle(ctx context.Context, req DeleteSubtitleRequestObject) (DeleteSubtitleResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.subtitleSvc.Delete(userID, uint(req.Id)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteSubtitle404JSONResponse{Code: http.StatusNotFound, Message: "subtitle not found"}, nil
 		}

@@ -3,7 +3,9 @@ package subtitle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -156,18 +158,114 @@ func (s *Service) Search(ctx context.Context, mediaItemID uint, seasonNumber, ep
 
 // DownloadOpts holds optional metadata for a subtitle download.
 type DownloadOpts struct {
-	Source           string // "manual" (default) or "auto"
 	ReleaseName      string
 	Score            int
 	HearingImpaired  bool
 	ForeignPartsOnly bool
 }
 
-// Download fetches a subtitle file from a provider and saves it to the library.
-func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, providerFileID, language string, seasonNumber, episodeNumber *int, opts *DownloadOpts) (*store.Subtitle, error) {
+type writtenSubtitleFile struct {
+	path string
+	info os.FileInfo
+}
+
+// Download fetches and atomically records a user-requested subtitle download.
+func (s *Service) Download(ctx context.Context, actorUserID, mediaItemID uint, providerName, providerFileID, language string, seasonNumber, episodeNumber *int, opts *DownloadOpts) (*store.Subtitle, error) {
+	if err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateSubtitleActor(tx, actorUserID); err != nil {
+			return err
+		}
+		item, err := tx.GetMediaItem(mediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	sub, written, err := s.downloadFile(ctx, mediaItemID, providerName, providerFileID, language, seasonNumber, episodeNumber, "manual", opts)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.WithTx(func(tx store.Store) error {
+		if err := validateSubtitleActor(tx, actorUserID); err != nil {
+			return err
+		}
+		item, err := tx.GetMediaItem(mediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		if err := tx.CreateSubtitle(sub); err != nil {
+			return fmt.Errorf("saving subtitle record: %w", err)
+		}
+
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		activity, err := store.NewUserMediaActivity(
+			item, actorUserID, store.MediaActivityActionSubtitleDownloaded, operationID,
+			store.MediaActivityVisibilityShared, subtitleActivityDetails(sub),
+		)
+		if err != nil {
+			return err
+		}
+		return tx.AppendMediaActivity(activity)
+	})
+	if err != nil {
+		s.compensateSubtitleFile(mediaItemID, written)
+		return nil, err
+	}
+
+	s.publishSubtitleEvent(eventbus.SubtitleDownloaded, sub)
+	s.publishActivityInvalidation(sub.MediaItemID)
+	return sub, nil
+}
+
+// downloadAutomatic persists an automatic download without user activity.
+func (s *Service) downloadAutomatic(ctx context.Context, mediaItemID uint, providerName, providerFileID, language string, seasonNumber, episodeNumber *int, opts *DownloadOpts) (*store.Subtitle, error) {
+	item, err := s.store.GetMediaItem(mediaItemID)
+	if err != nil {
+		return nil, err
+	}
+	if item.DeletionPending {
+		return nil, store.ErrMediaDeletionPending
+	}
+	sub, written, err := s.downloadFile(ctx, mediaItemID, providerName, providerFileID, language, seasonNumber, episodeNumber, "auto", opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.WithTx(func(tx store.Store) error {
+		item, err := tx.GetMediaItem(mediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		return tx.CreateSubtitle(sub)
+	}); err != nil {
+		s.compensateSubtitleFile(mediaItemID, written)
+		return nil, fmt.Errorf("saving subtitle record: %w", err)
+	}
+
+	s.publishSubtitleEvent(eventbus.SubtitleDownloaded, sub)
+	return sub, nil
+}
+
+// downloadFile performs provider and filesystem work without opening a database transaction.
+func (s *Service) downloadFile(ctx context.Context, mediaItemID uint, providerName, providerFileID, language string, seasonNumber, episodeNumber *int, source string, opts *DownloadOpts) (*store.Subtitle, *writtenSubtitleFile, error) {
 	language, err := sanitizeLanguageCode(language)
 	if err != nil {
-		return nil, fmt.Errorf("invalid subtitle language: %w", err)
+		return nil, nil, fmt.Errorf("invalid subtitle language: %w", err)
 	}
 
 	var provider Provider
@@ -178,47 +276,40 @@ func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, 
 		}
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("unknown subtitle provider: %s", providerName)
+		return nil, nil, fmt.Errorf("unknown subtitle provider: %s", providerName)
 	}
 
 	limiter := s.newLimiter()
 	defer limiter.Stop()
 	if err := limiter.Wait(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dlFile, err := provider.Download(ctx, providerFileID)
 	if err != nil {
-		return nil, fmt.Errorf("downloading subtitle: %w", err)
+		return nil, nil, fmt.Errorf("downloading subtitle: %w", err)
 	}
 
 	format, err := sanitizeSubtitleFormat(dlFile.Format)
 	if err != nil {
-		return nil, fmt.Errorf("invalid subtitle format: %w", err)
+		return nil, nil, fmt.Errorf("invalid subtitle format: %w", err)
 	}
 	dlFile.Format = format
 
 	savePath, matchedFile, err := s.determineSavePath(mediaItemID, seasonNumber, episodeNumber, language, format)
 	if err != nil {
-		return nil, fmt.Errorf("determining save path: %w", err)
+		return nil, nil, fmt.Errorf("determining save path: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(savePath), 0755); err != nil {
-		return nil, fmt.Errorf("creating subtitle directory: %w", err)
-	}
-	if err := os.WriteFile(savePath, dlFile.Data, 0644); err != nil {
-		return nil, fmt.Errorf("writing subtitle file: %w", err)
-	}
-
-	source := "manual"
-	if opts != nil && opts.Source != "" {
-		source = opts.Source
+	written, err := writeSubtitleFile(savePath, dlFile.Data)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	sub := &store.Subtitle{
 		MediaItemID:    mediaItemID,
-		SeasonNumber:   seasonNumber,
-		EpisodeNumber:  episodeNumber,
+		SeasonNumber:   copyInt(seasonNumber),
+		EpisodeNumber:  copyInt(episodeNumber),
 		Language:       language,
 		Provider:       providerName,
 		ProviderFileID: providerFileID,
@@ -239,19 +330,7 @@ func (s *Service) Download(ctx context.Context, mediaItemID uint, providerName, 
 		sub.ForeignPartsOnly = opts.ForeignPartsOnly
 	}
 
-	if err := s.store.CreateSubtitle(sub); err != nil {
-		return nil, fmt.Errorf("saving subtitle record: %w", err)
-	}
-
-	s.bus.Publish(eventbus.SubtitleDownloaded, eventbus.SubtitlePayload{
-		SubtitleID:  sub.ID,
-		MediaItemID: mediaItemID,
-		Language:    sub.Language,
-		Provider:    providerName,
-		FileName:    sub.FileName,
-	})
-
-	return sub, nil
+	return sub, written, nil
 }
 
 // List returns all subtitles for a media item.
@@ -259,31 +338,92 @@ func (s *Service) List(mediaItemID uint) ([]store.Subtitle, error) {
 	return s.store.ListSubtitlesByMediaItem(mediaItemID)
 }
 
-// Delete removes a subtitle file from disk and its DB record.
-func (s *Service) Delete(id uint) error {
-	sub, err := s.store.GetSubtitle(id)
-	if err != nil {
-		return err
-	}
+type subtitleDeleteSnapshot struct {
+	id, mediaItemID             uint
+	seasonNumber, episodeNumber *int
+	language, provider          string
+	fileName, filePath          string
+	releaseName                 string
+}
 
-	if sub.FilePath != "" {
-		if err := os.Remove(sub.FilePath); err != nil && !os.IsNotExist(err) {
-			slog.Warn("failed to remove subtitle file", "path", sub.FilePath, "error", err)
+type stagedSubtitleRemoval struct {
+	path             string
+	backupPath       string
+	backupDir        string
+	directoryMode    os.FileMode
+	removedDirectory bool
+	outcome          string
+}
+
+// Delete removes a user-selected subtitle and records the observed file outcome.
+func (s *Service) Delete(actorUserID, id uint) error {
+	var snapshot subtitleDeleteSnapshot
+	if err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateSubtitleActor(tx, actorUserID); err != nil {
+			return err
 		}
-	}
-
-	if err := s.store.DeleteSubtitle(id); err != nil {
+		sub, err := tx.GetSubtitle(id)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.GetMediaItem(sub.MediaItemID); err != nil {
+			return err
+		}
+		snapshot = newSubtitleDeleteSnapshot(sub)
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	s.bus.Publish(eventbus.SubtitleDeleted, eventbus.SubtitlePayload{
-		SubtitleID:  sub.ID,
-		MediaItemID: sub.MediaItemID,
-		Language:    sub.Language,
-		Provider:    sub.Provider,
-		FileName:    sub.FileName,
-	})
+	fileRemoval := stageSubtitleFileRemoval(snapshot.filePath)
+	var deleted *store.Subtitle
+	if err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateSubtitleActor(tx, actorUserID); err != nil {
+			return err
+		}
+		current, err := tx.GetSubtitle(id)
+		if err != nil {
+			return err
+		}
+		if !snapshot.matches(current) {
+			return store.ErrNotFound
+		}
+		item, err := tx.GetMediaItem(current.MediaItemID)
+		if err != nil {
+			return err
+		}
+		if err := tx.DeleteSubtitle(id); err != nil {
+			return err
+		}
 
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		recordRemoved := true
+		details := subtitleActivityDetails(current)
+		details.RecordRemoved = &recordRemoved
+		details.FileCleanupOutcome = fileRemoval.outcome
+		activity, err := store.NewUserMediaActivity(
+			item, actorUserID, store.MediaActivityActionSubtitleRemoved, operationID,
+			store.MediaActivityVisibilityShared, details,
+		)
+		if err != nil {
+			return err
+		}
+		if err := tx.AppendMediaActivity(activity); err != nil {
+			return err
+		}
+		deleted = current
+		return nil
+	}); err != nil {
+		fileRemoval.restore()
+		return err
+	}
+
+	fileRemoval.discardBackup()
+	s.publishSubtitleEvent(eventbus.SubtitleDeleted, deleted)
+	s.publishActivityInvalidation(deleted.MediaItemID)
 	return nil
 }
 
@@ -348,8 +488,7 @@ func (s *Service) HandleImportCompleted(e eventbus.Event) {
 			continue
 		}
 
-		_, err := s.Download(ctx, p.MediaItemID, best.ProviderName, best.ProviderFileID, best.Language, seasonNumber, episodeNumber, &DownloadOpts{
-			Source:           "auto",
+		_, err := s.downloadAutomatic(ctx, p.MediaItemID, best.ProviderName, best.ProviderFileID, best.Language, seasonNumber, episodeNumber, &DownloadOpts{
 			ReleaseName:      best.ReleaseName,
 			Score:            best.Score,
 			HearingImpaired:  best.HearingImpaired,
@@ -373,6 +512,240 @@ func (s *Service) HandleImportCompleted(e eventbus.Event) {
 }
 
 // --- helpers ---
+
+func validateSubtitleActor(st store.Store, userID uint) error {
+	if _, err := st.GetUser(userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrActivityActorNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func subtitleActivityDetails(sub *store.Subtitle) store.MediaActivityDetails {
+	objectID := sub.ID
+	target := store.MediaActivityTarget{Scope: store.MediaActivityScopeMedia, ObjectID: &objectID}
+	if sub.EpisodeNumber != nil {
+		target.Scope = store.MediaActivityScopeEpisode
+		target.SeasonNumber = copyInt(sub.SeasonNumber)
+		target.EpisodeNumber = copyInt(sub.EpisodeNumber)
+	} else if sub.SeasonNumber != nil {
+		target.Scope = store.MediaActivityScopeSeason
+		target.SeasonNumber = copyInt(sub.SeasonNumber)
+	}
+	return store.MediaActivityDetails{
+		Target:      &target,
+		Language:    store.BoundMediaActivityText(sub.Language, store.MediaActivityMaxTitleBytes),
+		Provider:    store.BoundMediaActivityText(sub.Provider, store.MediaActivityMaxTitleBytes),
+		FileName:    safeSubtitleActivityName(sub.FileName),
+		ReleaseName: safeSubtitleActivityName(sub.ReleaseName),
+	}
+}
+
+func safeSubtitleActivityName(value string) string {
+	if value == "" {
+		return ""
+	}
+	value = strings.ReplaceAll(value, `\`, "/")
+	return store.BoundMediaActivityText(filepath.Base(value), store.MediaActivityMaxTitleBytes)
+}
+
+func copyInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func writeSubtitleFile(path string, data []byte) (*writtenSubtitleFile, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, fmt.Errorf("creating subtitle directory: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("creating subtitle file: %w", err)
+	}
+	cleanup := func() {
+		_ = f.Close()
+		_ = os.Remove(path)
+	}
+	written, err := f.Write(data)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("writing subtitle file: %w", err)
+	}
+	if written != len(data) {
+		cleanup()
+		return nil, fmt.Errorf("writing subtitle file: %w", io.ErrShortWrite)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("inspecting subtitle file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return nil, fmt.Errorf("closing subtitle file: %w", err)
+	}
+	return &writtenSubtitleFile{path: path, info: info}, nil
+}
+
+func (s *Service) compensateSubtitleFile(mediaItemID uint, written *writtenSubtitleFile) {
+	if written == nil {
+		return
+	}
+	subs, err := s.store.ListSubtitlesByMediaItem(mediaItemID)
+	if err != nil {
+		slog.Warn("subtitle compensation skipped: database state unavailable", "path", written.path, "error", err)
+		return
+	}
+	for i := range subs {
+		if filepath.Clean(subs[i].FilePath) == filepath.Clean(written.path) {
+			return
+		}
+	}
+	current, err := os.Lstat(written.path)
+	if err != nil {
+		return
+	}
+	if !os.SameFile(written.info, current) {
+		slog.Warn("subtitle compensation skipped: file changed", "path", written.path)
+		return
+	}
+	if err := os.Remove(written.path); err != nil && !os.IsNotExist(err) {
+		slog.Warn("subtitle compensation failed", "path", written.path, "error", err)
+	}
+}
+
+func newSubtitleDeleteSnapshot(sub *store.Subtitle) subtitleDeleteSnapshot {
+	return subtitleDeleteSnapshot{
+		id: sub.ID, mediaItemID: sub.MediaItemID,
+		seasonNumber: copyInt(sub.SeasonNumber), episodeNumber: copyInt(sub.EpisodeNumber),
+		language: sub.Language, provider: sub.Provider, fileName: sub.FileName,
+		filePath: sub.FilePath, releaseName: sub.ReleaseName,
+	}
+}
+
+func (snapshot subtitleDeleteSnapshot) matches(sub *store.Subtitle) bool {
+	return sub != nil && snapshot.id == sub.ID && snapshot.mediaItemID == sub.MediaItemID &&
+		equalInts(snapshot.seasonNumber, sub.SeasonNumber) && equalInts(snapshot.episodeNumber, sub.EpisodeNumber) &&
+		snapshot.language == sub.Language && snapshot.provider == sub.Provider && snapshot.fileName == sub.FileName &&
+		snapshot.filePath == sub.FilePath && snapshot.releaseName == sub.ReleaseName
+}
+
+func equalInts(left, right *int) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func stageSubtitleFileRemoval(path string) stagedSubtitleRemoval {
+	removal := stagedSubtitleRemoval{path: path, outcome: "already_missing"}
+	if path == "" {
+		return removal
+	}
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return removal
+		}
+		slog.Warn("failed to remove subtitle file", "path", path, "error", err)
+		removal.outcome = "failed"
+		return removal
+	}
+
+	if info.IsDir() {
+		if err := os.Remove(path); err != nil {
+			if os.IsNotExist(err) {
+				return removal
+			}
+			slog.Warn("failed to remove subtitle file", "path", path, "error", err)
+			removal.outcome = "failed"
+			return removal
+		}
+		removal.directoryMode = info.Mode()
+		removal.removedDirectory = true
+		removal.outcome = "removed"
+		return removal
+	}
+
+	backupDir, err := os.MkdirTemp(filepath.Dir(path), ".mediagate-subtitle-remove-")
+	if err != nil {
+		slog.Warn("failed to stage subtitle file removal", "path", path, "error", err)
+		removal.outcome = "failed"
+		return removal
+	}
+	backupPath := filepath.Join(backupDir, "subtitle")
+	if err := os.Rename(path, backupPath); err != nil {
+		_ = os.Remove(backupDir)
+		if os.IsNotExist(err) {
+			return removal
+		}
+		slog.Warn("failed to stage subtitle file removal", "path", path, "error", err)
+		removal.outcome = "failed"
+		return removal
+	}
+
+	removal.backupDir = backupDir
+	removal.backupPath = backupPath
+	removal.outcome = "removed"
+	return removal
+}
+
+func (removal stagedSubtitleRemoval) restore() {
+	if removal.backupPath != "" {
+		if err := os.Link(removal.backupPath, removal.path); err != nil {
+			if os.IsExist(err) {
+				slog.Warn("subtitle removal compensation skipped: file changed", "path", removal.path)
+				removal.discardBackup()
+				return
+			}
+			slog.Warn("subtitle removal compensation failed", "path", removal.path, "error", err)
+			return
+		}
+		removal.discardBackup()
+		return
+	}
+
+	if removal.removedDirectory {
+		if err := os.Mkdir(removal.path, removal.directoryMode.Perm()); err != nil {
+			if os.IsExist(err) {
+				slog.Warn("subtitle removal compensation skipped: file changed", "path", removal.path)
+				return
+			}
+			slog.Warn("subtitle removal compensation failed", "path", removal.path, "error", err)
+			return
+		}
+		if err := os.Chmod(removal.path, removal.directoryMode); err != nil {
+			slog.Warn("subtitle removal compensation could not restore directory mode", "path", removal.path, "error", err)
+		}
+	}
+}
+
+func (removal stagedSubtitleRemoval) discardBackup() {
+	if removal.backupPath == "" {
+		return
+	}
+	if err := os.Remove(removal.backupPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to discard staged subtitle file", "path", removal.backupPath, "error", err)
+		return
+	}
+	if err := os.Remove(removal.backupDir); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to discard staged subtitle directory", "path", removal.backupDir, "error", err)
+	}
+}
+
+func (s *Service) publishSubtitleEvent(eventType eventbus.EventType, sub *store.Subtitle) {
+	s.bus.Publish(eventType, eventbus.SubtitlePayload{
+		SubtitleID: sub.ID, MediaItemID: sub.MediaItemID, Language: sub.Language,
+		Provider: sub.Provider, FileName: sub.FileName,
+	})
+}
+
+func (s *Service) publishActivityInvalidation(mediaItemID uint) {
+	s.bus.Publish(eventbus.MediaActivityAdded, eventbus.MediaActivityPayload{MediaItemID: mediaItemID})
+}
 
 func (s *Service) getLanguages() []string {
 	raw, err := s.settings.Get(settings.KeySubtitleLanguages)

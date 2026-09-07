@@ -30,11 +30,12 @@ const (
 
 // Media item events.
 const (
-	MediaItemMatched  EventType = "media.item_matched"
-	MediaItemDeleted  EventType = "media.item_deleted"
-	MediaRequestAdded EventType = "media.request_added"
-	ResyncCompleted   EventType = "media.resync_completed"
-	MetadataRefreshed EventType = "media.metadata_refreshed"
+	MediaItemMatched   EventType = "media.item_matched"
+	MediaItemDeleted   EventType = "media.item_deleted"
+	MediaRequestAdded  EventType = "media.request_added"
+	ResyncCompleted    EventType = "media.resync_completed"
+	MetadataRefreshed  EventType = "media.metadata_refreshed"
+	MediaActivityAdded EventType = "media.activity_added"
 )
 
 // Monitor worker events.
@@ -110,6 +111,12 @@ type MediaItemPayload struct {
 	LibraryID   uint   `json:"libraryId"`
 	Title       string `json:"title,omitempty"`
 	PosterPath  string `json:"posterPath,omitempty"`
+}
+
+// MediaActivityPayload invalidates one shared per-media activity feed. History
+// is still read from SQLite; this best-effort event is only a refresh hint.
+type MediaActivityPayload struct {
+	MediaItemID uint `json:"mediaItemId"`
 }
 
 // ResyncPayload carries resync event data.

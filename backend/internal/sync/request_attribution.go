@@ -24,6 +24,18 @@ type MonitoringState struct {
 	episodes         []store.Episode
 }
 
+// NewInitialMonitoringState returns the disabled baseline used when media did
+// not exist before an add operation.
+func NewInitialMonitoringState(item store.MediaItem) *MonitoringState {
+	item.Monitored = false
+	item.MonitorNewSeasons = false
+	return &MonitoringState{
+		item:             item,
+		seasons:          make(map[int]bool),
+		episodeOverrides: make(map[episodeKey]bool),
+	}
+}
+
 func SnapshotMonitoring(st store.Store, itemID uint) (*MonitoringState, error) {
 	item, err := st.GetMediaItem(itemID)
 	if err != nil {

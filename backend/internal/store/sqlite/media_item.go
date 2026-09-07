@@ -17,13 +17,36 @@ func (s *SQLiteStore) GetMediaItem(id uint) (*store.MediaItem, error) {
 }
 
 func (s *SQLiteStore) UpdateMediaItem(item *store.MediaItem) error {
-	return save(s.db, item)
+	if item.ID == 0 {
+		return store.ErrNotFound
+	}
+	next := *item
+	// Only the initial false-to-true claim may update this row. Once claimed,
+	// final deletion is the sole operation allowed to change the parent.
+	query := s.db.Where("deletion_pending = ?", false)
+	if err := save(query, &next); err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		var claimed int64
+		if lookupErr := s.db.Model(&store.MediaItem{}).
+			Where("id = ? AND deletion_pending = ?", next.ID, true).
+			Count(&claimed).Error; lookupErr != nil {
+			return lookupErr
+		}
+		if claimed > 0 {
+			return store.ErrMediaDeletionPending
+		}
+		return err
+	}
+	*item = next
+	return nil
 }
 
 func (s *SQLiteStore) SetMonitorSearchStartedAt(mediaItemID uint, startedAt *time.Time) error {
 	query := s.db.Model(&store.MediaItem{}).Where("id = ?", mediaItemID)
 	if startedAt != nil {
-		query = query.Where("monitored = ? AND monitor_search_started_at IS NULL", true)
+		query = query.Where("monitored = ? AND deletion_pending = ? AND monitor_search_started_at IS NULL", true, false)
 	}
 	// Marker bookkeeping is not a change to the monitor's input version.
 	return query.UpdateColumn("monitor_search_started_at", startedAt).Error
@@ -67,7 +90,7 @@ func (s *SQLiteStore) CountMediaItemsByLibrary(libraryID uint) (int64, error) {
 
 func (s *SQLiteStore) ListMonitoredMediaItems() ([]store.MediaItem, error) {
 	var items []store.MediaItem
-	if err := s.db.Where("monitored = ?", true).Find(&items).Error; err != nil {
+	if err := s.db.Where("monitored = ? AND deletion_pending = ?", true, false).Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil

@@ -3,6 +3,7 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -13,6 +14,11 @@ import (
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
 
+var (
+	errMediaActivityActorMissing = errors.New("authenticated media actor missing from context")
+	errMediaProfileNotFound      = errors.New("media profile not found")
+)
+
 // recalcStatusAfterMonitorChange refreshes the item's persisted status after a
 // monitoring change (the status state machine is monitoring-aware). Failures
 // are logged, not returned — the monitor update itself already succeeded.
@@ -20,6 +26,50 @@ func (h *Handlers) recalcStatusAfterMonitorChange(itemID uint) {
 	if err := h.syncSvc.RecalcMediaItemStatus(itemID); err != nil {
 		slog.Warn("monitor update: status recalc failed", "media_item_id", itemID, "error", err)
 	}
+}
+
+func mediaActivityActorID(ctx context.Context) (uint, error) {
+	userID, ok := auth.UserIDFromContext(ctx)
+	if !ok || userID == 0 {
+		return 0, errMediaActivityActorMissing
+	}
+	return userID, nil
+}
+
+func validateMediaActivityActor(tx store.Store, userID uint) error {
+	if _, err := tx.GetUser(userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrActivityActorNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func appendUserMediaActivity(tx store.Store, item *store.MediaItem, userID uint, action, operationID string, details store.MediaActivityDetails) error {
+	activity, err := store.NewUserMediaActivity(item, userID, action, operationID, store.MediaActivityVisibilityShared, details)
+	if err != nil {
+		return err
+	}
+	return tx.AppendMediaActivity(activity)
+}
+
+func mediaProfileActivityLabel(profile *store.MediaProfile) *string {
+	if profile == nil {
+		return nil
+	}
+	suffix := fmt.Sprintf(" (ID %d)", profile.ID)
+	label := store.BoundMediaActivityText(profile.Name, store.MediaActivityMaxTitleBytes-len(suffix)) + suffix
+	return &label
+}
+
+func sameUintPointers(a, b *uint) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+func stringPointer(value string) *string {
+	bounded := store.BoundMediaActivityText(value, store.MediaActivityMaxTitleBytes)
+	return &bounded
 }
 
 func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject) (GetMediaItemResponseObject, error) {
@@ -45,18 +95,14 @@ func (h *Handlers) GetMediaItem(_ context.Context, req GetMediaItemRequestObject
 }
 
 func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemRequestObject) (UpdateMediaItemResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	var profileID *uint
 	if req.Body.MediaProfileId != nil {
 		id := uint(*req.Body.MediaProfileId)
-		if _, err := h.store.GetMediaProfile(id); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return UpdateMediaItem404JSONResponse{
-					Code:    http.StatusNotFound,
-					Message: "media profile not found",
-				}, nil
-			}
-			return nil, err
-		}
 		profileID = &id
 	}
 
@@ -86,16 +132,23 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 		}
 	}
 
-	userID, attributeRequest := auth.UserIDFromContext(ctx)
 	var item *store.MediaItem
 	requestAttributed := false
-	err := h.store.WithTx(func(tx store.Store) error {
+	activityAdded := false
+	err = h.store.WithTx(func(tx store.Store) error {
+		if err := validateMediaActivityActor(tx, userID); err != nil {
+			return err
+		}
 		current, err := tx.GetMediaItem(uint(req.Id))
 		if err != nil {
 			return err
 		}
+		if current.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		beforeItem := *current
 		var before *mediasync.MonitoringState
-		if monitoringMutation && attributeRequest {
+		if monitoringMutation {
 			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
 			if err != nil {
 				return err
@@ -103,6 +156,12 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 		}
 
 		if profileID != nil {
+			if _, err := tx.GetMediaProfile(*profileID); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return errMediaProfileNotFound
+				}
+				return err
+			}
 			current.MediaProfileID = profileID
 		}
 		if req.Body.Monitored != nil {
@@ -134,8 +193,10 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 				return err
 			}
 		}
-		if before != nil {
-			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		var monitoringDetails store.MediaActivityDetails
+		var after *mediasync.MonitoringState
+		if monitoringMutation {
+			after, err = mediasync.SnapshotMonitoring(tx, current.ID)
 			if err != nil {
 				return err
 			}
@@ -143,11 +204,61 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 			if err != nil {
 				return err
 			}
+			monitoringDetails = mediasync.BuildMonitoringActivityDetails(before, after)
 		}
-		item = current
+
+		afterItem, err := tx.GetMediaItem(current.ID)
+		if err != nil {
+			return err
+		}
+		fieldChanges := make([]store.MediaActivityFieldChange, 0, 2)
+		if profileID != nil && !sameUintPointers(beforeItem.MediaProfileID, afterItem.MediaProfileID) {
+			var beforeProfile *store.MediaProfile
+			if beforeItem.MediaProfileID != nil {
+				beforeProfile, err = tx.GetMediaProfile(*beforeItem.MediaProfileID)
+				if err != nil {
+					return err
+				}
+			}
+			afterProfile, err := tx.GetMediaProfile(*afterItem.MediaProfileID)
+			if err != nil {
+				return err
+			}
+			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{
+				Field: "media_profile", Before: mediaProfileActivityLabel(beforeProfile), After: mediaProfileActivityLabel(afterProfile),
+			})
+		}
+		if req.Body.PreferredRelease != nil && beforeItem.PreferredRelease != afterItem.PreferredRelease {
+			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{
+				Field: "preferred_release", Before: stringPointer(beforeItem.PreferredRelease), After: stringPointer(afterItem.PreferredRelease),
+			})
+		}
+
+		if monitoringDetails.Total > 0 || len(fieldChanges) > 0 {
+			operationID, err := store.NewMediaActivityOperationID()
+			if err != nil {
+				return err
+			}
+			if monitoringDetails.Total > 0 {
+				if err := appendUserMediaActivity(tx, afterItem, userID, store.MediaActivityActionMonitoringChanged, operationID, monitoringDetails); err != nil {
+					return err
+				}
+			}
+			if len(fieldChanges) > 0 {
+				settingsDetails := store.MediaActivityDetails{FieldChanges: fieldChanges, Total: len(fieldChanges)}
+				if err := appendUserMediaActivity(tx, afterItem, userID, store.MediaActivityActionSettingsChanged, operationID, settingsDetails); err != nil {
+					return err
+				}
+			}
+			activityAdded = true
+		}
+		item = afterItem
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errMediaProfileNotFound) {
+			return UpdateMediaItem404JSONResponse{Code: http.StatusNotFound, Message: "media profile not found"}, nil
+		}
 		if errors.Is(err, store.ErrNotFound) {
 			return UpdateMediaItem404JSONResponse{Code: http.StatusNotFound, Message: "media item not found"}, nil
 		}
@@ -163,6 +274,9 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 	if requestAttributed {
 		h.syncSvc.PublishRequestAttribution(item)
 	}
+	if activityAdded {
+		h.syncSvc.PublishActivityInvalidation(item.ID)
+	}
 
 	meta, _ := h.store.GetMediaMetadataByMediaItem(item.ID)
 	requests, err := h.store.ListMediaRequestsByMediaItem(item.ID)
@@ -174,8 +288,12 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 	return UpdateMediaItem200JSONResponse(apiItem), nil
 }
 
-func (h *Handlers) DeleteMediaItem(_ context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
-	if err := h.mediaSvc.DeleteMediaItem(uint(req.Id)); err != nil {
+func (h *Handlers) DeleteMediaItem(ctx context.Context, req DeleteMediaItemRequestObject) (DeleteMediaItemResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.mediaSvc.DeleteMediaItem(userID, uint(req.Id)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return DeleteMediaItem404JSONResponse{
 				Code:    http.StatusNotFound,
@@ -217,43 +335,37 @@ func (h *Handlers) SearchMediaCandidates(_ context.Context, req SearchMediaCandi
 	return SearchMediaCandidates200JSONResponse{Candidates: candidatesToAPI(candidates)}, nil
 }
 
-func (h *Handlers) ManualMatch(_ context.Context, req ManualMatchRequestObject) (ManualMatchResponseObject, error) {
-	_, err := h.store.GetMediaItem(uint(req.Id))
+func (h *Handlers) ManualMatch(ctx context.Context, req ManualMatchRequestObject) (ManualMatchResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return ManualMatch404JSONResponse{
-				Code:    http.StatusNotFound,
-				Message: "media item not found",
-			}, nil
-		}
 		return nil, err
 	}
 
-	item, meta, err := h.matchSvc.ManualMatch(uint(req.Id), string(req.Body.Source), req.Body.ExternalId)
+	item, meta, err := h.matchSvc.ManualMatch(uint(req.Id), string(req.Body.Source), req.Body.ExternalId, userID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return ManualMatch404JSONResponse{Code: http.StatusNotFound, Message: "media item not found"}, nil
+		}
 		return nil, err
 	}
 
 	return ManualMatch200JSONResponse(h.withRatings(mediaItemToAPI(item, meta), meta)), nil
 }
 
-func (h *Handlers) UnmatchMedia(_ context.Context, req UnmatchMediaRequestObject) (UnmatchMediaResponseObject, error) {
-	item, err := h.store.GetMediaItem(uint(req.Id))
+func (h *Handlers) UnmatchMedia(ctx context.Context, req UnmatchMediaRequestObject) (UnmatchMediaResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := h.matchSvc.Unmatch(uint(req.Id), userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return UnmatchMedia404JSONResponse{
-				Code:    http.StatusNotFound,
-				Message: "media item not found",
-			}, nil
+			return UnmatchMedia404JSONResponse{Code: http.StatusNotFound, Message: "media item not found"}, nil
 		}
 		return nil, err
 	}
 
-	if err := h.matchSvc.Unmatch(item.ID); err != nil {
-		return nil, err
-	}
-
-	item, err = h.store.GetMediaItem(item.ID)
+	item, err := h.store.GetMediaItem(uint(req.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -261,8 +373,12 @@ func (h *Handlers) UnmatchMedia(_ context.Context, req UnmatchMediaRequestObject
 	return UnmatchMedia200JSONResponse(mediaItemToAPI(item, nil)), nil
 }
 
-func (h *Handlers) ResyncMediaItem(_ context.Context, req ResyncMediaItemRequestObject) (ResyncMediaItemResponseObject, error) {
-	_, err := h.store.GetMediaItem(uint(req.Id))
+func (h *Handlers) ResyncMediaItem(ctx context.Context, req ResyncMediaItemRequestObject) (ResyncMediaItemResponseObject, error) {
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	updated, added, removed, err := h.syncSvc.ResyncMediaItemForUser(userID, uint(req.Id))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return ResyncMediaItem404JSONResponse{
@@ -270,11 +386,6 @@ func (h *Handlers) ResyncMediaItem(_ context.Context, req ResyncMediaItemRequest
 				Message: "media item not found",
 			}, nil
 		}
-		return nil, err
-	}
-
-	updated, added, removed, err := h.syncSvc.ResyncMediaItem(uint(req.Id))
-	if err != nil {
 		return nil, err
 	}
 
@@ -419,21 +530,28 @@ func (h *Handlers) ListSeasonMonitors(_ context.Context, req ListSeasonMonitorsR
 }
 
 func (h *Handlers) UpdateSeasonMonitor(ctx context.Context, req UpdateSeasonMonitorRequestObject) (UpdateSeasonMonitorResponseObject, error) {
-	userID, attributeRequest := auth.UserIDFromContext(ctx)
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var sm store.SeasonMonitor
 	var item *store.MediaItem
 	requestAttributed := false
-	err := h.store.WithTx(func(tx store.Store) error {
+	activityAdded := false
+	err = h.store.WithTx(func(tx store.Store) error {
+		if err := validateMediaActivityActor(tx, userID); err != nil {
+			return err
+		}
 		current, err := tx.GetMediaItem(uint(req.Id))
 		if err != nil {
 			return err
 		}
-		var before *mediasync.MonitoringState
-		if attributeRequest {
-			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
-			if err != nil {
-				return err
-			}
+		if current.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		before, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		if err != nil {
+			return err
 		}
 		monitors, err := tx.ListSeasonMonitorsByMediaItem(current.ID)
 		if err != nil {
@@ -465,15 +583,24 @@ func (h *Handlers) UpdateSeasonMonitor(ctx context.Context, req UpdateSeasonMoni
 		if err := tx.UpdateMediaItem(current); err != nil {
 			return err
 		}
-		if before != nil {
-			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		if err != nil {
+			return err
+		}
+		requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, []int{req.SeasonNumber}, nil)
+		if err != nil {
+			return err
+		}
+		details := mediasync.BuildMonitoringActivityDetails(before, after)
+		if details.Total > 0 {
+			operationID, err := store.NewMediaActivityOperationID()
 			if err != nil {
 				return err
 			}
-			requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, []int{req.SeasonNumber}, nil)
-			if err != nil {
+			if err := appendUserMediaActivity(tx, current, userID, store.MediaActivityActionMonitoringChanged, operationID, details); err != nil {
 				return err
 			}
+			activityAdded = true
 		}
 		item = current
 		return nil
@@ -491,6 +618,9 @@ func (h *Handlers) UpdateSeasonMonitor(ctx context.Context, req UpdateSeasonMoni
 	if requestAttributed {
 		h.syncSvc.PublishRequestAttribution(item)
 	}
+	if activityAdded {
+		h.syncSvc.PublishActivityInvalidation(item.ID)
+	}
 
 	return UpdateSeasonMonitor200JSONResponse(SeasonMonitor{
 		Id:           int64(sm.ID),
@@ -501,20 +631,27 @@ func (h *Handlers) UpdateSeasonMonitor(ctx context.Context, req UpdateSeasonMoni
 }
 
 func (h *Handlers) UpdateEpisodeMonitor(ctx context.Context, req UpdateEpisodeMonitorRequestObject) (UpdateEpisodeMonitorResponseObject, error) {
-	userID, attributeRequest := auth.UserIDFromContext(ctx)
+	userID, err := mediaActivityActorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var item *store.MediaItem
 	requestAttributed := false
-	err := h.store.WithTx(func(tx store.Store) error {
+	activityAdded := false
+	err = h.store.WithTx(func(tx store.Store) error {
+		if err := validateMediaActivityActor(tx, userID); err != nil {
+			return err
+		}
 		current, err := tx.GetMediaItem(uint(req.Id))
 		if err != nil {
 			return err
 		}
-		var before *mediasync.MonitoringState
-		if attributeRequest {
-			before, err = mediasync.SnapshotMonitoring(tx, current.ID)
-			if err != nil {
-				return err
-			}
+		if current.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		before, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		if err != nil {
+			return err
 		}
 		if err := tx.UpsertEpisodeMonitor(&store.EpisodeMonitor{
 			MediaItemID:   current.ID,
@@ -529,16 +666,25 @@ func (h *Handlers) UpdateEpisodeMonitor(ctx context.Context, req UpdateEpisodeMo
 		if err := tx.UpdateMediaItem(current); err != nil {
 			return err
 		}
-		if before != nil {
-			after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		after, err := mediasync.SnapshotMonitoring(tx, current.ID)
+		if err != nil {
+			return err
+		}
+		changed := []mediasync.EpisodeRef{{SeasonNumber: req.SeasonNumber, EpisodeNumber: req.EpisodeNumber}}
+		requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, nil, changed)
+		if err != nil {
+			return err
+		}
+		details := mediasync.BuildMonitoringActivityDetails(before, after)
+		if details.Total > 0 {
+			operationID, err := store.NewMediaActivityOperationID()
 			if err != nil {
 				return err
 			}
-			changed := []mediasync.EpisodeRef{{SeasonNumber: req.SeasonNumber, EpisodeNumber: req.EpisodeNumber}}
-			requestAttributed, err = mediasync.RecordMonitoringTransitions(tx, userID, before, after, nil, changed)
-			if err != nil {
+			if err := appendUserMediaActivity(tx, current, userID, store.MediaActivityActionMonitoringChanged, operationID, details); err != nil {
 				return err
 			}
+			activityAdded = true
 		}
 		item = current
 		return nil
@@ -555,6 +701,9 @@ func (h *Handlers) UpdateEpisodeMonitor(ctx context.Context, req UpdateEpisodeMo
 	h.recalcStatusAfterMonitorChange(uint(req.Id))
 	if requestAttributed {
 		h.syncSvc.PublishRequestAttribution(item)
+	}
+	if activityAdded {
+		h.syncSvc.PublishActivityInvalidation(item.ID)
 	}
 
 	return UpdateEpisodeMonitor200JSONResponse{Monitored: req.Body.Monitored}, nil

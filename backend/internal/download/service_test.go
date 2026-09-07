@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,36 @@ type stubStore struct {
 
 	mu      sync.Mutex
 	updated []store.Download
+}
+
+type manualMutationStore struct {
+	store.Store
+	appendErr error
+	updateErr error
+	txCalls   *int
+}
+
+func (s *manualMutationStore) WithTx(fn func(store.Store) error) error {
+	if s.txCalls != nil {
+		(*s.txCalls)++
+	}
+	return s.Store.WithTx(func(tx store.Store) error {
+		return fn(&manualMutationStore{Store: tx, appendErr: s.appendErr, updateErr: s.updateErr, txCalls: s.txCalls})
+	})
+}
+
+func (s *manualMutationStore) AppendMediaActivity(entry *store.MediaActivity) error {
+	if s.appendErr != nil {
+		return s.appendErr
+	}
+	return s.Store.AppendMediaActivity(entry)
+}
+
+func (s *manualMutationStore) UpdateDownload(dl *store.Download) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	return s.Store.UpdateDownload(dl)
 }
 
 func (s *stubStore) GetDownload(_ uint) (*store.Download, error) {
@@ -170,21 +201,194 @@ func TestUpdateFromTorrentRecordsDownloadedAt(t *testing.T) {
 }
 
 func TestUpdateStatusPreservesDownloadedAtOnImportRetry(t *testing.T) {
-	downloadedAt := time.Now()
-	st := &stubStore{download: &store.Download{
-		ID: 9, Status: "import_failed", DownloadedAt: &downloadedAt, RetryCount: 3,
-	}}
-	svc := &Service{store: st}
+	st, original, userID := newPersistedDownload(t, "import_failed")
+	svc := &Service{store: st, bus: eventbus.New(4)}
 
-	dl, err := svc.UpdateStatus(9, "pending")
+	dl, err := svc.UpdateStatus(userID, original.ID, "pending")
 	if err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
-	if dl.DownloadedAt == nil || !dl.DownloadedAt.Equal(downloadedAt) {
-		t.Errorf("DownloadedAt = %v, want %v", dl.DownloadedAt, downloadedAt)
+	if dl.DownloadedAt == nil || !dl.DownloadedAt.Equal(*original.DownloadedAt) {
+		t.Errorf("DownloadedAt = %v, want %v", dl.DownloadedAt, original.DownloadedAt)
 	}
 	if dl.RetryCount != 0 {
 		t.Errorf("RetryCount = %d, want 0", dl.RetryCount)
+	}
+}
+
+func TestManualCreateDownloadAppendsSafeScopedActivityAndDeduplicates(t *testing.T) {
+	st, item, user := newManualDownloadFixture(t, "series")
+	if err := st.CreateEpisode(&store.Episode{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 2}); err != nil {
+		t.Fatal(err)
+	}
+	bus := eventbus.New(8)
+	rec := newRecorder()
+	bus.SubscribeAll(rec.handle)
+	bus.Start()
+	t.Cleanup(bus.Stop)
+	svc := &Service{store: st, bus: bus}
+	release := "Show.S01E02." + strings.Repeat("x", 600)
+	dl := &store.Download{
+		MediaItemID: item.ID, IndexerID: 4, IndexerName: strings.Repeat("i", 600),
+		Title: release, DownloadURL: "https://tracker.invalid/download/secret", Status: "pending",
+	}
+
+	if err := svc.Create(user.ID, dl); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := *dl
+	duplicate.ID = 0
+	if err := svc.Create(user.ID, &duplicate); !errors.Is(err, store.ErrDuplicate) {
+		t.Fatalf("duplicate error = %v, want ErrDuplicate", err)
+	}
+	bus.Stop()
+
+	downloads, err := st.ListDownloads(&item.ID, nil)
+	if err != nil || len(downloads) != 1 {
+		t.Fatalf("downloads = %+v, err = %v", downloads, err)
+	}
+	rows := downloadActivityRows(t, st, item.ID, user.ID)
+	if len(rows) != 1 || rows[0].Action != store.MediaActivityActionDownloadQueued {
+		t.Fatalf("activity rows = %+v", rows)
+	}
+	if rows[0].ActorUserID == nil || *rows[0].ActorUserID != user.ID || rows[0].Visibility != store.MediaActivityVisibilityShared {
+		t.Fatalf("activity actor/visibility = %+v", rows[0])
+	}
+	details := downloadActivityDetails(t, rows[0])
+	if details.Automatic == nil || *details.Automatic || details.DownloadID == nil || *details.DownloadID != dl.ID {
+		t.Fatalf("queued details = %+v", details)
+	}
+	if len(details.ReleaseName) != store.MediaActivityMaxTitleBytes || len(details.IndexerName) != store.MediaActivityMaxTitleBytes {
+		t.Fatalf("unsafe activity text lengths: release=%d indexer=%d", len(details.ReleaseName), len(details.IndexerName))
+	}
+	if details.Target == nil || details.Target.Scope != store.MediaActivityScopeEpisode || details.Target.SeasonNumber == nil || *details.Target.SeasonNumber != 1 || details.Target.EpisodeNumber == nil || *details.Target.EpisodeNumber != 2 {
+		t.Fatalf("queued target = %+v", details.Target)
+	}
+	if strings.Contains(rows[0].Details, dl.DownloadURL) {
+		t.Fatalf("activity leaked download URL: %s", rows[0].Details)
+	}
+	if rec.count(eventbus.DownloadCreated) != 1 || rec.count(eventbus.MediaActivityAdded) != 1 {
+		t.Fatalf("events: created=%d activity=%d", rec.count(eventbus.DownloadCreated), rec.count(eventbus.MediaActivityAdded))
+	}
+}
+
+func TestManualCreateDownloadRejectsBeforeOrRollsBackActivityBoundary(t *testing.T) {
+	st, item, user := newManualDownloadFixture(t, "movie")
+	writeErr := errors.New("activity unavailable")
+	txCalls := 0
+	wrapped := &manualMutationStore{Store: st, appendErr: writeErr, txCalls: &txCalls}
+	bus := eventbus.New(4)
+	rec := newRecorder()
+	bus.SubscribeAll(rec.handle)
+	bus.Start()
+	t.Cleanup(bus.Stop)
+	svc := &Service{store: wrapped, bus: bus}
+
+	invalid := &store.Download{MediaItemID: item.ID, Title: "Invalid", DownloadURL: "file:///secret", Status: "pending"}
+	if err := svc.Create(user.ID, invalid); err == nil {
+		t.Fatal("invalid URL was accepted")
+	}
+	if txCalls != 0 {
+		t.Fatalf("invalid URL started %d transactions", txCalls)
+	}
+
+	dl := &store.Download{MediaItemID: item.ID, Title: "Movie.1080p", DownloadURL: "https://tracker.invalid/release", Status: "pending"}
+	if err := svc.Create(user.ID, dl); !errors.Is(err, writeErr) {
+		t.Fatalf("append error = %v, want %v", err, writeErr)
+	}
+	bus.Stop()
+	downloads, err := st.ListDownloads(&item.ID, nil)
+	if err != nil || len(downloads) != 0 {
+		t.Fatalf("rolled-back downloads = %+v, err = %v", downloads, err)
+	}
+	if rows := downloadActivityRows(t, st, item.ID, user.ID); len(rows) != 0 {
+		t.Fatalf("rolled-back activity = %+v", rows)
+	}
+	if rec.count(eventbus.DownloadCreated) != 0 || rec.count(eventbus.MediaActivityAdded) != 0 {
+		t.Fatalf("rolled-back create published events: %+v", rec.events)
+	}
+
+	valid := &store.Download{MediaItemID: item.ID, Title: "Movie.720p", DownloadURL: "https://tracker.invalid/other", Status: "pending"}
+	if err := (&Service{store: st, bus: eventbus.New(2)}).Create(user.ID+100, valid); !errors.Is(err, store.ErrActivityActorNotFound) {
+		t.Fatalf("deleted actor error = %v, want ErrActivityActorNotFound", err)
+	}
+}
+
+func TestManualUpdateStatusRecordsRetryAndSuppressesNoOp(t *testing.T) {
+	st, dl, userID := newPersistedDownload(t, "import_failed")
+	bus := eventbus.New(8)
+	rec := newRecorder()
+	bus.SubscribeAll(rec.handle)
+	bus.Start()
+	t.Cleanup(bus.Stop)
+	svc := &Service{store: st, bus: bus}
+
+	retried, err := svc.UpdateStatus(userID, dl.ID, "pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.Status != "pending" || retried.RetryCount != 0 || retried.NextRetryAt != nil || retried.LastError != "" || retried.DownloadedAt == nil {
+		t.Fatalf("retry result = %+v", retried)
+	}
+	firstUpdatedAt := retried.UpdatedAt
+	unchanged, err := svc.UpdateStatus(userID, dl.ID, "pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unchanged.UpdatedAt.Equal(firstUpdatedAt) {
+		t.Fatalf("no-op updated timestamp: before=%v after=%v", firstUpdatedAt, unchanged.UpdatedAt)
+	}
+	bus.Stop()
+
+	rows := downloadActivityRows(t, st, dl.MediaItemID, userID)
+	if len(rows) != 1 || rows[0].Action != store.MediaActivityActionDownloadStatusChanged {
+		t.Fatalf("status activity = %+v", rows)
+	}
+	details := downloadActivityDetails(t, rows[0])
+	if details.OldStatus != "import_failed" || details.NewStatus != "pending" || details.Reason != "manual_retry" || details.Target == nil || details.Target.Scope != store.MediaActivityScopeMedia {
+		t.Fatalf("status details = %+v", details)
+	}
+	if rec.count(eventbus.MediaActivityAdded) != 1 {
+		t.Fatalf("activity invalidations = %d, want 1", rec.count(eventbus.MediaActivityAdded))
+	}
+}
+
+func TestManualUpdateStatusCASAndAppendFailuresRollBack(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		updateErr error
+		appendErr error
+	}{
+		{name: "stale CAS", updateErr: store.ErrNotFound},
+		{name: "activity append", appendErr: errors.New("activity unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, dl, userID := newPersistedDownload(t, "failed")
+			wrapped := &manualMutationStore{Store: st, updateErr: tc.updateErr, appendErr: tc.appendErr}
+			bus := eventbus.New(4)
+			rec := newRecorder()
+			bus.SubscribeAll(rec.handle)
+			bus.Start()
+			svc := &Service{store: wrapped, bus: bus}
+			if _, err := svc.UpdateStatus(userID, dl.ID, "pending"); err == nil {
+				bus.Stop()
+				t.Fatal("expected status mutation failure")
+			}
+			bus.Stop()
+			current, err := st.GetDownload(dl.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current.Status != "failed" || current.RetryCount != dl.RetryCount || current.LastError != dl.LastError || current.NextRetryAt == nil {
+				t.Fatalf("failed mutation committed: %+v", current)
+			}
+			if rows := downloadActivityRows(t, st, dl.MediaItemID, userID); len(rows) != 0 {
+				t.Fatalf("failed mutation activity = %+v", rows)
+			}
+			if rec.count(eventbus.MediaActivityAdded) != 0 {
+				t.Fatalf("failed mutation published %d invalidations", rec.count(eventbus.MediaActivityAdded))
+			}
+		})
 	}
 }
 
@@ -441,7 +645,7 @@ func (s *deletionInterleavingStore) DeleteMediaItem(id uint) error {
 	return s.Store.DeleteMediaItem(id)
 }
 
-func newPersistedDownload(t *testing.T, status string) (*sqlite.SQLiteStore, *store.Download) {
+func newPersistedDownload(t *testing.T, status string) (*sqlite.SQLiteStore, *store.Download, uint) {
 	t.Helper()
 	s, err := sqlite.New(filepath.Join(t.TempDir(), "downloads.db"))
 	if err != nil {
@@ -456,6 +660,10 @@ func newPersistedDownload(t *testing.T, status string) (*sqlite.SQLiteStore, *st
 	if err := s.CreateMediaItem(item); err != nil {
 		t.Fatal(err)
 	}
+	user := &store.User{Email: "actor@example.com", PasswordHash: "hash"}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
 	downloadedAt, nextRetryAt := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
 	dl := &store.Download{
 		MediaItemID: item.ID, Title: "Movie.1080p", Status: status, ClientTorrentHash: "abc",
@@ -464,7 +672,72 @@ func newPersistedDownload(t *testing.T, status string) (*sqlite.SQLiteStore, *st
 	if err := s.CreateDownload(dl); err != nil {
 		t.Fatal(err)
 	}
-	return s, dl
+	return s, dl, user.ID
+}
+
+func newManualDownloadFixture(t *testing.T, mediaType string) (*sqlite.SQLiteStore, *store.MediaItem, *store.User) {
+	t.Helper()
+	s, err := sqlite.New(filepath.Join(t.TempDir(), "manual-download.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	lib := &store.Library{Name: "Library", Path: t.TempDir(), MediaType: mediaType}
+	if err := s.CreateLibrary(lib); err != nil {
+		t.Fatal(err)
+	}
+	item := &store.MediaItem{LibraryID: lib.ID, Title: "Title", MediaType: mediaType, Status: "new", Source: "disk"}
+	if err := s.CreateMediaItem(item); err != nil {
+		t.Fatal(err)
+	}
+	user := &store.User{Email: "manual@example.com", PasswordHash: "hash"}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	return s, item, user
+}
+
+func TestManualCreateDownloadRejectsDeletionPending(t *testing.T) {
+	st, item, user := newManualDownloadFixture(t, "movie")
+	item.DeletionPending = true
+	if err := st.UpdateMediaItem(item); err != nil {
+		t.Fatal(err)
+	}
+	bus := eventbus.New(4)
+	dl := &store.Download{
+		MediaItemID: item.ID, Title: "Movie.1080p", DownloadURL: "https://tracker.invalid/release", Status: "pending",
+	}
+	if err := (&Service{store: st, bus: bus}).Create(user.ID, dl); !errors.Is(err, store.ErrMediaDeletionPending) {
+		t.Fatalf("Create() error = %v, want ErrMediaDeletionPending", err)
+	}
+	downloads, err := st.ListDownloads(&item.ID, nil)
+	if err != nil || len(downloads) != 0 {
+		t.Fatalf("downloads after rejected create = %+v, %v", downloads, err)
+	}
+	if rows := downloadActivityRows(t, st, item.ID, user.ID); len(rows) != 0 {
+		t.Fatalf("activity after rejected create = %+v", rows)
+	}
+}
+
+func downloadActivityRows(t *testing.T, st store.Store, itemID, userID uint) []store.MediaActivityAttribution {
+	t.Helper()
+	rows, hasMore, err := st.ListMediaActivityPage(itemID, userID, nil, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("unexpected activity pagination")
+	}
+	return rows
+}
+
+func downloadActivityDetails(t *testing.T, row store.MediaActivityAttribution) store.MediaActivityDetails {
+	t.Helper()
+	var details store.MediaActivityDetails
+	if err := json.Unmarshal([]byte(row.Details), &details); err != nil {
+		t.Fatal(err)
+	}
+	return details
 }
 
 func TestDeleteDownloadDoesNotNotifyStaleInFlightPoll(t *testing.T) {
@@ -474,7 +747,7 @@ func TestDeleteDownloadDoesNotNotifyStaleInFlightPoll(t *testing.T) {
 			name = "whole media item"
 		}
 		t.Run(name, func(t *testing.T) {
-			s, dl := newPersistedDownload(t, "downloading")
+			s, dl, userID := newPersistedDownload(t, "downloading")
 			downloads := []store.Download{*dl}
 			if wholeItem {
 				for _, status := range []string{"downloading", "pending", "importing", "seeding"} {
@@ -563,9 +836,9 @@ func TestDeleteDownloadDoesNotNotifyStaleInFlightPoll(t *testing.T) {
 			wait(snapshotReady)
 			mediaSvc := media.NewService(interleaving, nil, bus, provider, t.TempDir())
 			if wholeItem {
-				err = mediaSvc.DeleteMediaItem(dl.MediaItemID)
+				err = mediaSvc.DeleteMediaItem(userID, dl.MediaItemID)
 			} else {
-				err = mediaSvc.DeleteDownload(dl.ID, false)
+				err = mediaSvc.DeleteDownload(userID, dl.ID, false)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -595,7 +868,7 @@ func TestDeleteDownloadDoesNotNotifyStaleInFlightPoll(t *testing.T) {
 func TestManualRetryUsesCurrentSnapshotAndPreservesDownloadedAt(t *testing.T) {
 	for _, status := range []string{"failed", "import_failed", "cancelled"} {
 		t.Run(status, func(t *testing.T) {
-			s, dl := newPersistedDownload(t, "downloading")
+			s, dl, userID := newPersistedDownload(t, "downloading")
 			stale := *dl
 			dl.Status = status
 			if err := s.UpdateDownload(dl); err != nil {
@@ -607,7 +880,7 @@ func TestManualRetryUsesCurrentSnapshotAndPreservesDownloadedAt(t *testing.T) {
 			bus.Start()
 			t.Cleanup(bus.Stop)
 			svc := &Service{store: s, bus: bus}
-			retried, err := svc.UpdateStatus(dl.ID, "pending")
+			retried, err := svc.UpdateStatus(userID, dl.ID, "pending")
 			if err != nil {
 				t.Fatalf("manual retry: %v", err)
 			}

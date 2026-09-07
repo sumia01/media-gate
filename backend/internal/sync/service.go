@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,10 @@ import (
 )
 
 var yearRe = regexp.MustCompile(`[\(\[]?(\d{4})[\)\]]?\s*$`)
+
+// ErrResyncStale means the catalog changed while the filesystem was being
+// scanned. The candidate is discarded rather than applied to a newer preimage.
+var ErrResyncStale = errors.New("media resync candidate is stale")
 
 type scannedFile struct {
 	path          string
@@ -42,8 +47,35 @@ type folderInfo struct {
 type mediaGroup struct {
 	title   string
 	year    *int
-	folders []string       // top-level folder paths belonging to this group
-	files   []scannedFile  // all video files across all folders
+	folders []string      // top-level folder paths belonging to this group
+	files   []scannedFile // all video files across all folders
+}
+
+type librarySyncCandidate struct {
+	itemID        uint
+	newItem       *store.MediaItem
+	addFiles      []scannedFile
+	removePaths   []string
+	deleteIfEmpty bool
+}
+
+type resyncPreimage struct {
+	item    store.MediaItem
+	library store.Library
+	files   []store.MediaFile
+}
+
+type resyncCandidate struct {
+	freshByPath   map[string]scannedFile
+	removePaths   map[string]struct{}
+	partial       bool
+	failedWindows int
+}
+
+type resyncResult struct {
+	updated int
+	added   int
+	removed int
 }
 
 type Service struct {
@@ -111,9 +143,11 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 	}
 
 	existingPaths := make(map[string]struct{}, len(existingFiles))
+	pathToItem := make(map[string]uint, len(existingFiles))
 	var removePaths []string
 	for i := range existingFiles {
 		existingPaths[existingFiles[i].Path] = struct{}{}
+		pathToItem[existingFiles[i].Path] = existingFiles[i].MediaItemID
 		if _, ok := diskFilePaths[existingFiles[i].Path]; ok {
 			continue
 		}
@@ -129,33 +163,15 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		removePaths = append(removePaths, existingFiles[i].Path)
 	}
 
-	// affectedItems collects items whose file set changed during this sync so
-	// their status can be recalculated once at the end (recalc no-ops on items
-	// that were orphan-deleted in the meantime).
-	affectedItems := make(map[uint]struct{})
-
-	// Remove media files no longer on disk
-	if len(removePaths) > 0 {
-		if err := s.store.DeleteMediaFilesByPaths(removePaths); err != nil {
-			return 0, 0, fmt.Errorf("removing stale media files: %w", err)
+	candidatesByItem := make(map[uint]*librarySyncCandidate)
+	for _, path := range removePaths {
+		itemID := pathToItem[path]
+		candidate := candidatesByItem[itemID]
+		if candidate == nil {
+			candidate = &librarySyncCandidate{itemID: itemID}
+			candidatesByItem[itemID] = candidate
 		}
-		removed = len(removePaths)
-
-		pathToItem := make(map[string]uint, len(existingFiles))
-		for i := range existingFiles {
-			pathToItem[existingFiles[i].Path] = existingFiles[i].MediaItemID
-		}
-		for _, p := range removePaths {
-			if id, ok := pathToItem[p]; ok {
-				affectedItems[id] = struct{}{}
-			}
-		}
-		orphanIDs := s.findOrphanedMediaItems(removePaths, existingFiles, pathToItem)
-		for _, id := range orphanIDs {
-			_ = s.store.DeleteMediaMetadataByMediaItem(id)
-			_ = s.store.DeleteEpisodesByMediaItem(id)
-			_ = s.store.DeleteMediaItem(id)
-		}
+		candidate.removePaths = append(candidate.removePaths, path)
 	}
 
 	// Phase 4: Build folder→MediaItemID map from existing files.
@@ -167,7 +183,8 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		}
 	}
 
-	// Phase 5: Process groups — create or update MediaItems
+	// Phase 5: Build per-item database candidates from the completed scan.
+	var newItemCandidates []*librarySyncCandidate
 	for _, g := range groups {
 		if len(g.files) == 0 {
 			continue
@@ -185,225 +202,500 @@ func (s *Service) SyncLibrary(lib *store.Library) (added, removed int, err error
 		}
 
 		if !exists {
-			item := &store.MediaItem{
-				LibraryID: lib.ID,
-				Title:     g.title,
-				MediaType: lib.MediaType,
-				Status:    "new",
-				Source:    "disk",
-				Year:      g.year,
-			}
-			if err := s.store.CreateMediaItem(item); err != nil {
-				return added, removed, fmt.Errorf("creating media item %q: %w", g.title, err)
-			}
-			mediaItemID = item.ID
-			// Register all folders in this group so subsequent groups can find them
-			for _, folderPath := range g.folders {
-				folderToItem[folderPath] = mediaItemID
-			}
+			newItemCandidates = append(newItemCandidates, &librarySyncCandidate{
+				newItem: &store.MediaItem{
+					LibraryID: lib.ID,
+					Title:     g.title,
+					MediaType: lib.MediaType,
+					Status:    "new",
+					Source:    "disk",
+					Year:      g.year,
+				},
+				addFiles: g.files,
+			})
+			continue
 		}
 
-		// Create MediaFiles for new video files
+		candidate := candidatesByItem[mediaItemID]
+		if candidate == nil {
+			candidate = &librarySyncCandidate{itemID: mediaItemID}
+			candidatesByItem[mediaItemID] = candidate
+		}
 		for _, sf := range g.files {
 			if _, found := existingPaths[sf.path]; found {
 				continue
 			}
-			mf := &store.MediaFile{
-				MediaItemID:   mediaItemID,
-				Path:          sf.path,
-				FileName:      sf.fileName,
-				Size:          sf.size,
-				Resolution:    sf.resolution,
-				SourceType:    sf.sourceType,
-				SeasonNumber:  sf.seasonNumber,
-				EpisodeNumber: sf.episodeNumber,
-				AddedAt:       time.Now(),
-			}
-			if err := s.store.CreateMediaFile(mf); err != nil {
-				return added, removed, fmt.Errorf("creating media file %q: %w", sf.fileName, err)
-			}
-			affectedItems[mediaItemID] = struct{}{}
-			added++
+			candidate.addFiles = append(candidate.addFiles, sf)
 		}
 	}
 
-	// Recalculate statuses for items whose files were added or removed —
-	// a full library scan must keep statuses as fresh as a single-item resync.
-	for id := range affectedItems {
-		if err := s.RecalcMediaItemStatus(id); err != nil {
-			slog.Warn("sync: status recalc failed", "media_item_id", id, "error", err)
+	for _, itemID := range s.findOrphanedMediaItems(removePaths, existingFiles, pathToItem) {
+		candidate := candidatesByItem[itemID]
+		if candidate != nil && len(candidate.addFiles) == 0 {
+			candidate.deleteIfEmpty = true
 		}
+	}
+
+	itemIDs := make([]uint, 0, len(candidatesByItem))
+	for itemID, candidate := range candidatesByItem {
+		if len(candidate.addFiles) > 0 || len(candidate.removePaths) > 0 {
+			itemIDs = append(itemIDs, itemID)
+		}
+	}
+	sort.Slice(itemIDs, func(i, j int) bool { return itemIDs[i] < itemIDs[j] })
+
+	candidates := make([]*librarySyncCandidate, 0, len(itemIDs)+len(newItemCandidates))
+	for _, itemID := range itemIDs {
+		candidates = append(candidates, candidatesByItem[itemID])
+	}
+	candidates = append(candidates, newItemCandidates...)
+	for _, candidate := range candidates {
+		committedItemID, result, deleted, applyErr := s.applyLibrarySyncCandidate(candidate)
+		if applyErr != nil {
+			return added, removed, applyErr
+		}
+		added += result.added
+		removed += result.removed
+		s.finishLibrarySyncCandidate(committedItemID, result, deleted)
 	}
 
 	slog.Info("sync: library sync complete", "library_id", lib.ID, "library", lib.Name, "files_added", added, "files_removed", removed)
 	return added, removed, nil
 }
 
-// ResyncMediaItem re-scans all files belonging to a single media item,
-// updating resolution/source/season/episode on existing files and
-// adding/removing files as needed.
+func (s *Service) applyLibrarySyncCandidate(candidate *librarySyncCandidate) (uint, resyncResult, bool, error) {
+	operationID, err := store.NewMediaActivityOperationID()
+	if err != nil {
+		return 0, resyncResult{}, false, err
+	}
+
+	var (
+		itemID  uint
+		result  resyncResult
+		deleted bool
+	)
+	err = s.store.WithTx(func(tx store.Store) error {
+		var item *store.MediaItem
+		if candidate.newItem != nil {
+			itemCopy := *candidate.newItem
+			if err := tx.CreateMediaItem(&itemCopy); err != nil {
+				return fmt.Errorf("creating media item %q: %w", itemCopy.Title, err)
+			}
+			item = &itemCopy
+		} else {
+			var err error
+			item, err = tx.GetMediaItem(candidate.itemID)
+			if err != nil {
+				return fmt.Errorf("getting media item %d: %w", candidate.itemID, err)
+			}
+			if item.DeletionPending {
+				return store.ErrMediaDeletionPending
+			}
+		}
+		itemID = item.ID
+
+		currentFiles, err := tx.ListMediaFilesByMediaItem(item.ID)
+		if err != nil {
+			return fmt.Errorf("listing files for media item %d: %w", item.ID, err)
+		}
+		currentByPath := make(map[string]struct{}, len(currentFiles)+len(candidate.addFiles))
+		for _, file := range currentFiles {
+			currentByPath[file.Path] = struct{}{}
+		}
+
+		for _, scanned := range candidate.addFiles {
+			if _, exists := currentByPath[scanned.path]; exists {
+				continue
+			}
+			file := &store.MediaFile{
+				MediaItemID: item.ID, Path: scanned.path, FileName: scanned.fileName, Size: scanned.size,
+				Resolution: scanned.resolution, SourceType: scanned.sourceType,
+				SeasonNumber: scanned.seasonNumber, EpisodeNumber: scanned.episodeNumber,
+				AddedAt: time.Now().UTC(),
+			}
+			if err := tx.CreateMediaFile(file); err != nil {
+				return fmt.Errorf("creating media file %q: %w", scanned.fileName, err)
+			}
+			currentByPath[scanned.path] = struct{}{}
+			result.added++
+		}
+
+		actualRemovePaths := make([]string, 0, len(candidate.removePaths))
+		for _, path := range candidate.removePaths {
+			if _, exists := currentByPath[path]; !exists {
+				continue
+			}
+			actualRemovePaths = append(actualRemovePaths, path)
+			delete(currentByPath, path)
+		}
+		if len(actualRemovePaths) > 0 {
+			if err := tx.DeleteMediaFilesByPaths(actualRemovePaths); err != nil {
+				return fmt.Errorf("removing stale media files for media item %d: %w", item.ID, err)
+			}
+			result.removed = len(actualRemovePaths)
+		}
+
+		if result.added == 0 && result.removed == 0 {
+			return nil
+		}
+		entry, err := store.NewSystemMediaActivity(
+			item, "sync", store.MediaActivityActionResyncCompleted, operationID,
+			store.MediaActivityDetails{
+				Reason: "library_sync", Added: result.added, Updated: result.updated, Removed: result.removed,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		if err := tx.AppendMediaActivity(entry); err != nil {
+			return err
+		}
+
+		if !candidate.deleteIfEmpty || len(currentByPath) != 0 || isRequestOrPending(item) || item.Monitored {
+			return nil
+		}
+		if err := tx.DeleteMediaMetadataByMediaItem(item.ID); err != nil {
+			return fmt.Errorf("deleting orphaned media metadata for item %d: %w", item.ID, err)
+		}
+		if err := tx.DeleteEpisodesByMediaItem(item.ID); err != nil {
+			return fmt.Errorf("deleting orphaned episodes for item %d: %w", item.ID, err)
+		}
+		if err := tx.DeleteMediaItem(item.ID); err != nil {
+			return fmt.Errorf("deleting orphaned media item %d: %w", item.ID, err)
+		}
+		deleted = true
+		return nil
+	})
+	if err != nil {
+		return 0, resyncResult{}, false, err
+	}
+	return itemID, result, deleted, nil
+}
+
+func (s *Service) finishLibrarySyncCandidate(itemID uint, result resyncResult, deleted bool) {
+	if result.added == 0 && result.removed == 0 || deleted {
+		return
+	}
+	s.PublishActivityInvalidation(itemID)
+	if err := s.RecalcMediaItemStatus(itemID); err != nil {
+		slog.Warn("sync: status recalc failed", "media_item_id", itemID, "error", err)
+	}
+}
+
+// ResyncMediaItem performs the automatic resync used by the importer. It uses
+// the same stale-safe scan/apply boundary as an explicit resync, but does not
+// create user activity.
 func (s *Service) ResyncMediaItem(itemID uint) (updated, added, removed int, err error) {
-	existingFiles, err := s.store.ListMediaFilesByMediaItem(itemID)
+	preimage, err := captureResyncPreimage(s.store, itemID)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("listing files: %w", err)
+		return 0, 0, 0, err
 	}
+	candidate := scanResyncCandidate(preimage)
+	result, err := s.applyResyncCandidate(preimage, candidate, "")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	s.finishResync(itemID, result)
+	return result.updated, result.added, result.removed, nil
+}
 
-	// Get the library path to use as a boundary — never scan above it.
-	item, err := s.store.GetMediaItem(itemID)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("getting media item: %w", err)
+// ResyncMediaItemForUser records an explicit command and its committed result.
+// Filesystem inspection occurs after the request transaction commits and before
+// the result transaction begins.
+func (s *Service) ResyncMediaItemForUser(userID, itemID uint) (updated, added, removed int, err error) {
+	var (
+		preimage    *resyncPreimage
+		operationID string
+	)
+	if err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateResyncActor(tx, userID); err != nil {
+			return err
+		}
+		var err error
+		preimage, err = captureResyncPreimage(tx, itemID)
+		if err != nil {
+			return err
+		}
+		operationID, err = store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		entry, err := store.NewUserMediaActivity(
+			&preimage.item, userID, store.MediaActivityActionResyncRequested, operationID,
+			store.MediaActivityVisibilityShared, store.MediaActivityDetails{},
+		)
+		if err != nil {
+			return err
+		}
+		return tx.AppendMediaActivity(entry)
+	}); err != nil {
+		return 0, 0, 0, err
 	}
-	lib, err := s.store.GetLibrary(item.LibraryID)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("getting library: %w", err)
-	}
-	libraryRoot := lib.Path
+	s.PublishActivityInvalidation(itemID)
 
-	// Find the media item's top-level folder(s) — the first directory level
-	// below the library root. For a file at /lib/ShowName/Season 01/ep.mkv
-	// the top-level folder is /lib/ShowName/. We only scan within these.
+	candidate := scanResyncCandidate(preimage)
+	result, err := s.applyResyncCandidate(preimage, candidate, operationID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	s.PublishActivityInvalidation(itemID)
+	s.finishResync(itemID, result)
+	return result.updated, result.added, result.removed, nil
+}
+
+func captureResyncPreimage(st store.Store, itemID uint) (*resyncPreimage, error) {
+	item, err := st.GetMediaItem(itemID)
+	if err != nil {
+		return nil, fmt.Errorf("getting media item: %w", err)
+	}
+	if item.DeletionPending {
+		return nil, store.ErrMediaDeletionPending
+	}
+	library, err := st.GetLibrary(item.LibraryID)
+	if err != nil {
+		return nil, fmt.Errorf("getting library: %w", err)
+	}
+	files, err := st.ListMediaFilesByMediaItem(itemID)
+	if err != nil {
+		return nil, fmt.Errorf("listing files: %w", err)
+	}
+	return &resyncPreimage{item: *item, library: *library, files: files}, nil
+}
+
+func scanResyncCandidate(preimage *resyncPreimage) *resyncCandidate {
+	libraryRoot := preimage.library.Path
 	topFolders := make(map[string]struct{})
-	for _, f := range existingFiles {
-		rel, err := filepath.Rel(libraryRoot, f.Path)
-		if err != nil {
-			continue
-		}
-		parts := strings.SplitN(rel, string(filepath.Separator), 2)
-		if len(parts) > 0 {
-			topFolders[filepath.Join(libraryRoot, parts[0])] = struct{}{}
+	for _, file := range preimage.files {
+		if folder := topLevelFolder(libraryRoot, file.Path); folder != "" {
+			topFolders[folder] = struct{}{}
 		}
 	}
 
-	// Re-scan only the top-level media folder(s) and collect video files
-	var freshFiles []scannedFile
+	candidate := &resyncCandidate{
+		freshByPath: make(map[string]scannedFile),
+		removePaths: make(map[string]struct{}),
+	}
+	failedTopFolders := make(map[string]struct{})
 	for dir := range topFolders {
-		fi, err := os.Stat(dir)
-		if err != nil || !fi.IsDir() {
+		info, err := os.Stat(dir)
+		if err != nil {
+			candidate.failedWindows++
+			failedTopFolders[dir] = struct{}{}
+			slog.Warn("resync: could not inspect media folder; leaving its files untouched",
+				"media_item_id", preimage.item.ID, "path", dir, "error", err)
 			continue
 		}
-		scanned, err := scanMediaFolder(dir)
+		if !info.IsDir() {
+			candidate.failedWindows++
+			failedTopFolders[dir] = struct{}{}
+			slog.Warn("resync: tracked media folder is not a directory; leaving its files untouched",
+				"media_item_id", preimage.item.ID, "path", dir)
+			continue
+		}
+		files, err := scanMediaFolder(dir)
 		if err != nil {
-			// Could not read the folder (transient I/O error). Skip it: the files it
-			// contains are left untouched below (the removal step only deletes files
-			// that os.Stat confirms are gone via os.IsNotExist), so an unreadable
-			// folder never causes a file to be dropped from the item.
+			candidate.failedWindows++
+			failedTopFolders[dir] = struct{}{}
 			slog.Warn("resync: could not scan media folder; leaving its files untouched",
-				"media_item_id", itemID, "path", dir, "error", err)
+				"media_item_id", preimage.item.ID, "path", dir, "error", err)
 			continue
 		}
-		freshFiles = append(freshFiles, scanned...)
+		for _, file := range files {
+			if topLevelFolder(libraryRoot, file.path) != "" {
+				candidate.freshByPath[file.path] = file
+			}
+		}
 	}
 
-	// Deduplicate scanned files by path (multiple root scans may overlap)
-	freshByPath := make(map[string]scannedFile, len(freshFiles))
-	for _, sf := range freshFiles {
-		freshByPath[sf.path] = sf
-	}
-
-	// Also include files scanned directly in any folder (flat layout — files
-	// sitting next to season dirs won't be picked up by scanMediaFolder's
-	// subdirectory descent, but they're already in existingFiles).
-	// Re-parse them from the existing paths to get fresh metadata.
-	for _, ef := range existingFiles {
-		if _, already := freshByPath[ef.Path]; already {
+	for _, existing := range preimage.files {
+		topFolder := topLevelFolder(libraryRoot, existing.Path)
+		if _, found := candidate.freshByPath[existing.Path]; found || topFolder == "" {
 			continue
 		}
-		// File might still exist on disk — re-parse it
-		fi, err := os.Stat(ef.Path)
+		if _, failed := failedTopFolders[topFolder]; failed {
+			continue
+		}
+		info, err := os.Stat(existing.Path)
+		if err == nil {
+			parsed := fileparse.Parse(existing.FileName)
+			candidate.freshByPath[existing.Path] = scannedFile{
+				path: existing.Path, fileName: existing.FileName, size: info.Size(),
+				resolution: parsed.Resolution, sourceType: parsed.SourceType,
+				seasonNumber: parsed.SeasonNumber, episodeNumber: parsed.EpisodeNumber,
+			}
+		} else if os.IsNotExist(err) {
+			candidate.removePaths[existing.Path] = struct{}{}
+		} else {
+			candidate.failedWindows++
+			slog.Warn("resync: could not inspect tracked media file; leaving it untouched",
+				"media_item_id", preimage.item.ID, "path", existing.Path, "error", err)
+		}
+	}
+	candidate.partial = candidate.failedWindows > 0
+	return candidate
+}
+
+func (s *Service) applyResyncCandidate(preimage *resyncPreimage, candidate *resyncCandidate, operationID string) (resyncResult, error) {
+	var result resyncResult
+	err := s.store.WithTx(func(tx store.Store) error {
+		item, err := tx.GetMediaItem(preimage.item.ID)
 		if err != nil {
-			continue // will be caught as removed below
-		}
-		info := fileparse.Parse(ef.FileName)
-		freshByPath[ef.Path] = scannedFile{
-			path:          ef.Path,
-			fileName:      ef.FileName,
-			size:          fi.Size(),
-			resolution:    info.Resolution,
-			sourceType:    info.SourceType,
-			seasonNumber:  info.SeasonNumber,
-			episodeNumber: info.EpisodeNumber,
-		}
-	}
-
-	// Build lookup of existing files
-	existingByPath := make(map[string]store.MediaFile, len(existingFiles))
-	existingPathSet := make(map[string]struct{}, len(existingFiles))
-	for _, f := range existingFiles {
-		existingByPath[f.Path] = f
-		existingPathSet[f.Path] = struct{}{}
-	}
-
-	// Update existing files with fresh metadata
-	for path, sf := range freshByPath {
-		ef, exists := existingByPath[path]
-		if !exists {
-			continue
-		}
-		if fileNeedsUpdate(ef, sf) {
-			ef.Size = sf.size
-			ef.Resolution = sf.resolution
-			ef.SourceType = sf.sourceType
-			ef.SeasonNumber = sf.seasonNumber
-			ef.EpisodeNumber = sf.episodeNumber
-			if err := s.store.UpdateMediaFile(&ef); err != nil {
-				return updated, added, removed, fmt.Errorf("updating file %q: %w", sf.fileName, err)
+			if errors.Is(err, store.ErrNotFound) {
+				return ErrResyncStale
 			}
-			updated++
+			return err
 		}
-	}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		library, err := tx.GetLibrary(item.LibraryID)
+		if err != nil {
+			return err
+		}
+		currentFiles, err := tx.ListMediaFilesByMediaItem(item.ID)
+		if err != nil {
+			return err
+		}
+		if !sameResyncIdentity(preimage, item, library) || !sameMediaFilePreimage(preimage.files, currentFiles) {
+			return ErrResyncStale
+		}
 
-	// Add new files (in freshByPath but not in existing)
-	for path, sf := range freshByPath {
-		if _, exists := existingPathSet[path]; exists {
-			continue
+		currentByPath := make(map[string]store.MediaFile, len(currentFiles))
+		for _, file := range currentFiles {
+			currentByPath[file.Path] = file
 		}
-		mf := &store.MediaFile{
-			MediaItemID:   itemID,
-			Path:          sf.path,
-			FileName:      sf.fileName,
-			Size:          sf.size,
-			Resolution:    sf.resolution,
-			SourceType:    sf.sourceType,
-			SeasonNumber:  sf.seasonNumber,
-			EpisodeNumber: sf.episodeNumber,
-			AddedAt:       time.Now(),
-		}
-		if err := s.store.CreateMediaFile(mf); err != nil {
-			return updated, added, removed, fmt.Errorf("creating file %q: %w", sf.fileName, err)
-		}
-		added++
-	}
-
-	// Remove files no longer on disk
-	for path := range existingPathSet {
-		if _, exists := freshByPath[path]; !exists {
-			// Verify the file is actually gone
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				removePaths := []string{path}
-				if err := s.store.DeleteMediaFilesByPaths(removePaths); err != nil {
-					return updated, added, removed, fmt.Errorf("removing file: %w", err)
+		for _, path := range sortedScannedPaths(candidate.freshByPath) {
+			fresh := candidate.freshByPath[path]
+			current, exists := currentByPath[path]
+			if exists {
+				if !fileNeedsUpdate(current, fresh) {
+					continue
 				}
-				removed++
+				current.Size = fresh.size
+				current.Resolution = fresh.resolution
+				current.SourceType = fresh.sourceType
+				current.SeasonNumber = fresh.seasonNumber
+				current.EpisodeNumber = fresh.episodeNumber
+				if err := tx.UpdateMediaFile(&current); err != nil {
+					return fmt.Errorf("updating file %q: %w", fresh.fileName, err)
+				}
+				result.updated++
+				continue
 			}
+			file := &store.MediaFile{
+				MediaItemID: item.ID, Path: fresh.path, FileName: fresh.fileName, Size: fresh.size,
+				Resolution: fresh.resolution, SourceType: fresh.sourceType,
+				SeasonNumber: fresh.seasonNumber, EpisodeNumber: fresh.episodeNumber,
+				AddedAt: time.Now().UTC(),
+			}
+			if err := tx.CreateMediaFile(file); err != nil {
+				return fmt.Errorf("creating file %q: %w", fresh.fileName, err)
+			}
+			result.added++
 		}
-	}
 
-	// Recalculate media item status after file changes.
+		removePaths := sortedPathSet(candidate.removePaths)
+		if len(removePaths) > 0 {
+			if err := tx.DeleteMediaFilesByPaths(removePaths); err != nil {
+				return fmt.Errorf("removing files: %w", err)
+			}
+			result.removed = len(removePaths)
+		}
+
+		if operationID == "" {
+			return nil
+		}
+		details := store.MediaActivityDetails{Added: result.added, Updated: result.updated, Removed: result.removed}
+		if candidate.partial {
+			details.Partial = true
+			details.Reason = "partial_scan"
+			details.CleanupOutcome = "partial_scan"
+			details.Total = candidate.failedWindows
+		}
+		entry, err := store.NewSystemMediaActivity(
+			item, "sync", store.MediaActivityActionResyncCompleted, operationID,
+			details,
+		)
+		if err != nil {
+			return err
+		}
+		return tx.AppendMediaActivity(entry)
+	})
+	if err != nil {
+		return resyncResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Service) finishResync(itemID uint, result resyncResult) {
 	if err := s.RecalcMediaItemStatus(itemID); err != nil {
 		slog.Warn("resync: status recalc failed", "media_item_id", itemID, "error", err)
 	}
-
 	if s.bus != nil {
 		s.bus.Publish(eventbus.ResyncCompleted, eventbus.ResyncPayload{
-			MediaItemID: itemID,
-			Updated:     updated,
-			Added:       added,
-			Removed:     removed,
+			MediaItemID: itemID, Updated: result.updated, Added: result.added, Removed: result.removed,
 		})
 	}
+	slog.Info("sync: resync complete", "media_item_id", itemID, "updated", result.updated, "added", result.added, "removed", result.removed)
+}
 
-	slog.Info("sync: resync complete", "media_item_id", itemID, "updated", updated, "added", added, "removed", removed)
-	return updated, added, removed, nil
+func validateResyncActor(st store.Store, userID uint) error {
+	if _, err := st.GetUser(userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrActivityActorNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func sameResyncIdentity(preimage *resyncPreimage, item *store.MediaItem, library *store.Library) bool {
+	return item.ID == preimage.item.ID && item.LibraryID == preimage.item.LibraryID &&
+		item.MediaType == preimage.item.MediaType && library.ID == preimage.library.ID &&
+		library.Path == preimage.library.Path
+}
+
+func sameMediaFilePreimage(before, after []store.MediaFile) bool {
+	if len(before) != len(after) {
+		return false
+	}
+	afterByID := make(map[uint]store.MediaFile, len(after))
+	for _, file := range after {
+		afterByID[file.ID] = file
+	}
+	for _, file := range before {
+		current, ok := afterByID[file.ID]
+		if !ok || !sameMediaFileSnapshot(file, current) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameMediaFileSnapshot(a, b store.MediaFile) bool {
+	return a.ID == b.ID && a.MediaItemID == b.MediaItemID && a.Path == b.Path &&
+		a.FileName == b.FileName && a.Size == b.Size && a.Resolution == b.Resolution &&
+		a.SourceType == b.SourceType && intPtrEqual(a.SeasonNumber, b.SeasonNumber) &&
+		intPtrEqual(a.EpisodeNumber, b.EpisodeNumber) && a.AddedAt.Equal(b.AddedAt) &&
+		a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+}
+
+func sortedScannedPaths(files map[string]scannedFile) []string {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func sortedPathSet(files map[string]struct{}) []string {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func fileNeedsUpdate(existing store.MediaFile, fresh scannedFile) bool {
@@ -465,6 +757,9 @@ func (s *Service) RecalcMediaItemStatus(itemID uint) error {
 			return nil // item was deleted, nothing to recalculate
 		}
 		return fmt.Errorf("recalc status: get item: %w", err)
+	}
+	if item.DeletionPending {
+		return store.ErrMediaDeletionPending
 	}
 
 	// Unmatched items keep their status untouched: "new" is the auto-match

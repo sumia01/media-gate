@@ -77,3 +77,29 @@ func TestSetMonitorSearchStartedAtDoesNotRecreateDeletedItem(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateMediaItemCannotClearDeletionClaim(t *testing.T) {
+	s := newTestStore(t)
+	item := mustCreateMediaItem(t, s)
+	stale := *item
+
+	item.DeletionPending = true
+	if err := s.UpdateMediaItem(item); err != nil {
+		t.Fatal(err)
+	}
+	stale.Title = "stale update"
+	if err := s.UpdateMediaItem(&stale); !errors.Is(err, store.ErrMediaDeletionPending) {
+		t.Fatalf("stale update error = %v, want ErrMediaDeletionPending", err)
+	}
+	current, err := s.GetMediaItem(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !current.DeletionPending || current.Title == stale.Title {
+		t.Fatalf("deletion claim overwritten: %+v", current)
+	}
+	current.Title = "claimed update"
+	if err := s.UpdateMediaItem(current); !errors.Is(err, store.ErrMediaDeletionPending) {
+		t.Fatalf("claimed update error = %v, want ErrMediaDeletionPending", err)
+	}
+}

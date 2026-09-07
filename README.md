@@ -87,6 +87,15 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Repeat requests are idempotent and additively enable the requested monitoring scope without disabling another user's selections
 - Deleted accounts retain anonymous request history as `Deleted user`; legacy requested items remain unattributed
 
+### Media Activity
+
+- Media details are split into a default operational **Details** tab and a read-only **Activity** tab
+- Per-media chronological history records the actor, action, event-time scope/title, timestamp, and safe typed details independently from current monitoring and cumulative requester attribution
+- Covers requests, monitoring/settings changes, manual and automatic grabs, manual download actions, match/metadata/resync changes, deletion preparation, manual subtitles, and global/per-user watched changes
+- Latest automatic-search diagnostics and activity history start collapsed and load only while their Activity disclosure is open
+- Stable cursor pagination, bounded rendering, abort/stale-response guards, and explicit SSE dirty hints keep long histories responsive without moving rows while they are being read
+- Deleted users remain anonymous, private watched history stays private, media deletion cascades its history, and no legacy events are fabricated
+
 ### Episode Timeline
 
 - Drag, swipe, or use keyboard/arrow controls to explore past and upcoming episodes of followed series
@@ -147,7 +156,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Toggle entire seasons (clears episode-level overrides)
 - Auto-monitor new seasons when they appear
 - Profile-based filtering of search results before grabbing
-- Latest auto-download decision on each media detail page: release/profile counts, blocklisted selections, existing downloads, missing metadata, and actual grabs
+- Latest auto-download decision on the read-only Activity tab: release/profile counts, blocklisted selections, existing downloads, missing metadata, and actual grabs
 - Distinguishes no enabled indexers, genuine empty searches, and partial/complete indexer failures
 - Persists one bounded snapshot per item (up to 50 details), keeping the evaluated input version separate from completion time so settings changes during a search remain visibly stale
 
@@ -171,7 +180,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 - Mark/unmark media as watched with seen badges across the UI
 - Mode: global (shared) or per-user
-- Stores external IDs for cross-reference with metadata providers
+- Stores exact provider, media type, and external ID identity so movie/series numeric IDs cannot collide
+- Watched activity is shared in global mode and actor-only in per-user mode
 
 ### Notifications
 
@@ -199,7 +209,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 ### Real-Time UI (Event Bus + SSE)
 
 - Internal typed event bus with Server-Sent Events push to frontends
-- Covers full lifecycle: downloads, imports, library sync, matching, monitoring, subtitles, updates
+- Covers full lifecycle: downloads, imports, library sync, matching, monitoring, media activity, subtitles, updates
 - SSE authentication via single-use 30-second tickets
 
 ### Multi-User Auth & Security
@@ -367,6 +377,8 @@ media-gate/
 
 - **OpenAPI-first** — change the spec in `api/openapi.yaml`, run `make generate`, never hand-edit generated code
 - **Store interface pattern** — all data access through a Go interface with GORM implementations; `WithTx` for transactional writes
+- **Independent activity history** — append-only per-media facts are committed with domain mutations; current state and cumulative requester attribution remain separate sources of truth
+- **External-effect boundaries** — persisted claims/requests authorize network and filesystem work outside SQLite transactions, with observed outcomes recorded separately
 - **Single binary** — Vue SPA builds into `frontend/dist/`, embedded into Go via `go:embed`
 - **Pure-Go SQLite** — no CGO, trivial cross-compilation
 - **Event-driven** — internal event bus with typed events, SSE broker pushes to frontends

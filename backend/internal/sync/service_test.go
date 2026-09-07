@@ -25,7 +25,17 @@ type fakeStore struct {
 	deletedMeta      []uint
 	deletedEpisodes  []uint
 	deletedFilePaths []string
+	activities       []store.MediaActivity
 	nextID           uint
+}
+
+func (f *fakeStore) WithTx(fn func(store.Store) error) error {
+	return fn(f)
+}
+
+func (f *fakeStore) AppendMediaActivity(activity *store.MediaActivity) error {
+	f.activities = append(f.activities, *activity)
+	return nil
 }
 
 func (f *fakeStore) GetMediaItem(id uint) (*store.MediaItem, error) {
@@ -206,7 +216,7 @@ func TestSyncLibraryDoesNotDeleteItemWhenFolderUnreadable(t *testing.T) {
 
 	fs := &fakeStore{
 		items: map[uint]*store.MediaItem{
-			1: {ID: 1, LibraryID: 1, Source: "disk", Status: "available", MediaType: "series"},
+			1: {ID: 1, LibraryID: 1, Title: "My Show", Source: "disk", Status: "available", MediaType: "series"},
 		},
 		files: []store.MediaFile{
 			{ID: 1, MediaItemID: 1, Path: filePath, FileName: "My Show S01E01.mkv"},
@@ -255,7 +265,7 @@ func TestSyncLibraryKeepsRequestItemWhenFilesGone(t *testing.T) {
 
 	fs := &fakeStore{
 		items: map[uint]*store.MediaItem{
-			1: {ID: 1, LibraryID: 1, Source: "request", Status: "requested", MediaType: "series"},
+			1: {ID: 1, LibraryID: 1, Title: "Requested Show", Source: "request", Status: "requested", MediaType: "series"},
 		},
 		files: []store.MediaFile{
 			{ID: 1, MediaItemID: 1, Path: stalePath, FileName: "Requested Show S01E01.mkv"},

@@ -26,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   added: [mediaItemId: number]
+  downloadQueued: [mediaItemId: number]
 }>()
 
 // --- State ---
@@ -160,6 +161,8 @@ async function search() {
 
 // --- Download ---
 async function download(result: TorrentResult) {
+  const mediaItemId = props.mediaItemId
+  if (mediaItemId == null) return
   const url = result.downloadUrl
   if (!url) return
   if (downloadingUrls.value.has(url) || downloadedUrls.value.has(url)) return
@@ -168,7 +171,7 @@ async function download(result: TorrentResult) {
 
   const { error: err } = await client.POST('/downloads', {
     body: {
-      mediaItemId: props.mediaItemId!,
+      mediaItemId,
       episodeId: props.episodeId,
       seasonNumber: props.seasonNumber,
       indexerId: result.indexerId,
@@ -191,6 +194,7 @@ async function download(result: TorrentResult) {
   }
 
   downloadedUrls.value = new Set([...downloadedUrls.value, url])
+  emit('downloadQueued', mediaItemId)
 }
 
 // --- Add to Library & Download ---

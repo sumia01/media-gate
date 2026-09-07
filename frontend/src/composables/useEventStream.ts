@@ -8,28 +8,39 @@ const connected = ref(false)
 let subscribers = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let connecting = false
+let connectionAttempt = 0
 const listeners = new Map<string, Set<EventCallback>>()
+const nativeListeners = new Map<string, EventListener>()
 
 function connect() {
   if (eventSource.value || connecting) return
   connecting = true
+  const attempt = ++connectionAttempt
 
   const { getAccessToken } = useAuth()
   const token = getAccessToken()
 
   // Exchange JWT for a single-use SSE ticket to avoid exposing the token in the URL.
   const openSSE = (ticketParam: string) => {
+    if (attempt !== connectionAttempt) return
+    if (subscribers <= 0) {
+      connecting = false
+      return
+    }
     const es = new EventSource(`/api/v1/events${ticketParam}`)
 
     es.onopen = () => {
+      if (eventSource.value !== es) return
       connected.value = true
     }
 
     es.onerror = () => {
+      if (eventSource.value !== es) return
       connected.value = false
       connecting = false
       es.close()
       eventSource.value = null
+      nativeListeners.clear()
       // Reconnect after delay
       if (subscribers > 0 && !reconnectTimer) {
         reconnectTimer = setTimeout(() => {
@@ -68,6 +79,7 @@ function connect() {
 }
 
 function disconnect() {
+  connectionAttempt++
   connecting = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
@@ -78,10 +90,12 @@ function disconnect() {
     eventSource.value = null
     connected.value = false
   }
+  nativeListeners.clear()
 }
 
 function addESListener(es: EventSource, type: string) {
-  es.addEventListener(type, ((e: MessageEvent) => {
+  if (nativeListeners.has(type)) return
+  const listener = ((e: MessageEvent) => {
     let data: any
     try {
       const parsed = JSON.parse(e.data)
@@ -95,7 +109,9 @@ function addESListener(es: EventSource, type: string) {
         cb(data)
       })
     }
-  }) as EventListener)
+  }) as EventListener
+  nativeListeners.set(type, listener)
+  es.addEventListener(type, listener)
 }
 
 function on(eventType: string, callback: EventCallback) {
@@ -117,6 +133,9 @@ function off(eventType: string, callback: EventCallback) {
     cbs.delete(callback)
     if (cbs.size === 0) {
       listeners.delete(eventType)
+      const listener = nativeListeners.get(eventType)
+      if (eventSource.value && listener) eventSource.value.removeEventListener(eventType, listener)
+      nativeListeners.delete(eventType)
     }
   }
 }

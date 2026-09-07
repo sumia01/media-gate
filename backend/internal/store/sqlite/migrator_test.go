@@ -2,10 +2,13 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -74,6 +77,10 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 		`DROP TABLE monitor_decisions`,
 		`DROP INDEX idx_episodes_air_date`,
 		`DROP TABLE media_requests`,
+		`DROP TABLE media_activity`,
+		`ALTER TABLE media_items DROP COLUMN deletion_pending`,
+		`DROP INDEX idx_watched_user_source_type_ext`,
+		`CREATE UNIQUE INDEX idx_watched_user_source_ext ON watched_items(user_id, source, external_id)`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-baseline schema (%s): %v", stmt, err)
@@ -188,8 +195,8 @@ func TestFreshInstallSchema(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&v); err != nil {
 		t.Fatalf("reading schema_migrations: %v", err)
 	}
-	if v != latestMigrationVersion {
-		t.Errorf("fresh install version = %d, want %d", v, latestMigrationVersion)
+	if v != 10 || latestMigrationVersion != 10 {
+		t.Errorf("fresh install version = %d and latestMigrationVersion = %d, want both 10", v, latestMigrationVersion)
 	}
 
 	mustHaveColumn(t, sqlDB, "media_metadata", "trailer_url")
@@ -199,6 +206,248 @@ func TestFreshInstallSchema(t *testing.T) {
 	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
 	mustHaveColumn(t, sqlDB, "monitor_decisions", "input_updated_at")
 	mustHaveColumn(t, sqlDB, "media_requests", "requested_at")
+	mustHaveColumn(t, sqlDB, "media_activity", "recorded_at")
+	mustHaveColumn(t, sqlDB, "media_items", "deletion_pending")
+}
+
+func TestMediaActivityMigrationFromVersionNineDoesNotBackfill(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "version9.db")
+	s1, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 1): %v", err)
+	}
+	item := mustCreateMediaItem(t, s1)
+	user := &store.User{Email: "existing-requester@example.com", PasswordHash: "hash"}
+	if err := s1.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if err := s1.CreateMediaRequest(&store.MediaRequest{
+		MediaItemID: item.ID,
+		UserID:      &user.ID,
+		Scope:       store.MediaRequestScopeMedia,
+	}); err != nil {
+		t.Fatalf("CreateMediaRequest: %v", err)
+	}
+	watchedMovie := &store.WatchedItem{
+		UserID: user.ID, Source: "tmdb", ExternalID: 42, Title: "Movie", MediaType: "movie",
+	}
+	if err := s1.CreateWatchedItem(watchedMovie); err != nil {
+		t.Fatalf("CreateWatchedItem: %v", err)
+	}
+
+	sqlDB, _ := s1.db.DB()
+	down, err := migrationsFS.ReadFile(migrationsDir + "/0010_media_activity.down.sql")
+	if err != nil {
+		t.Fatalf("reading 0010 down migration: %v", err)
+	}
+	if _, err := sqlDB.Exec(string(down)); err != nil {
+		t.Fatalf("restoring version 9 schema: %v", err)
+	}
+	if hasColumn(t, sqlDB, "media_items", "deletion_pending") {
+		t.Fatal("version 9 schema retained deletion_pending")
+	}
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 9, dirty = 0`); err != nil {
+		t.Fatalf("resetting migration version: %v", err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatalf("Close (boot 1): %v", err)
+	}
+
+	s2, err := New(path)
+	if err != nil {
+		t.Fatalf("New (boot 2): %v", err)
+	}
+	defer s2.Close()
+	sqlDB, _ = s2.db.DB()
+	var version, activityCount int
+	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations`).Scan(&version); err != nil {
+		t.Fatalf("reading migrated version: %v", err)
+	}
+	if version != 10 {
+		t.Fatalf("migrated version = %d, want 10", version)
+	}
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM media_activity`).Scan(&activityCount); err != nil {
+		t.Fatalf("counting migrated activity: %v", err)
+	}
+	if activityCount != 0 {
+		t.Fatalf("version 9 upgrade fabricated %d activity rows", activityCount)
+	}
+	if !hasColumn(t, sqlDB, "media_items", "deletion_pending") {
+		t.Fatal("version 9 upgrade did not add deletion_pending")
+	}
+	upgradedItem, err := s2.GetMediaItem(item.ID)
+	if err != nil || upgradedItem.DeletionPending {
+		t.Fatalf("version 9 item deletion claim = %+v, %v; want false", upgradedItem, err)
+	}
+	if err := s2.CreateWatchedItem(&store.WatchedItem{
+		UserID: user.ID, Source: "tmdb", ExternalID: 42, Title: "Series", MediaType: "series",
+	}); err != nil {
+		t.Fatalf("creating same-id series watched row after version 9 upgrade: %v", err)
+	}
+	requests, err := s2.ListMediaRequestsByMediaItem(item.ID)
+	if err != nil || len(requests) != 1 || requests[0].UserID == nil || *requests[0].UserID != user.ID {
+		t.Fatalf("existing request changed during upgrade: %+v, %v", requests, err)
+	}
+}
+
+func TestMediaActivityMigrationRollbackAndReapply(t *testing.T) {
+	s := newTestStore(t)
+	item := mustCreateMediaItem(t, s)
+	user := &store.User{Email: "watched-migration@example.com", PasswordHash: "hash"}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if err := s.CreateWatchedItem(&store.WatchedItem{
+		UserID: user.ID, Source: "tmdb", ExternalID: 42, Title: "Movie", MediaType: "movie",
+	}); err != nil {
+		t.Fatalf("CreateWatchedItem: %v", err)
+	}
+	activity, err := store.NewSystemMediaActivity(
+		item,
+		"migration-test",
+		store.MediaActivityActionMetadataChanged,
+		"before-rollback",
+		store.MediaActivityDetails{Reason: "test"},
+	)
+	if err != nil {
+		t.Fatalf("NewSystemMediaActivity: %v", err)
+	}
+	if err := s.AppendMediaActivity(activity); err != nil {
+		t.Fatalf("AppendMediaActivity: %v", err)
+	}
+
+	sqlDB, _ := s.db.DB()
+	driver, err := newGlebarezDriver(sqlDB)
+	if err != nil {
+		t.Fatalf("newGlebarezDriver: %v", err)
+	}
+	source, err := iofs.New(migrationsFS, migrationsDir)
+	if err != nil {
+		t.Fatalf("opening migration source: %v", err)
+	}
+	m, err := migrate.NewWithInstance("iofs", source, "glebarez", driver)
+	if err != nil {
+		t.Fatalf("creating migrator: %v", err)
+	}
+	defer m.Close()
+
+	if err := m.Steps(-1); err != nil {
+		t.Fatalf("rolling back 0010: %v", err)
+	}
+	if tableExists(sqlDB, "media_activity") {
+		t.Fatal("media_activity still exists after rolling back 0010")
+	}
+	if hasColumn(t, sqlDB, "media_items", "deletion_pending") {
+		t.Fatal("deletion_pending still exists after rolling back 0010")
+	}
+	if version, _, err := driver.Version(); err != nil || version != 9 {
+		t.Fatalf("version after rollback = %d, %v; want 9", version, err)
+	}
+	conflictingType := &store.WatchedItem{
+		UserID: user.ID, Source: "tmdb", ExternalID: 42, Title: "Series", MediaType: "series",
+	}
+	if err := s.CreateWatchedItem(conflictingType); !errors.Is(err, store.ErrDuplicate) {
+		t.Fatalf("same-id movie/series under version 9 index error = %v, want ErrDuplicate", err)
+	}
+
+	if err := m.Steps(1); err != nil {
+		t.Fatalf("reapplying 0010: %v", err)
+	}
+	if !tableExists(sqlDB, "media_activity") {
+		t.Fatal("media_activity missing after reapplying 0010")
+	}
+	if !hasColumn(t, sqlDB, "media_items", "deletion_pending") {
+		t.Fatal("deletion_pending missing after reapplying 0010")
+	}
+	if current, err := s.GetMediaItem(item.ID); err != nil || current.DeletionPending {
+		t.Fatalf("reapplied deletion claim = %+v, %v; want false", current, err)
+	}
+	if version, _, err := driver.Version(); err != nil || version != 10 {
+		t.Fatalf("version after reapply = %d, %v; want 10", version, err)
+	}
+	var count int
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM media_activity`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("activity after rollback/reapply = %d, %v; want empty replacement table", count, err)
+	}
+	activity.OperationID = "after-reapply"
+	if err := s.AppendMediaActivity(activity); err != nil {
+		t.Fatalf("AppendMediaActivity after reapply: %v", err)
+	}
+	if err := s.CreateWatchedItem(conflictingType); err != nil {
+		t.Fatalf("same-id movie/series after reapply: %v", err)
+	}
+}
+
+func TestMediaActivityMigrationRollbackRefusesIdentityCollision(t *testing.T) {
+	s := newTestStore(t)
+	item := mustCreateMediaItem(t, s)
+	user := &store.User{Email: "watched-collision@example.com", PasswordHash: "hash"}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	for _, mediaType := range []string{"movie", "series"} {
+		if err := s.CreateWatchedItem(&store.WatchedItem{
+			UserID: user.ID, Source: "tmdb", ExternalID: 42, Title: mediaType, MediaType: mediaType,
+		}); err != nil {
+			t.Fatalf("seeding %s watched row: %v", mediaType, err)
+		}
+	}
+	activity, err := store.NewSystemMediaActivity(
+		item,
+		"migration-test",
+		store.MediaActivityActionMetadataChanged,
+		"preserve-on-refusal",
+		store.MediaActivityDetails{Reason: "test"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendMediaActivity(activity); err != nil {
+		t.Fatal(err)
+	}
+
+	sqlDB, _ := s.db.DB()
+	driver, err := newGlebarezDriver(sqlDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := iofs.New(migrationsFS, migrationsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := migrate.NewWithInstance("iofs", source, "glebarez", driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if err := m.Steps(-1); err == nil {
+		t.Fatal("rollback with old-key movie/series collision succeeded")
+	}
+	if version, dirty, err := driver.Version(); err != nil || version != 10 || dirty {
+		t.Fatalf("version after refused rollback = %d dirty=%v err=%v; want clean 10", version, dirty, err)
+	}
+	if !tableExists(sqlDB, "media_activity") {
+		t.Fatal("refused rollback dropped media_activity")
+	}
+	var activityCount, watchedCount int
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM media_activity`).Scan(&activityCount); err != nil || activityCount != 1 {
+		t.Fatalf("activity after refused rollback = %d, %v; want 1", activityCount, err)
+	}
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM watched_items WHERE user_id = ? AND source = 'tmdb' AND external_id = 42`, user.ID).Scan(&watchedCount); err != nil || watchedCount != 2 {
+		t.Fatalf("watched rows after refused rollback = %d, %v; want 2", watchedCount, err)
+	}
+	var currentIndexCount, oldIndexCount int
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_watched_user_source_type_ext'`).Scan(&currentIndexCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_watched_user_source_ext'`).Scan(&oldIndexCount); err != nil {
+		t.Fatal(err)
+	}
+	if currentIndexCount != 1 || oldIndexCount != 0 {
+		t.Fatalf("indexes after refused rollback: current=%d old=%d", currentIndexCount, oldIndexCount)
+	}
 }
 
 func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
@@ -228,6 +477,10 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 		`DROP TABLE monitor_decisions`,
 		`DROP INDEX idx_episodes_air_date`,
 		`DROP TABLE media_requests`,
+		`DROP TABLE media_activity`,
+		`ALTER TABLE media_items DROP COLUMN deletion_pending`,
+		`DROP INDEX idx_watched_user_source_type_ext`,
+		`CREATE UNIQUE INDEX idx_watched_user_source_ext ON watched_items(user_id, source, external_id)`,
 	} {
 		if _, err := sqlDB.Exec(stmt); err != nil {
 			t.Fatalf("stripping post-v3 schema (%s): %v", stmt, err)
@@ -273,6 +526,18 @@ func TestMediaRequestsMigrationPreservesExistingData(t *testing.T) {
 	if _, err := sqlDB.Exec(`DROP TABLE media_requests`); err != nil {
 		t.Fatalf("dropping media_requests: %v", err)
 	}
+	if _, err := sqlDB.Exec(`DROP TABLE media_activity`); err != nil {
+		t.Fatalf("dropping media_activity: %v", err)
+	}
+	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN deletion_pending`); err != nil {
+		t.Fatalf("dropping deletion_pending: %v", err)
+	}
+	if _, err := sqlDB.Exec(`DROP INDEX idx_watched_user_source_type_ext`); err != nil {
+		t.Fatalf("dropping watched media-type index: %v", err)
+	}
+	if _, err := sqlDB.Exec(`CREATE UNIQUE INDEX idx_watched_user_source_ext ON watched_items(user_id, source, external_id)`); err != nil {
+		t.Fatalf("restoring version 7 watched index: %v", err)
+	}
 	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET version = 7, dirty = 0`); err != nil {
 		t.Fatalf("resetting migration version: %v", err)
 	}
@@ -316,6 +581,18 @@ func TestRequestIntentScopesMigrationPreservesVersionEightRows(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`DROP TABLE media_activity`); err != nil {
+		t.Fatalf("dropping media_activity: %v", err)
+	}
+	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN deletion_pending`); err != nil {
+		t.Fatalf("dropping deletion_pending: %v", err)
+	}
+	if _, err := sqlDB.Exec(`DROP INDEX idx_watched_user_source_type_ext`); err != nil {
+		t.Fatalf("dropping watched media-type index: %v", err)
+	}
+	if _, err := sqlDB.Exec(`CREATE UNIQUE INDEX idx_watched_user_source_ext ON watched_items(user_id, source, external_id)`); err != nil {
+		t.Fatalf("restoring version 8 watched index: %v", err)
+	}
 	down, err := migrationsFS.ReadFile(migrationsDir + "/0009_request_intent_scopes.down.sql")
 	if err != nil {
 		t.Fatalf("reading 0009 down migration: %v", err)
@@ -476,6 +753,13 @@ func openRawForTest(t *testing.T, path string) *sql.DB {
 
 func mustHaveColumn(t *testing.T, db *sql.DB, table, column string) {
 	t.Helper()
+	if !hasColumn(t, db, table, column) {
+		t.Errorf("column %s.%s missing from fresh-install schema", table, column)
+	}
+}
+
+func hasColumn(t *testing.T, db *sql.DB, table, column string) bool {
+	t.Helper()
 	rows, err := db.Query("PRAGMA table_info('" + table + "')")
 	if err != nil {
 		t.Fatalf("PRAGMA table_info(%s): %v", table, err)
@@ -489,8 +773,8 @@ func mustHaveColumn(t *testing.T, db *sql.DB, table, column string) {
 			t.Fatalf("scan table_info(%s): %v", table, err)
 		}
 		if name == column {
-			return
+			return true
 		}
 	}
-	t.Errorf("column %s.%s missing from fresh-install schema", table, column)
+	return false
 }

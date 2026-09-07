@@ -42,11 +42,21 @@ func newMonitorDeletionService(t *testing.T, st store.Store, bus *eventbus.Bus, 
 	return media.NewService(st, nil, bus, provider, t.TempDir())
 }
 
+func newMonitorDeletionActor(t *testing.T, st store.Store) uint {
+	t.Helper()
+	user := &store.User{Email: fmt.Sprintf("delete-%d@example.com", time.Now().UnixNano()), PasswordHash: "hash"}
+	if err := st.CreateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	return user.ID
+}
+
 func TestMediaDeletionPreventsMonitorRegrab(t *testing.T) {
 	for _, mediaType := range []string{"movie", "series"} {
 		for _, grabFirst := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/grab_first=%t", mediaType, grabFirst), func(t *testing.T) {
 				svc, st, search, item := newDecisionTest(t, mediaType)
+				actorID := newMonitorDeletionActor(t, st)
 				search.results = []indexer.TorrentResult{{Title: "Show.S01.Complete.1080p", DownloadURL: "new"}}
 				if grabFirst {
 					svc.processItem(item)
@@ -87,7 +97,7 @@ func TestMediaDeletionPreventsMonitorRegrab(t *testing.T) {
 						t.Errorf("stale monitor restored parent settings: %+v, %v", parent, err)
 					}
 				})
-				if err := deletion.DeleteMediaItem(item.ID); err != nil {
+				if err := deletion.DeleteMediaItem(actorID, item.ID); err != nil {
 					t.Fatal(err)
 				}
 				waitForDeletionStep(t, cleanupDone)
@@ -120,6 +130,7 @@ func TestInflightSearchCannotQueueAfterMediaDeletion(t *testing.T) {
 		for _, finishDeletion := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/deleted=%t", mediaType, finishDeletion), func(t *testing.T) {
 				svc, st, search, item := newDecisionTest(t, mediaType)
+				actorID := newMonitorDeletionActor(t, st)
 				search.results = []indexer.TorrentResult{{Title: "Show.S01.Complete.1080p", DownloadURL: "new"}}
 				if err := st.CreateDownload(&store.Download{MediaItemID: item.ID, Status: "cancelled", ClientTorrentHash: "old"}); err != nil {
 					t.Fatal(err)
@@ -150,7 +161,7 @@ func TestInflightSearchCannotQueueAfterMediaDeletion(t *testing.T) {
 				var deleteErr error
 				go func() {
 					defer close(deletionDone)
-					deleteErr = deletion.DeleteMediaItem(item.ID)
+					deleteErr = deletion.DeleteMediaItem(actorID, item.ID)
 				}()
 				waitForDeletionStep(t, cleanupStarted)
 				if finishDeletion {
@@ -183,6 +194,27 @@ func TestInflightSearchCannotQueueAfterMediaDeletion(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAutoDownloadTreatsDeletionClaimAsDisabled(t *testing.T) {
+	svc, st, _, item := newDecisionTest(t, "movie")
+	stale := *item
+	item.DeletionPending = true
+	if err := st.UpdateMediaItem(item); err != nil {
+		t.Fatal(err)
+	}
+	detail := svc.createAutoDownload(&stale, indexer.TorrentResult{Title: "Movie.1080p", DownloadURL: "new"}, nil, nil)
+	if detail.Outcome != "disabled" {
+		t.Fatalf("claimed auto-download decision = %+v", detail)
+	}
+	downloads, err := st.ListDownloads(&item.ID, nil)
+	if err != nil || len(downloads) != 0 {
+		t.Fatalf("claimed auto-download rows = %+v, %v", downloads, err)
+	}
+	activities, _, err := st.ListMediaActivityPage(item.ID, 0, nil, 20)
+	if err != nil || len(activities) != 0 {
+		t.Fatalf("claimed auto-download activity = %+v, %v", activities, err)
 	}
 }
 
@@ -251,8 +283,18 @@ func (s *autoDownloadTransactionStore) CreateDownload(dl *store.Download) error 
 	return s.Store.CreateDownload(dl)
 }
 
+func (s *autoDownloadTransactionStore) AppendMediaActivity(activity *store.MediaActivity) error {
+	if err := s.record("activity"); err != nil {
+		return err
+	}
+	if s.fail == "activity" {
+		return errors.New("activity append failed")
+	}
+	return s.Store.AppendMediaActivity(activity)
+}
+
 func TestAutoDownloadFinalChecksAreTransactional(t *testing.T) {
-	for _, fail := range []string{"", "parent", "commit"} {
+	for _, fail := range []string{"", "parent", "activity", "commit"} {
 		t.Run("failure="+fail, func(t *testing.T) {
 			svc, st, _, item := newDecisionTest(t, "movie")
 			var steps []string
@@ -263,7 +305,7 @@ func TestAutoDownloadFinalChecksAreTransactional(t *testing.T) {
 			t.Cleanup(svc.bus.Stop)
 			detail := svc.createAutoDownload(item, indexer.TorrentResult{Title: "Movie.1080p", DownloadURL: "new"}, nil, nil)
 			svc.bus.Stop()
-			wantSteps := []string{"parent", "dedup", "blocklist", "insert"}
+			wantSteps := []string{"parent", "dedup", "blocklist", "insert", "activity"}
 			if fail == "parent" {
 				wantSteps = wantSteps[:1]
 			}
@@ -275,7 +317,7 @@ func TestAutoDownloadFinalChecksAreTransactional(t *testing.T) {
 				t.Fatal(err)
 			}
 			if fail == "" {
-				if detail.Outcome != "grabbed" || len(downloads) != 1 || events.Load() != 2 {
+				if detail.Outcome != "grabbed" || len(downloads) != 1 || events.Load() != 3 {
 					t.Fatalf("successful insert=%+v, downloads=%+v, events=%d", detail, downloads, events.Load())
 				}
 			} else if detail.Outcome != "error" || len(downloads) != 0 || events.Load() != 0 {

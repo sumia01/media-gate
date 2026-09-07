@@ -208,6 +208,7 @@ func main() {
 	}
 
 	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, workerReg, version)
+	handlers.SetWatchedActivityPublisher(bus)
 
 	// Invalidate cached clients when connection settings change.
 	go func() {

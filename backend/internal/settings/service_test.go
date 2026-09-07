@@ -27,41 +27,51 @@ func newSettingsStubStore() *settingsStubStore {
 	return &settingsStubStore{settings: make(map[string]*store.Setting)}
 }
 
-func (s *settingsStubStore) Close() error                              { return nil }
-func (s *settingsStubStore) Ping() error                               { return nil }
+func (s *settingsStubStore) Close() error                                  { return nil }
+func (s *settingsStubStore) Ping() error                                   { return nil }
 func (s *settingsStubStore) IsBlocklisted(uint, string, int) (bool, error) { return false, nil }
-func (s *settingsStubStore) RecordBlocklistFailure(uint, string, string, string, int) error { return nil }
-func (s *settingsStubStore) CreateLibrary(lib *store.Library) error     { return nil }
-func (s *settingsStubStore) ListLibraries() ([]store.Library, error)    { return s.libraries, nil }
-func (s *settingsStubStore) GetLibrary(uint) (*store.Library, error)    { return nil, store.ErrNotFound }
-func (s *settingsStubStore) UpdateLibrary(*store.Library) error         { return nil }
-func (s *settingsStubStore) DeleteLibrary(uint) error                   { return nil }
+func (s *settingsStubStore) RecordBlocklistFailure(uint, string, string, string, int) error {
+	return nil
+}
+func (s *settingsStubStore) CreateLibrary(lib *store.Library) error  { return nil }
+func (s *settingsStubStore) ListLibraries() ([]store.Library, error) { return s.libraries, nil }
+func (s *settingsStubStore) GetLibrary(uint) (*store.Library, error) { return nil, store.ErrNotFound }
+func (s *settingsStubStore) UpdateLibrary(*store.Library) error      { return nil }
+func (s *settingsStubStore) DeleteLibrary(uint) error                { return nil }
 
-func (s *settingsStubStore) CreateMediaItem(*store.MediaItem) error                     { return nil }
-func (s *settingsStubStore) GetMediaItem(uint) (*store.MediaItem, error)                { return nil, nil }
-func (s *settingsStubStore) UpdateMediaItem(*store.MediaItem) error                     { return nil }
-func (s *settingsStubStore) SetMonitorSearchStartedAt(uint, *time.Time) error            { return nil }
-func (s *settingsStubStore) DeleteMediaItem(uint) error                                 { return nil }
-func (s *settingsStubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error)    { return nil, nil }
-func (s *settingsStubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
-func (s *settingsStubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
-func (s *settingsStubStore) CountMediaItemsByLibrary(uint) (int64, error)               { return 0, nil }
+func (s *settingsStubStore) CreateMediaItem(*store.MediaItem) error                  { return nil }
+func (s *settingsStubStore) GetMediaItem(uint) (*store.MediaItem, error)             { return nil, nil }
+func (s *settingsStubStore) UpdateMediaItem(*store.MediaItem) error                  { return nil }
+func (s *settingsStubStore) SetMonitorSearchStartedAt(uint, *time.Time) error        { return nil }
+func (s *settingsStubStore) DeleteMediaItem(uint) error                              { return nil }
+func (s *settingsStubStore) ListMediaItemsByLibrary(uint) ([]store.MediaItem, error) { return nil, nil }
+func (s *settingsStubStore) ListDiskMediaItemsByLibrary(uint) ([]store.MediaItem, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) ListNewMediaItemsByLibrary(uint) ([]store.MediaItem, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) CountMediaItemsByLibrary(uint) (int64, error) { return 0, nil }
 func (s *settingsStubStore) GetMediaItemByExternalID(uint, string, int) (*store.MediaItem, error) {
 	return nil, store.ErrNotFound
 }
 func (s *settingsStubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
 func (s *settingsStubStore) ListRecentMediaItems(int) ([]store.MediaItem, error) { return nil, nil }
-func (s *settingsStubStore) CreateMediaRequest(*store.MediaRequest) error { return nil }
+func (s *settingsStubStore) CreateMediaRequest(*store.MediaRequest) error        { return nil }
 func (s *settingsStubStore) ListMediaRequestsByMediaItem(uint) ([]store.MediaRequestAttribution, error) {
 	return nil, nil
+}
+func (s *settingsStubStore) AppendMediaActivity(*store.MediaActivity) error { return nil }
+func (s *settingsStubStore) ListMediaActivityPage(uint, uint, *uint, int) ([]store.MediaActivityAttribution, bool, error) {
+	return nil, false, nil
 }
 
 func (s *settingsStubStore) CreateMediaMetadata(*store.MediaMetadata) error { return nil }
 func (s *settingsStubStore) GetMediaMetadataByMediaItem(uint) (*store.MediaMetadata, error) {
 	return nil, nil
 }
-func (s *settingsStubStore) UpdateMediaMetadata(*store.MediaMetadata) error    { return nil }
-func (s *settingsStubStore) DeleteMediaMetadataByMediaItem(uint) error         { return nil }
+func (s *settingsStubStore) UpdateMediaMetadata(*store.MediaMetadata) error { return nil }
+func (s *settingsStubStore) DeleteMediaMetadataByMediaItem(uint) error      { return nil }
 func (s *settingsStubStore) ListMediaMetadataByMediaItemIDs([]uint) ([]store.MediaMetadata, error) {
 	return nil, nil
 }
@@ -69,19 +79,21 @@ func (s *settingsStubStore) ListMediaMetadataExternalIDs() ([]store.MediaMetadat
 	return nil, nil
 }
 
-func (s *settingsStubStore) CreateMediaProfile(*store.MediaProfile) error              { return nil }
-func (s *settingsStubStore) GetMediaProfile(uint) (*store.MediaProfile, error)         { return nil, nil }
-func (s *settingsStubStore) ListMediaProfiles() ([]store.MediaProfile, error)          { return nil, nil }
-func (s *settingsStubStore) UpdateMediaProfile(*store.MediaProfile) error              { return nil }
-func (s *settingsStubStore) DeleteMediaProfile(uint) error                             { return nil }
+func (s *settingsStubStore) CreateMediaProfile(*store.MediaProfile) error      { return nil }
+func (s *settingsStubStore) GetMediaProfile(uint) (*store.MediaProfile, error) { return nil, nil }
+func (s *settingsStubStore) ListMediaProfiles() ([]store.MediaProfile, error)  { return nil, nil }
+func (s *settingsStubStore) UpdateMediaProfile(*store.MediaProfile) error      { return nil }
+func (s *settingsStubStore) DeleteMediaProfile(uint) error                     { return nil }
 
-func (s *settingsStubStore) CreateMediaFile(*store.MediaFile) error                    { return nil }
-func (s *settingsStubStore) GetMediaFile(uint) (*store.MediaFile, error)               { return nil, nil }
-func (s *settingsStubStore) UpdateMediaFile(*store.MediaFile) error                    { return nil }
-func (s *settingsStubStore) ListMediaFilesByMediaItem(uint) ([]store.MediaFile, error) { return nil, nil }
-func (s *settingsStubStore) ListMediaFilesByLibrary(uint) ([]store.MediaFile, error)   { return nil, nil }
-func (s *settingsStubStore) DeleteMediaFile(uint) error                                { return nil }
-func (s *settingsStubStore) DeleteMediaFilesByPaths([]string) error                    { return nil }
+func (s *settingsStubStore) CreateMediaFile(*store.MediaFile) error      { return nil }
+func (s *settingsStubStore) GetMediaFile(uint) (*store.MediaFile, error) { return nil, nil }
+func (s *settingsStubStore) UpdateMediaFile(*store.MediaFile) error      { return nil }
+func (s *settingsStubStore) ListMediaFilesByMediaItem(uint) ([]store.MediaFile, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) ListMediaFilesByLibrary(uint) ([]store.MediaFile, error) { return nil, nil }
+func (s *settingsStubStore) DeleteMediaFile(uint) error                              { return nil }
+func (s *settingsStubStore) DeleteMediaFilesByPaths([]string) error                  { return nil }
 
 func (s *settingsStubStore) CreateSeasonMonitor(*store.SeasonMonitor) error { return nil }
 func (s *settingsStubStore) ListSeasonMonitorsByMediaItem(uint) ([]store.SeasonMonitor, error) {
@@ -160,33 +172,44 @@ func (s *settingsStubStore) ListDownloads(*uint, *string) ([]store.Download, err
 func (s *settingsStubStore) ListDownloadsPage(*uint, *string, int) ([]store.Download, bool, error) {
 	return nil, false, nil
 }
-func (s *settingsStubStore) DeleteDownload(uint) error                              { return nil }
-func (s *settingsStubStore) HasActiveDownloadByURL(uint, string) (bool, error)      { return false, nil }
-func (s *settingsStubStore) WithTx(fn func(store.Store) error) error                { return fn(s) }
+func (s *settingsStubStore) DeleteDownload(uint) error                         { return nil }
+func (s *settingsStubStore) HasActiveDownloadByURL(uint, string) (bool, error) { return false, nil }
+func (s *settingsStubStore) WithTx(fn func(store.Store) error) error           { return fn(s) }
 
-func (s *settingsStubStore) CreateUser(*store.User) error                               { return nil }
-func (s *settingsStubStore) GetUser(uint) (*store.User, error)                          { return nil, nil }
-func (s *settingsStubStore) GetUserByEmail(string) (*store.User, error)                 { return nil, store.ErrNotFound }
-func (s *settingsStubStore) ListUsers() ([]store.User, error)                           { return nil, nil }
-func (s *settingsStubStore) UpdateUser(*store.User) error                               { return nil }
-func (s *settingsStubStore) DeleteUser(uint) error                                      { return nil }
-func (s *settingsStubStore) CountUsers() (int64, error)                                 { return 0, nil }
-func (s *settingsStubStore) CreateRefreshToken(*store.RefreshToken) error               { return nil }
-func (s *settingsStubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) { return nil, store.ErrNotFound }
-func (s *settingsStubStore) DeleteRefreshToken(string) error                            { return nil }
-func (s *settingsStubStore) DeleteRefreshTokensByUser(uint) error                       { return nil }
-func (s *settingsStubStore) DeleteExpiredRefreshTokens() error                          { return nil }
-func (s *settingsStubStore) CreateWatchedItem(*store.WatchedItem) error                 { return nil }
-func (s *settingsStubStore) DeleteWatchedItem(uint) error                              { return nil }
-func (s *settingsStubStore) ListWatchedItems() ([]store.WatchedItem, error)            { return nil, nil }
-func (s *settingsStubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error)  { return nil, nil }
-func (s *settingsStubStore) GetWatchedBySourceExternal(*uint, string, int) (*store.WatchedItem, error) { return nil, store.ErrNotFound }
-func (s *settingsStubStore) ClearWatchedMediaItemID(uint) error                                      { return nil }
+func (s *settingsStubStore) CreateUser(*store.User) error      { return nil }
+func (s *settingsStubStore) GetUser(uint) (*store.User, error) { return nil, nil }
+func (s *settingsStubStore) GetUserByEmail(string) (*store.User, error) {
+	return nil, store.ErrNotFound
+}
+func (s *settingsStubStore) ListUsers() ([]store.User, error)             { return nil, nil }
+func (s *settingsStubStore) UpdateUser(*store.User) error                 { return nil }
+func (s *settingsStubStore) DeleteUser(uint) error                        { return nil }
+func (s *settingsStubStore) CountUsers() (int64, error)                   { return 0, nil }
+func (s *settingsStubStore) CreateRefreshToken(*store.RefreshToken) error { return nil }
+func (s *settingsStubStore) GetRefreshTokenByToken(string) (*store.RefreshToken, error) {
+	return nil, store.ErrNotFound
+}
+func (s *settingsStubStore) DeleteRefreshToken(string) error            { return nil }
+func (s *settingsStubStore) DeleteRefreshTokensByUser(uint) error       { return nil }
+func (s *settingsStubStore) DeleteExpiredRefreshTokens() error          { return nil }
+func (s *settingsStubStore) CreateWatchedItem(*store.WatchedItem) error { return nil }
+func (s *settingsStubStore) GetWatchedItem(uint) (*store.WatchedItem, error) {
+	return nil, store.ErrNotFound
+}
+func (s *settingsStubStore) DeleteWatchedItem(uint) error                   { return nil }
+func (s *settingsStubStore) ListWatchedItems() ([]store.WatchedItem, error) { return nil, nil }
+func (s *settingsStubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error) {
+	return nil, nil
+}
+func (s *settingsStubStore) GetWatchedBySourceExternal(*uint, string, string, int) (*store.WatchedItem, error) {
+	return nil, store.ErrNotFound
+}
+func (s *settingsStubStore) ClearWatchedMediaItemID(uint) error { return nil }
 
-func (s *settingsStubStore) CreateSubtitle(*store.Subtitle) error                         { return nil }
-func (s *settingsStubStore) GetSubtitle(uint) (*store.Subtitle, error)                    { return nil, nil }
-func (s *settingsStubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error)      { return nil, nil }
-func (s *settingsStubStore) DeleteSubtitle(uint) error                                    { return nil }
+func (s *settingsStubStore) CreateSubtitle(*store.Subtitle) error                    { return nil }
+func (s *settingsStubStore) GetSubtitle(uint) (*store.Subtitle, error)               { return nil, nil }
+func (s *settingsStubStore) ListSubtitlesByMediaItem(uint) ([]store.Subtitle, error) { return nil, nil }
+func (s *settingsStubStore) DeleteSubtitle(uint) error                               { return nil }
 
 // --- Existing path validation tests ---
 

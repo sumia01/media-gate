@@ -1,6 +1,33 @@
 # Media Activity Log
 
-Status: Proposed design, not implemented.
+Status: Initial scope implemented. Optional automatic lifecycle coverage remains
+deferred as described below.
+
+## Implementation status
+
+The initial activity-log scope is implemented in migration `0010` and the media
+details UI. The implementation preserves the two-tab layout in this document;
+the earlier inline-panel prototype is not part of the product.
+
+- `media_activity` is append-only application history with media deletion
+  cascade, deleted-user anonymization, shared/private visibility, bounded typed
+  payloads, and stable ID cursor pagination. No synthetic legacy events are
+  created.
+- Requests, direct monitoring/settings edits, manual and automatic queued grabs,
+  manual download status/removal, matching/unmatching, semantic metadata changes,
+  future-season policy, explicit and library resync effects, media-removal
+  preparation, manual subtitle actions, and global/per-user watched mutations
+  record activity at their committed domain boundary.
+- A persisted deletion claim prevents new requests, grabs, matches, resync
+  applies, imports, posters, or subtitle writes after media cleanup begins,
+  without holding a SQLite transaction across external I/O.
+- Details remains the default operational tab. Activity contains the lazy saved
+  monitor decision and activity feed, both collapsed initially. Cached data and
+  disclosure state survive tab switches; hidden requests are aborted and guarded
+  against late responses.
+- Automatic payload/import completion and failure history and automatic subtitle
+  results remain optional follow-up coverage. Metadata refresh diffs intentionally
+  remain limited to status, season count, and episode additions.
 
 ## Goal and agreed boundaries
 
@@ -8,7 +35,11 @@ Provide a chronological, read-only history on media details: who performed an
 action, what happened, which scope it affected, and when it was recorded.
 
 - Keep the cumulative **Requested by** summary unchanged.
-- Start the activity panel collapsed and fetch nothing until it is expanded.
+- Split media details into **Details** and **Activity** tabs. Details remains
+  the default and keeps the operational controls; Activity contains the latest
+  auto-download check's toggleable results and the activity log.
+- Start both diagnostic/history panels collapsed. Fetch only when Activity is
+  selected and the corresponding panel is expanded, never for a hidden tab.
 - Include user actions affecting this media item, automatic grabs, and metadata
   refreshes only when they persist a semantic change.
 - The user's example of "request canceled" means the existing season/episode
@@ -291,12 +322,44 @@ base, then run `make generate`; do not hand-edit generated Go or TypeScript file
 - Authenticate and enforce visibility before pagination. Return 404 for a
   missing item and 200 with an empty list for an item with no activity.
 - Keep activity out of the existing media-detail payload. Do not add an eager
-  count query or load it merely to render the collapsed header.
+  count query or load it merely to render the tab or collapsed header.
 
-Place a full-width **Activity** disclosure below **Latest auto-download check**
-and above Episodes/Downloads, for both movies and series. Keep **Requested by**
-in the hero. Match existing styling without copying the latest-check panel's
-eager request behavior.
+Use two tabs on media details, for both movies and series, with a compact media
+identity/back-navigation header shared across them:
+
+- **Details** is the default tab. Keep the existing media information, poster,
+  cumulative **Requested by** summary, monitoring/settings controls, manual
+  actions, episodes, downloads, subtitles, and files. Remove only the latest
+  auto-download check block from this content.
+- **Activity** contains **Latest auto-download check** followed by **Activity
+  log**, each as a full-width collapsible section. Keep this tab read-only:
+  do not move monitoring toggles, profile/settings controls, manual searches,
+  worker triggers, or other operational actions here.
+
+The check block contains only the disclosure and saved diagnostic content,
+including its summary, timestamps, freshness warnings, and evaluated list.
+Omit its standalone **Refresh saved check** toolbar. Expanding/reopening the
+check list reloads the saved snapshot; after a failed load, instruct the user
+to close and reopen it to retry. This remains a read-only GET, not an automatic
+search trigger. History pagination, refresh, and retry controls remain within
+the activity log; they navigate recorded data, not media operations.
+
+Match the existing violet-underlined tab styling. Default to Details on a new
+media route; ordinary item refreshes and SSE updates must not change the active
+tab. Preserve both panels' expansion and successfully loaded data across tab
+switches, but abort outstanding requests when leaving Activity. On returning,
+reload an expanded saved-check list and load an expanded history only if it is
+missing or dirty. Collapsed sections remain unfetched.
+
+The existing latest-check panel fetches immediately and on monitor completion
+even while collapsed. Merely hiding it with a tab does not make it lazy: gate
+its request path on both active-tab and disclosure visibility. While hidden,
+worker events only mark it dirty; while visible and expanded, they may refresh
+its saved result. Preserve server-version freshness comparisons and stale-data
+warnings. Before the first successful fetch, use a neutral collapsed label,
+not a claim that no check has been recorded. Do not apply this diagnostic
+auto-refresh behavior to the append-only feed, which retains explicit refresh
+to avoid moving history while the user reads.
 
 Each row shows a distinct action label, actor, target scope, and timestamp, with
 the event-time title/release/diff in details. Use past-tense wording and a
@@ -315,30 +378,39 @@ For example, displayed newest first:
 ```
 
 Use a dedicated `MediaActivityPanel` and a focused loading helper/composable
-where needed for testing. The panel's loading states are explicit:
+where needed for testing. The activity log's loading states are explicit:
 
 | State/action | Behavior |
 | --- | --- |
-| Initially collapsed | No activity HTTP request. |
-| First expansion | Fetch newest page; show loading, not an empty result. |
+| Details tab active | No check/history HTTP requests, including during SSE updates. |
+| Activity selected, panels collapsed | No check/history HTTP requests just to show the tab. |
+| First expansion on Activity | Fetch newest history page; show loading, not an empty result. |
 | Successful empty result | "No recorded activity yet. Earlier actions were not recorded." |
 | Load older | Explicit button; append stable-ID-deduplicated rows using the cursor. |
 | Initial/page error | Retry the failed request; preserve previously loaded rows/cursor. |
 | Collapse | Abort pending requests; retain successful pages; no background fetching. |
-| Event/local mutation | Mark the feed dirty. While expanded, offer "Activity may have changed. Refresh latest." Do not unexpectedly prepend rows. |
+| Leave Activity tab | Abort pending requests and retain successful pages, cursors, and disclosure state. |
+| Return to Activity tab | For expanded history, load if never loaded or refresh if dirty; otherwise reuse cached pages. Collapsed history stays unfetched. |
+| Event/local mutation | Mark the feed dirty. Only while Activity is selected and the log expanded, offer "Activity may have changed. Refresh latest." Do not unexpectedly prepend rows. |
 | Reopen dirty feed | Refresh the newest page, replacing old pages only after success; clearly mark retained data stale on failure. |
 | Explicit refresh | Start a new pagination session; keep old rows until success. |
-| SSE reconnect/window focus | Mark cached history dirty without fetching while collapsed. Manual refresh remains available because hints can be missed. |
+| SSE reconnect/window focus | Mark cached history dirty without fetching while collapsed or on Details. History refresh remains available because hints can be missed. |
 | Route change/unmount | Abort, clear state, invalidate request generation, remove listeners. |
 
 Use both abort signals and request-generation guards so late responses cannot
-cross item boundaries or overwrite a newer page/refresh. Serialize load-older
-and refresh operations. Bound rendered history, initially 500 entries; at the
-cap offer **Continue with older activity** to replace the current window using
-the oldest cursor, plus **Back to latest**. Trim each page's requested limit to
+cross item boundaries, update a hidden panel after tab exit, or overwrite a
+newer page/refresh. Serialize load-older and refresh operations. Bound rendered
+history, initially 500 entries; at the cap offer **Continue with older activity**
+to replace the current window using the oldest cursor, plus **Back to latest**.
+Trim each page's requested limit to
 the remaining capacity so its next cursor never skips undisplayed entries. Do
 not silently drop rows while the user is reading or impose an unreachable-history
 limit.
+
+Use accessible tablist/tab/tabpanel relationships, `aria-selected`, associated
+panel IDs, and roving keyboard focus with arrow/Home/End navigation. Hidden
+tab content must not remain keyboard-focusable. Tab switches must not lose
+focus or reset the media page unexpectedly.
 
 Use a heading with a native disclosure button, `aria-expanded`, unique
 `aria-controls`, and visible focus. Render timestamps with `<time datetime>`
@@ -347,7 +419,7 @@ content on mobile; distinguish icons with text, not color alone. Announce short
 loading/result status, preserve focus through pagination, and respect reduced
 motion. No nested interactive controls inside the disclosure button.
 
-## Implementation sequence and verification
+## Implemented sequence and verification contract
 
 1. Add migration/model, typed activity construction, append/list Store methods,
    visibility and cursor validation, and API generation. Test fresh install and
@@ -368,10 +440,14 @@ motion. No nested interactive controls inside the disclosure button.
    Verify safe snapshots survive child deletion, failed final media deletion
    retains preparation history, watched visibility honors the action-time mode,
    and cleanup failures are never described as successful physical deletion.
-6. Add the panel and lazy-pagination tests: zero requests while collapsed,
-   expansion/reopen, inserts between pages, timestamp ties, cursor errors,
-   visibility filtering, stale responses, SSE invalidation/reconnect, bounded
-   navigation, and retained rows after failures.
+6. Add the two tabs and panel tests: Details preserves existing operational
+   controls/requesters but has no check block; Activity has read-only saved
+   check content and history. Verify zero check/history requests while hidden
+   or collapsed, tab-switch cancellation/cache reuse, check reopen/retry and
+   freshness, activity expansion/reopen, inserts between pages, timestamp ties,
+   cursor errors, visibility filtering, stale responses, SSE invalidation /
+   reconnect, bounded pagination, retained rows after failures, and accessible
+   tab/disclosure keyboard behavior.
 7. Run uncached Go tests (`go test -count=1 ./...` from `backend/`), frontend
    regression tests with Node 24, type-check/build and lint. Use the disposable
    harness for authenticated API/SSE and deterministic fake-grab/import checks;

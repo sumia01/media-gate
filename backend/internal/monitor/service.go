@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/activity"
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/indexer"
@@ -117,7 +118,7 @@ func (s *Service) processOnce() {
 			}
 			continue
 		}
-		if item != nil && item.Monitored {
+		if item != nil && item.Monitored && !item.DeletionPending {
 			s.processItem(item)
 		}
 	}
@@ -127,7 +128,7 @@ func (s *Service) processItem(item *store.MediaItem) {
 	slog.Debug("monitor: checking item", "item_id", item.ID, "title", item.Title, "type", item.MediaType)
 	check := newDecisionCheck(item)
 	defer s.saveDecision(check)
-	if !item.Monitored {
+	if !item.Monitored || item.DeletionPending {
 		check.add(decisionDetail("disabled", "Auto-download is disabled; no search was performed."))
 		return
 	}
@@ -566,12 +567,17 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 	// disable-and-cancel transaction. Searches and event delivery stay outside.
 	if err := s.store.WithTx(func(tx store.Store) error {
 		parent, err := tx.GetMediaItem(item.ID)
-		if errors.Is(err, store.ErrNotFound) || (err == nil && (parent == nil || !parent.Monitored)) {
+		if errors.Is(err, store.ErrNotFound) || (err == nil && (parent == nil || !parent.Monitored || parent.DeletionPending)) {
 			detail = decisionDetail("disabled", "Auto-download was disabled or the item was deleted during the search; no download was queued.")
 			return nil
 		}
 		if err != nil {
 			return err
+		}
+		if !parent.UpdatedAt.Equal(item.UpdatedAt) {
+			detail = decisionDetail("no_eligible_targets", "Media settings or metadata changed during the search, so the selected release was not queued. The monitor will reevaluate the item on its next check.")
+			detail.SelectedTitle = safeSelectedTitle(result.Title)
+			return nil
 		}
 		exists, err := tx.HasActiveDownloadByURL(item.ID, result.DownloadURL)
 		if err != nil {
@@ -590,7 +596,29 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 			detail.BlockedResults = 1
 			return nil
 		}
-		return tx.CreateDownload(dl)
+		if err := tx.CreateDownload(dl); err != nil {
+			return err
+		}
+		targets, total := activity.DownloadTargets(tx, parent, dl)
+		automatic := true
+		activityDetails := store.MediaActivityDetails{
+			Automatic:   &automatic,
+			ReleaseName: store.BoundMediaActivityText(result.Title, store.MediaActivityMaxTitleBytes),
+			IndexerName: store.BoundMediaActivityText(result.IndexerName, store.MediaActivityMaxTitleBytes),
+			DownloadID:  &dl.ID,
+		}
+		activity.ApplyDownloadTargets(&activityDetails, targets, total)
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		queuedActivity, err := store.NewSystemMediaActivity(
+			parent, "monitor", store.MediaActivityActionDownloadQueued, operationID, activityDetails,
+		)
+		if err != nil {
+			return err
+		}
+		return tx.AppendMediaActivity(queuedActivity)
 	}); err != nil {
 		slog.Error("monitor: failed to create download",
 			"item_id", item.ID, "title", result.Title, "error", err)
@@ -615,6 +643,7 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 		Title:       item.Title,
 		ResultTitle: result.Title,
 	})
+	s.bus.Publish(eventbus.MediaActivityAdded, eventbus.MediaActivityPayload{MediaItemID: item.ID})
 
 	// Clear search started marker
 	item.MonitorSearchStartedAt = nil

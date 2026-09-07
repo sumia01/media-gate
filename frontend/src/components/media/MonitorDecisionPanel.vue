@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, RefreshCw } from 'lucide-vue-next'
+import { ChevronRight } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import client from '@/api/client'
 import type { components } from '@/api/schema'
@@ -13,22 +13,27 @@ const props = defineProps<{
   mediaItemId: number
   monitored: boolean
   updatedAt: string
+  active: boolean
 }>()
 
 const expanded = ref(false)
 const decision = ref<MonitorDecision | null>(null)
+const loaded = ref(false)
 const loading = ref(false)
 const error = ref('')
 const { on, off } = useEventStream()
 let request: AbortController | undefined
+let generation = 0
+let dirty = false
 
 const freshness = computed(() => monitorDecisionFreshness(decision.value, props.updatedAt))
 
 const collapsedSummary = computed(() => {
-  if (!props.monitored) return 'Auto-download is currently off.'
   if (decision.value) return decision.value.summary
   if (error.value) return error.value
-  return loading.value ? 'Loading saved check...' : 'No check has been recorded yet.'
+  if (loading.value) return 'Loading saved check...'
+  if (!loaded.value) return 'Open to load the latest saved check.'
+  return props.monitored ? 'No check has been recorded yet.' : 'Auto-download is currently off.'
 })
 
 const labels: Record<string, string> = {
@@ -57,7 +62,10 @@ function targetLabel(detail: DecisionDetail) {
 }
 
 async function loadDecision() {
-  request?.abort()
+  if (!props.active || !expanded.value) return
+  abortRequest()
+  const capturedId = props.mediaItemId
+  const requestGeneration = ++generation
   const current = new AbortController()
   request = current
   loading.value = true
@@ -67,81 +75,120 @@ async function loadDecision() {
       params: { path: { id: props.mediaItemId } },
       signal: current.signal,
     })
-    if (current.signal.aborted) return
+    if (
+      current.signal.aborted ||
+      generation !== requestGeneration ||
+      props.mediaItemId !== capturedId ||
+      !props.active ||
+      !expanded.value
+    )
+      return
     if (failure || !data) {
-      error.value = 'Could not load the latest saved check.'
+      error.value = 'Could not load the latest saved check. Close and reopen this section to try again.'
       return
     }
     decision.value = data.decision ?? null
+    loaded.value = true
+    dirty = false
   } catch {
-    if (!current.signal.aborted) error.value = 'Could not load the latest saved check.'
+    if (
+      !current.signal.aborted &&
+      generation === requestGeneration &&
+      props.mediaItemId === capturedId &&
+      props.active &&
+      expanded.value
+    ) {
+      error.value = 'Could not load the latest saved check. Close and reopen this section to try again.'
+    }
   } finally {
-    if (!current.signal.aborted) loading.value = false
+    if (generation === requestGeneration) {
+      request = undefined
+      loading.value = false
+    }
   }
+}
+
+function abortRequest() {
+  generation++
+  request?.abort()
+  request = undefined
+  loading.value = false
+}
+
+function toggleExpanded() {
+  expanded.value = !expanded.value
+  if (expanded.value && props.active) void loadDecision()
+  else abortRequest()
 }
 
 function onWorkerFinished(data: { name?: string }) {
   // A grab event can precede snapshot persistence. Worker completion is after it.
-  if (data.name === 'monitor') loadDecision()
+  if (data.name !== 'monitor') return
+  dirty = true
+  if (props.active && expanded.value) void loadDecision()
 }
 
 watch(
   () => props.mediaItemId,
   () => {
+    abortRequest()
+    expanded.value = false
     decision.value = null
-    loadDecision()
+    loaded.value = false
+    error.value = ''
+    dirty = false
   },
-  { immediate: true },
+)
+
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) {
+      abortRequest()
+      return
+    }
+    if (expanded.value) void loadDecision()
+  },
 )
 
 onMounted(() => on('worker.finished', onWorkerFinished))
 onUnmounted(() => {
-  request?.abort()
+  abortRequest()
   off('worker.finished', onWorkerFinished)
 })
 </script>
 
 <template>
   <section class="rounded-lg border border-violet-900/30 bg-[#161b2e]">
-    <button
-      type="button"
-      class="flex w-full items-start gap-3 px-4 py-3 text-left cursor-pointer hover:bg-violet-500/5 rounded-lg"
-      :aria-expanded="expanded"
-      :aria-controls="`monitor-decision-${mediaItemId}`"
-      @click="expanded = !expanded"
-    >
-      <ChevronRight class="w-4 h-4 mt-0.5 shrink-0 text-violet-400 transition-transform" :class="{ 'rotate-90': expanded }" />
-      <span class="min-w-0 flex-1">
-        <span class="block text-sm font-medium text-gray-200">Latest auto-download check</span>
-        <span class="block mt-1 text-xs text-gray-400 break-words">
-          {{ collapsedSummary }}
+    <h2>
+      <button
+        type="button"
+        class="flex w-full items-start gap-3 px-4 py-3 text-left cursor-pointer hover:bg-violet-500/5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+        :aria-expanded="expanded"
+        :aria-controls="`monitor-decision-${mediaItemId}`"
+        @click="toggleExpanded"
+      >
+        <ChevronRight class="w-4 h-4 mt-0.5 shrink-0 text-violet-400 transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded }" />
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm font-medium text-gray-200">Latest auto-download check</span>
+          <span class="block mt-1 text-xs text-gray-400 break-words">
+            {{ collapsedSummary }}
+          </span>
         </span>
-      </span>
-    </button>
+      </button>
+    </h2>
 
     <div v-if="expanded" :id="`monitor-decision-${mediaItemId}`" class="border-t border-violet-900/20 px-4 py-4 space-y-4">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="text-xs text-gray-400 space-y-1">
-          <p v-if="decision">
-            Last check completed:
-            <time :datetime="decision.checkedAt" class="text-gray-200">{{ new Date(decision.checkedAt).toLocaleString('en-US') }}</time>
-          </p>
-          <p>Saved worker result, not a live search. Refresh only reloads this panel.</p>
-        </div>
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10 disabled:opacity-50 cursor-pointer"
-          :disabled="loading"
-          @click="loadDecision"
-        >
-          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
-          <span v-if="loading">Loading...</span>
-          <span v-else-if="error">Retry</span>
-          <span v-else>Refresh saved check</span>
-        </button>
+      <div class="text-xs text-gray-400 space-y-1">
+        <p v-if="decision">
+          Last check completed:
+          <time :datetime="decision.checkedAt" class="text-gray-200">{{ new Date(decision.checkedAt).toLocaleString('en-US') }}</time>
+        </p>
+        <p>Saved worker result, not a live search. Closing and reopening reloads this section.</p>
       </div>
 
-      <p v-if="error" role="alert" class="text-sm text-red-300">{{ error }} {{ decision ? 'The previously loaded snapshot is still shown below.' : 'Use Retry to try again.' }}</p>
+      <p v-if="loading" role="status" class="text-sm text-gray-400">Loading saved check...</p>
+      <p v-if="error" role="alert" class="text-sm text-red-300">{{ error }} {{ decision ? 'The previously loaded snapshot is still shown below.' : '' }}</p>
       <p v-if="!monitored" class="text-xs text-amber-300">
         Auto-download is disabled. The worker skips this item; any snapshot below belongs to an earlier check.
       </p>

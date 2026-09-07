@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sumia01/media-gate/internal/activity"
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/indexer"
@@ -123,6 +124,10 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 		if dl.NextRetryAt != nil && dl.NextRetryAt.After(now) {
 			continue
 		}
+		item, err := s.store.GetMediaItem(dl.MediaItemID)
+		if err != nil || item.DeletionPending {
+			continue
+		}
 
 		opts := qbittorrent.AddTorrentOptions{
 			SavePath: savePath,
@@ -141,6 +146,7 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 
 		// Upload .torrent file to qBittorrent (also computes info hash)
 		hash, err := client.AddTorrentFile(dl.Title+".torrent", torrentData, opts)
+		addedTorrent := err == nil
 		if err != nil {
 			// If qBit rejected it, the torrent may already exist — check by hash
 			if checkHash, hashErr := qbittorrent.InfoHash(torrentData); hashErr == nil && checkHash != "" {
@@ -165,8 +171,23 @@ func (s *Service) sendPending(client *qbittorrent.Client) map[uint]bool {
 		dl.RetryCount = 0
 		dl.NextRetryAt = nil
 		dl.LastError = ""
-		if err := s.store.UpdateDownload(dl); err != nil {
+		if err := s.store.WithTx(func(tx store.Store) error {
+			item, err := tx.GetMediaItem(dl.MediaItemID)
+			if err != nil {
+				return err
+			}
+			if item.DeletionPending {
+				return store.ErrMediaDeletionPending
+			}
+			return tx.UpdateDownload(dl)
+		}); err != nil {
 			slog.Error("download worker: failed to update download status", "download_id", dl.ID, "error", err)
+			if addedTorrent && hash != "" {
+				if cleanupErr := client.DeleteTorrent(hash, true); cleanupErr != nil {
+					slog.Warn("download worker: failed to remove unclaimed torrent", "download_id", dl.ID, "hash", hash, "error", cleanupErr)
+				}
+			}
+			continue
 		}
 
 		slog.Info("download worker: torrent added", "download_id", dl.ID, "title", dl.Title, "hash", hash)
@@ -369,33 +390,67 @@ type DownloadWithProgress struct {
 	UploadSpeed   *int64
 }
 
-// Create validates and persists a new download, then publishes a DownloadCreated event.
-func (s *Service) Create(dl *store.Download) error {
+// Create validates and atomically persists a manual download and its activity.
+func (s *Service) Create(userID uint, dl *store.Download) error {
 	if err := validateURLScheme(dl.DownloadURL); err != nil {
 		return err
 	}
-	exists, err := s.store.HasActiveDownloadByURL(dl.MediaItemID, dl.DownloadURL)
-	if err != nil {
-		return fmt.Errorf("check duplicate download: %w", err)
-	}
-	if exists {
-		return fmt.Errorf("download already exists for this media item: %w", store.ErrDuplicate)
-	}
-	s.resolveEpisodeID(dl)
-	if err := s.store.CreateDownload(dl); err != nil {
+
+	created := *dl
+	if err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateActivityActor(tx, userID); err != nil {
+			return err
+		}
+		item, err := tx.GetMediaItem(created.MediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+		exists, err := tx.HasActiveDownloadByURL(created.MediaItemID, created.DownloadURL)
+		if err != nil {
+			return fmt.Errorf("check duplicate download: %w", err)
+		}
+		if exists {
+			return fmt.Errorf("download already exists for this media item: %w", store.ErrDuplicate)
+		}
+		resolveEpisodeID(tx, &created)
+		if err := tx.CreateDownload(&created); err != nil {
+			return err
+		}
+
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		automatic := false
+		details := manualDownloadActivityDetails(tx, item, &created)
+		details.Automatic = &automatic
+		entry, err := store.NewUserMediaActivity(
+			item, userID, store.MediaActivityActionDownloadQueued, operationID,
+			store.MediaActivityVisibilityShared, details,
+		)
+		if err != nil {
+			return err
+		}
+		return tx.AppendMediaActivity(entry)
+	}); err != nil {
 		return err
 	}
+	*dl = created
 	slog.Info("download: created", "download_id", dl.ID, "title", dl.Title, "media_item_id", dl.MediaItemID)
 	s.bus.Publish(eventbus.DownloadCreated, eventbus.DownloadPayload{
 		DownloadID: dl.ID, MediaItemID: dl.MediaItemID, Title: dl.Title, Status: dl.Status,
 	})
+	s.publishActivityInvalidation(dl.MediaItemID)
 	return nil
 }
 
 // resolveEpisodeID attempts to fill in EpisodeID when not provided by parsing the
 // download title. This prevents single-episode downloads from being misclassified
 // as season packs (which would block the entire season in the monitor).
-func (s *Service) resolveEpisodeID(dl *store.Download) {
+func resolveEpisodeID(st store.Store, dl *store.Download) {
 	if dl.EpisodeID != nil || dl.MediaItemID == 0 || dl.Title == "" {
 		return
 	}
@@ -403,7 +458,7 @@ func (s *Service) resolveEpisodeID(dl *store.Download) {
 	if parsed.Season == nil || parsed.Episode == nil {
 		return // Can't determine episode, or it's actually a season pack
 	}
-	ep, err := s.store.GetEpisodeByNumber(dl.MediaItemID, *parsed.Season, *parsed.Episode)
+	ep, err := st.GetEpisodeByNumber(dl.MediaItemID, *parsed.Season, *parsed.Episode)
 	if err != nil {
 		return // Episode not found in DB — best-effort, no error
 	}
@@ -414,22 +469,104 @@ func (s *Service) resolveEpisodeID(dl *store.Download) {
 	}
 }
 
-// UpdateStatus sets a download's status and resets retry state when going back to "pending".
-func (s *Service) UpdateStatus(dlID uint, status string) (*store.Download, error) {
-	dl, err := s.store.GetDownload(dlID)
+// UpdateStatus atomically persists a manual status mutation and its activity.
+func (s *Service) UpdateStatus(userID, dlID uint, status string) (*store.Download, error) {
+	var (
+		dl            *store.Download
+		activityAdded bool
+	)
+	err := s.store.WithTx(func(tx store.Store) error {
+		if err := validateActivityActor(tx, userID); err != nil {
+			return err
+		}
+		current, err := tx.GetDownload(dlID)
+		if err != nil {
+			return err
+		}
+		item, err := tx.GetMediaItem(current.MediaItemID)
+		if err != nil {
+			return err
+		}
+		if item.DeletionPending {
+			return store.ErrMediaDeletionPending
+		}
+
+		oldStatus := current.Status
+		changed := oldStatus != status
+		if status == "pending" && (current.RetryCount != 0 || current.NextRetryAt != nil || current.LastError != "") {
+			changed = true
+		}
+		if !changed {
+			dl = current
+			return nil
+		}
+
+		current.Status = status
+		if status == "pending" {
+			current.RetryCount = 0
+			current.NextRetryAt = nil
+			current.LastError = ""
+		}
+		if err := tx.UpdateDownload(current); err != nil {
+			return err
+		}
+
+		operationID, err := store.NewMediaActivityOperationID()
+		if err != nil {
+			return err
+		}
+		details := manualDownloadActivityDetails(tx, item, current)
+		details.OldStatus = oldStatus
+		details.NewStatus = current.Status
+		if status == "pending" {
+			details.Reason = "manual_retry"
+		}
+		entry, err := store.NewUserMediaActivity(
+			item, userID, store.MediaActivityActionDownloadStatusChanged, operationID,
+			store.MediaActivityVisibilityShared, details,
+		)
+		if err != nil {
+			return err
+		}
+		if err := tx.AppendMediaActivity(entry); err != nil {
+			return err
+		}
+		dl = current
+		activityAdded = true
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	dl.Status = status
-	if status == "pending" {
-		dl.RetryCount = 0
-		dl.NextRetryAt = nil
-		dl.LastError = ""
-	}
-	if err := s.store.UpdateDownload(dl); err != nil {
-		return nil, err
+	if activityAdded {
+		s.publishActivityInvalidation(dl.MediaItemID)
 	}
 	return dl, nil
+}
+
+func validateActivityActor(st store.Store, userID uint) error {
+	if _, err := st.GetUser(userID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrActivityActorNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func manualDownloadActivityDetails(st store.Store, item *store.MediaItem, dl *store.Download) store.MediaActivityDetails {
+	details := store.MediaActivityDetails{
+		ReleaseName: store.BoundMediaActivityText(dl.Title, store.MediaActivityMaxTitleBytes),
+		IndexerName: store.BoundMediaActivityText(dl.IndexerName, store.MediaActivityMaxTitleBytes),
+		DownloadID:  &dl.ID,
+	}
+	targets, total := activity.DownloadTargets(st, item, dl)
+	activity.ApplyDownloadTargets(&details, targets, total)
+	return details
+}
+
+func (s *Service) publishActivityInvalidation(mediaItemID uint) {
+	s.bus.Publish(eventbus.MediaActivityAdded, eventbus.MediaActivityPayload{MediaItemID: mediaItemID})
 }
 
 // ListWithProgress lists downloads and optionally enriches them with real-time
