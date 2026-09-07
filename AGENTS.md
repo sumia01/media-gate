@@ -9,6 +9,7 @@ Self-hosted, single-binary media management app (Go backend + Vue 3 frontend). R
 - Discover supports a persistent "Hide in library" filter and a bidirectional, lazy-loaded episode timeline for followed series; its initial and Today views center a subtly highlighted current-day column. Direct membership includes media type; TVDB-to-TMDB identity normalization remains deferred.
 - Media details show the latest bounded automatic-search decision, with evaluated input freshness separate from completion time. Discord alerts cover persisted terminal download/import failures without retry spam.
 - Media details show a deduplicated cumulative requester list. Separate whole-series, future-season, season, and episode intent remains persisted for history; later monitor changes attribute only scopes enabled by that user.
+- A per-media activity log is proposed in `docs/MEDIA_ACTIVITY_LOG.md`, not implemented. It requires separate append-only history; requester attribution and current monitoring remain independent.
 - A disposable local/CI harness provides isolated named instances, readable Air/Vite/fake-service logs, and a deterministic fake tracker-to-qBittorrent-to-import smoke flow without real torrent side effects.
 
 ## Agent Rules
