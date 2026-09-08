@@ -7,6 +7,10 @@ BINARY   := media-gate
 DIST_DIR := dist
 HARNESS_ID ?= default
 HARNESS_MODE ?= local
+HARNESS_API_PORT ?=
+HARNESS_UI_PORT ?=
+HARNESS_FAKE_PORT ?=
+HARNESS_BINARY ?=
 SERVICE ?= all
 
 ## tools: Install required Go dev tools (air, oapi-codegen)
@@ -40,9 +44,11 @@ dev:
 	cd frontend && npm run dev & \
 	wait
 
-## harness-up: Start an isolated disposable instance (HARNESS_ID=name, HARNESS_MODE=local|ci)
+## harness-up: Start an isolated instance with dynamically allocated ports
 harness-up:
-	HARNESS_ID="$(HARNESS_ID)" HARNESS_MODE="$(HARNESS_MODE)" ./harness/harness.sh up
+	HARNESS_ID="$(HARNESS_ID)" HARNESS_MODE="$(HARNESS_MODE)" \
+		HARNESS_API_PORT="$(HARNESS_API_PORT)" HARNESS_UI_PORT="$(HARNESS_UI_PORT)" \
+		HARNESS_FAKE_PORT="$(HARNESS_FAKE_PORT)" ./harness/harness.sh up
 
 ## harness-status: Show status and URLs for an isolated instance
 harness-status:
@@ -75,7 +81,9 @@ harness-destroy:
 
 ## harness-ci: Build and run the disposable release-gate smoke test
 harness-ci:
-	HARNESS_ID="$(HARNESS_ID)" ./harness/harness.sh ci
+	HARNESS_ID="$(HARNESS_ID)" HARNESS_API_PORT="$(HARNESS_API_PORT)" \
+		HARNESS_FAKE_PORT="$(HARNESS_FAKE_PORT)" HARNESS_BINARY="$(HARNESS_BINARY)" \
+		./harness/harness.sh ci
 
 ## clean: Remove build artifacts
 clean:

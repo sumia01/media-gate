@@ -55,6 +55,8 @@ import (
 var version = "dev"
 
 func main() {
+	migrateOnly := len(os.Args) == 2 && os.Args[1] == "--migrate-only"
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
@@ -83,6 +85,14 @@ func main() {
 	if err := db.Ping(); err != nil {
 		slog.Error("database ping failed", "error", err)
 		os.Exit(1)
+	}
+	if migrateOnly {
+		if err := db.Close(); err != nil {
+			slog.Error("failed to close migrated database", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("database migrations completed", "path", cfg.DB.Path)
+		return
 	}
 
 	posterDir := filepath.Join(cfg.Data.Dir, ".cache", "posters")

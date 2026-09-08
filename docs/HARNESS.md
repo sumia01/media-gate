@@ -25,8 +25,15 @@ snatch.
 ## Local Usage
 
 Local mode runs Air and Vite with hot reload. It currently targets Linux and
-requires Go, Node.js, `curl`, util-linux `setsid`/`flock`, and Air; install project
-dependencies first with `make tools` and `npm ci` in `frontend/`.
+requires Go, Node.js, `curl`, util-linux `setsid`/`flock`, coreutils `timeout`,
+Linux pidfds, and Air; install project dependencies first with `make tools` and
+`npm ci` in `frontend/`.
+
+Backend, Vite, and fake-integration ports are assigned by the kernel on every
+startup. A host-global, per-user startup lock serializes allocation and service
+binding across harness roots. Fixed `HARNESS_API_PORT`, `HARNESS_UI_PORT`,
+and `HARNESS_FAKE_PORT` overrides remain available for debugging and fail rather
+than falling through to a different port when occupied.
 
 ```bash
 make harness-up
@@ -48,13 +55,28 @@ make harness-logs HARNESS_ID=download-fix SERVICE=all FOLLOW=1
 make harness-destroy HARNESS_ID=download-fix
 ```
 
-The generated `tmp/harness/<id>/manifest.json` contains URLs, disposable login
-credentials, paths, PIDs, and seeded entity IDs. Logs are available directly in
-`tmp/harness/<id>/logs/`:
+The generated `tmp/harness/<id>/manifest.json` contains the assigned ports and
+URLs, disposable login credentials, paths, PIDs, and seeded entity IDs. Vite is
+started with that frontend port and proxies `/api` to the assigned backend URL;
+the seeded qBittorrent settings use the assigned fake-server URL. Logs are
+available directly in `tmp/harness/<id>/logs/`:
 
 - `backend.log`: Air output and JSON backend logs
 - `frontend.log`: Vite output
 - `fakes.log`: fake tracker/qBittorrent process output
+
+Startup runs the backend's embedded schema migrations as a foreground,
+migration-only step against the instance database before launching any service.
+A migration error aborts startup immediately and leaves the instance logs and
+filesystem available for inspection.
+
+Each long-running service has its own session and a Linux child-subreaper that
+stays alive until every process in that session has exited and been reaped.
+Startup and CI commands trap interruption and failure and stop every started
+session. `harness-down` and `harness-destroy` validate the recorded PID identity
+and session before signalling through pidfds, including Air child process
+groups, Vite, Node.js, and esbuild. Pidfds prevent a concurrently reused PID
+from redirecting a teardown signal to another instance or host process.
 
 The initial library sync queues normal metadata matching. Without an explicit
 TMDB/TVDB key, that background match job reports that no API key is configured;

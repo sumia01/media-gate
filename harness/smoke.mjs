@@ -5,6 +5,18 @@ if (!manifestPath) throw new Error('manifest path is required')
 
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
 if (!manifest.seed) throw new Error('harness instance has not been seeded')
+const assignedPorts = [manifest.ports.backend, manifest.ports.fakes]
+if (manifest.ports.frontend !== undefined) assignedPorts.push(manifest.ports.frontend)
+if (new Set(assignedPorts).size !== assignedPorts.length) {
+  throw new Error(`harness ports are not distinct: ${JSON.stringify(manifest.ports)}`)
+}
+const portUrls = [['backend', 'apiUrl'], ['fakes', 'fakeUrl'], ['frontend', 'frontendUrl']]
+for (const [portName, urlName] of portUrls) {
+  const port = manifest.ports[portName]
+  if (port !== undefined && Number(new URL(manifest[urlName]).port) !== port) {
+    throw new Error(`${portName} port does not match ${urlName}`)
+  }
+}
 const apiRoot = `${manifest.apiUrl}/api/v1`
 
 async function request(base, path, options = {}, expected = [200]) {
