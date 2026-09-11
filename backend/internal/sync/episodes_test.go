@@ -10,12 +10,12 @@ func ptr[T any](v T) *T { return &v }
 
 func TestResolveDownloadStatuses(t *testing.T) {
 	tests := []struct {
-		name             string
-		downloads        []store.Download
-		wantEpisode      map[uint]string
-		wantEpisodeKey   map[string]string
-		wantSeason       map[int]string
-		wantItemStatus   string
+		name           string
+		downloads      []store.Download
+		wantEpisode    map[uint]string
+		wantEpisodeKey map[string]string
+		wantSeason     map[int]string
+		wantItemStatus string
 	}{
 		{
 			name:           "empty downloads",
@@ -113,6 +113,15 @@ func TestResolveDownloadStatuses(t *testing.T) {
 			wantEpisode:    map[uint]string{},
 			wantEpisodeKey: map[string]string{},
 			wantSeason:     map[int]string{1: "downloading"},
+		},
+		{
+			name:      "unnumbered special does not cover the season",
+			downloads: []store.Download{{SeasonNumber: ptr(2), Status: "seeding", Title: "Show.S02.Special.White.Christmas.1080p"}},
+		},
+		{
+			name:        "explicit special retains episode tier",
+			downloads:   []store.Download{{EpisodeID: ptr(uint(42)), SeasonNumber: ptr(2), Status: "seeding", Title: "Show.S02.Special.White.Christmas.1080p"}},
+			wantEpisode: map[uint]string{42: "seeding"},
 		},
 	}
 

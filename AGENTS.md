@@ -1,193 +1,129 @@
 # Media Gate
 
-Self-hosted, single-binary media management app (Go backend + Vue 3 frontend). Replaces Sonarr/Radarr/Overseerr/Prowlarr/Bazarr.
+Self-hosted media management app: Go backend and Vue 3/TypeScript frontend, shipped as one binary with embedded frontend assets.
 
-## Development Status
+## Working Agreements
 
-- Core discover, library, matching, indexer, download/import, monitoring, subtitle, Plex, notification, auth, and self-update flows are implemented.
-- The All Downloads page uses bounded newest-first history loading (30 initially, then 100 more), with server-side status filtering, exact qBittorrent completion timestamps for new downloads, and a labelled fallback for legacy finished rows.
-- Discover supports a persistent "Hide in library" filter and a bidirectional, lazy-loaded episode timeline for followed series; its initial and Today views center a subtly highlighted current-day column. Direct membership includes media type; TVDB-to-TMDB identity normalization remains deferred.
-- Media details use default Details and read-only Activity tabs. Activity contains collapsed, lazy-loaded latest automatic-search diagnostics and append-only per-media history; evaluated input freshness remains separate from completion time. Discord alerts cover persisted terminal download/import failures without retry spam.
-- Media details show a deduplicated cumulative requester list. Separate whole-series, future-season, season, and episode intent remains persisted for history; later monitor changes attribute only scopes enabled by that user.
-- Per-media activity uses separate append-only history with actor, event-time scope/title, safe typed details, cursor pagination, and shared/private visibility. Requester attribution and current monitoring remain independent. Optional automatic payload/import/subtitle lifecycle outcomes are not recorded.
-- A disposable local/CI harness provides isolated named instances, readable Air/Vite/fake-service logs, and a deterministic fake tracker-to-qBittorrent-to-import smoke flow without real torrent side effects.
+- This file applies repository-wide. Read any nested `AGENTS.md` before editing its subtree.
+- Inspect the relevant implementation and tests first. Make the smallest correct change; preserve unrelated work and avoid speculative abstractions or compatibility layers.
+- Treat source, tests, migrations, and build configuration as evidence of current behavior. Older ADRs, roadmap entries, and recalled memories may be superseded; flag conflicts rather than restoring obsolete behavior.
+- Do not commit, push, tag, deploy, or modify production without an explicit request. Report changes, checks actually run, and remaining gaps when finishing.
 
-## Agent Rules
+## Setup And Commands
 
-- **No cached Go tests**: ALWAYS run Go tests with `-count=1` to disable test caching (e.g. `go test -count=1 ./...`). Cached results have caused issues in the past. Never rely on cached test output.
+Use the Go version in [backend/go.mod](backend/go.mod) and Node.js 24 for frontend regression tests (native TypeScript imports/module hooks). Run each command in the directory shown.
 
-## Commands
+For a clean checkout, run these **in order**: `make tools` at the root, `npm ci` in `frontend/`, then `make build` at the root. Ensure Go-installed tools are on `PATH`. Generation runs before the build's npm install; generated API files and embedded frontend assets are gitignored. `make tools` does not install `golangci-lint`.
 
-```bash
-make dev          # Air (Go hot-reload) + Vite (frontend HMR) in parallel
-make generate     # Codegen: Go (oapi-codegen) + TypeScript (openapi-typescript)
-make build        # Full: generate → frontend → Go binary
-make tools        # Install air + oapi-codegen
-make frontend     # npm ci + build + copy dist to backend/frontend/dist/
-make clean        # Remove build artifacts
-make harness-up   # Isolated Air + Vite instance with safe fake integrations
-make harness-ci   # Built-binary deterministic release-gate smoke test
-```
+| Directory | Command | Purpose |
+| --- | --- | --- |
+| Root | `make tools` | Install Air and the pinned oapi-codegen |
+| Root | `make generate` | Generate Go and TypeScript API code |
+| Root | `make build` | Generate, build/embed frontend, compile binary |
+| Root | `make dev` | Air + Vite using local configuration; prefer the harness for isolated testing |
+| Root | `make frontend` | Install/build frontend and copy assets to the backend embed directory |
+| Root | `scripts/lint-all.sh` | Run backend and frontend lint; inspect both outputs |
+| `backend/` | `go test -count=1 ./...` | Full backend suite; **always use `-count=1`, including focused runs** |
+| `backend/` | `go test -count=1 ./internal/crypto/...` | Example focused package test |
+| `backend/` | `golangci-lint run ./...` | Backend lint |
+| `frontend/` | `npm test` | Frontend regression tests |
+| `frontend/` | `npm run type-check` | Vue/TypeScript checks |
+| `frontend/` | `npm run lint` | Biome checks; `npm run lint:fix` applies fixes |
+| `frontend/` | `npm run build` | Type-check and Vite production build |
 
-Go commands run from `backend/`, npm commands from `frontend/`:
-```bash
-cd backend && go test -count=1 ./...           # Run all Go tests
-cd backend && go test -count=1 ./internal/crypto/...  # Single package
-cd frontend && npm run type-check     # vue-tsc --build
-cd frontend && npm test               # regression tests; use Node.js 24 (native TS imports/module hooks)
-cd frontend && npm run build          # type-check + vite build
-```
+Command sources: [Makefile](Makefile), [frontend/package.json](frontend/package.json). Configuration defaults to `.env` in the process working directory; `MEDIAGATE_ENV_FILE` overrides it (empty disables dotenv). See [backend/.env.example](backend/.env.example) and [config.go](backend/internal/config/config.go). A secret key is required: `SECRET_KEY` in dotenv or `MEDIAGATE_SECRET_KEY` in the environment.
 
-## Disposable Harness
+## Verification
 
-Use `make harness-up` for an isolated Air + Vite instance backed by a local fake
-tracker and stateful fake qBittorrent API. Read `tmp/harness/default/manifest.json`
-for URLs/credentials and `tmp/harness/default/logs/` for backend, frontend, and
-fake-service output. Run `make harness-smoke` for the deterministic
-search-to-import flow, `make harness-down` to preserve artifacts, and
-`make harness-destroy` to discard everything. Named parallel instances use
-`HARNESS_ID=<name>`. Full details are in `docs/HARNESS.md`.
+- Add or update regression tests for changed behavior. Start with focused tests, then run affected backend/frontend suites and lint. Run `make build` for API or embedded-asset integration changes. Never rely on cached Go test results.
+- Use the disposable harness for UI/API interaction, auth, SSE, migrations, workers, imports, integration protocols, or multi-service changes. It complements focused regression tests; its smoke flow does not cover every feature or replace browser checks.
+- For visible UI changes, check the affected flow at desktop and mobile sizes. Preserve the existing Vue/Tailwind design language.
+- For documentation-only changes, verify commands/references and run `git diff --check`; runtime suites are unnecessary unless behavior changed. Report blocked or skipped checks, not assumed passes. Inspect [.github/workflows](.github/workflows) before assuming CI enforces a check.
 
-Use the harness when changes affect frontend/API interaction, auth, SSE,
-migrations, workers, imports, integration protocols, or multi-service behavior.
-Skip it for isolated pure helpers when focused unit tests provide better signal.
-Never configure a real tracker for download testing: fetching a `.torrent` may
-already count as a snatch. Release-gate harness tests must use fake integrations;
-live provider checks are explicit and non-blocking.
+### Disposable Harness
 
-Backend uses `golangci-lint` (default linters, no config file). Frontend uses Biome (`biome.json`) for linting and formatting — run `npm run lint` to check, `npm run lint:fix` to auto-fix.
+Read [docs/HARNESS.md](docs/HARNESS.md) before use. It requires Linux. Use a task-specific `HARNESS_ID=<name>` consistently to avoid collisions with other sessions.
 
-## Codegen (critical)
+| Root Command | Purpose |
+| --- | --- |
+| `make harness-up HARNESS_ID=<name>` | Start isolated Air/Vite and fake services |
+| `make harness-status HARNESS_ID=<name>` | Show instance status and URLs |
+| `make harness-logs HARNESS_ID=<name> SERVICE=backend` | Read logs; add `FOLLOW=1` to follow |
+| `make harness-smoke HARNESS_ID=<name>` | Search-to-import smoke; run on a fresh instance |
+| `make harness-down HARNESS_ID=<name>` | Stop the instance, retaining artifacts |
+| `make harness-destroy HARNESS_ID=<name>` | Remove that disposable instance and its data |
+| `make harness-ci` | Built-binary smoke with a unique disposable instance |
 
-OpenAPI spec (`api/openapi.yaml`) is the single source of truth.
+URLs and disposable credentials are in `tmp/harness/<name>/manifest.json`; logs are in `tmp/harness/<name>/logs/`. Stop instances you start and retain failure artifacts for diagnosis.
 
-1. Edit `api/openapi.yaml`
-2. Run `make generate`
-3. **Never** hand-edit `backend/internal/api/v1/gen.go` or `frontend/src/api/schema.d.ts`
+**Download tests must use both the fake tracker and fake qBittorrent.** Fetching a real `.torrent` may count as a snatch before qBittorrent is called. Live provider checks require explicit opt-in and remain separate from deterministic gates. Do not use production databases, libraries, or integrations for routine verification.
 
-Go generate directive: `backend/internal/api/v1/generate.go`
-TS generate script: `npm run generate:api` in `frontend/`
+## Architecture And Contracts
 
-## Project Layout
+- `backend/cmd/server/main.go` wires services. HTTP adapters live in `backend/internal/api/v1/handlers_*.go`; prefer business logic in the corresponding service package rather than expanding handlers.
+- `frontend/src/` contains the Vue SPA (Vite, Tailwind v4, Lucide; `@` aliases `src`). `make frontend` copies its build to `backend/frontend/dist/` for `go:embed`.
+- **OpenAPI is authoritative for generated endpoints:** edit [api/openapi.yaml](api/openapi.yaml), then run `make generate`. Never hand-edit `backend/internal/api/v1/gen.go` or `frontend/src/api/schema.d.ts`. Auth cookie handlers and SSE also have manual contracts; inspect both ends when changing them.
+- All service database access goes through [store.Store](backend/internal/store/store.go); GORM stays inside `backend/internal/store/sqlite/`. Models and query projections belong in `store/`. Use the transaction-bound Store inside `WithTx`.
+- Reuse existing `qbittorrent.Provider`, `plex.Provider`, `matching.Service`, `worker.Loop`, `worker.Registry`, injected HTTP clients, and `telemetry.Manager`; do not create parallel caches, clients, or worker infrastructure without need.
+- Keep Biome's `noUnusedImports` disabled for Vue SFCs in [frontend/biome.json](frontend/biome.json): it cannot see template-only imports. Do not re-enable it without a verified template-aware solution.
 
-Two separate projects under one repo:
+### Schema Changes
 
-- **`backend/`** — Go module (`github.com/sumia01/media-gate`), entrypoint `cmd/server/main.go`
-- **`frontend/`** — Vue 3 + TypeScript SPA, Vite, Tailwind v4, Lucide icons, `@` alias = `./src`
-- **`api/`** — OpenAPI spec + oapi-codegen config (shared by both)
+- Use paired `NNNN_name.up.sql` / `NNNN_name.down.sql` files under `backend/internal/store/sqlite/migrations/`. Update model fields, `latestMigrationVersion` in [migrator.go](backend/internal/store/sqlite/migrator.go), and version-specific test expectations. Do not reintroduce GORM AutoMigrate.
+- Preserve pure-Go SQLite and the custom migration driver over the existing connection. Neither a CGO driver nor a second driver registering the same `sqlite` name is acceptable.
+- Define constraints in SQL migrations, not just GORM tags. Preserve FK enforcement and existing `CASCADE`/`SET NULL` behavior; retain intentional cleanup for legacy FK-less tables in `cleanup.go`.
+- Verify fresh install, legacy adoption/data preservation, and relevant upgrade/downgrade tests in [migrator_test.go](backend/internal/store/sqlite/migrator_test.go). Rewinding a fixture's version also requires removing later schema. Schema changes and the clean version marker must commit atomically.
 
-Frontend dist is copied to `backend/frontend/dist/` and embedded via `go:embed` for single-binary output.
+## Persistence Invariants
 
-Vite dev server proxies `/api` to `VITE_API_PROXY_TARGET`, defaulting to `http://localhost:8080` (the Go backend).
+- `UpdateDownload` is update-only, matching the supplied `UpdatedAt`; stale/deleted snapshots return `ErrNotFound`. Do not resurrect deleted records with an upsert or overwrite newer state from a stale worker.
+- Persist before publishing lifecycle events. A committed import/seeding completion also authorizes best-effort torrent cleanup; do not insert a second persistence gate after completion.
+- Keep network/filesystem I/O outside DB transactions. Commit domain mutations and their required activity together; eventbus/SSE is a post-commit hint, not authoritative history.
+- Whole-item deletion atomically claims `deletion_pending`, disables monitoring, clears overrides, cancels downloads, and records preparation before external cleanup. Preserve final claim checks that block new requests, grabs, files, and other side effects.
+- Auto-grab's fresh version/scope checks, URL dedup/blocklist checks, insert, and queued activity share a transaction. Reuse `store.ActiveDownloadStatuses` and `(mediaItemID, downloadURL)` deduplication for manual and automatic downloads.
+- Once a series download is linked and seeding/completed, actual files determine monitor coverage; keep release URL deduplication intact. Recheck wanted-episode file presence in the final grab transaction.
+- Same-provider re-matches retain episode IDs by natural season/episode key and preserve download CAS versions. A different source/external ID replaces the catalog; do not infer equivalence across providers.
 
-### Backend `internal/` packages
+## Security Boundaries
 
-Handlers in `api/v1/handlers_*.go` (auth, database, discover, download, indexer, library, media, plex, profile, settings, subtitle, update, watched, workers). Each is a thin HTTP adapter — business logic lives in its own service package.
+- Preserve separator-aware path containment checks after cleaning paths: library/settings paths against the configured library base, importer paths against the relevant download/release roots. Do not replace them with a naive string-prefix check.
+- Sensitive settings use `Sensitive=true` and encryption/decryption in `settings.Service`; indexer secret keys follow `indexer:{id}:{fieldName}`. Never expose secrets, tokens, or raw provider payloads in logs, activity, fixtures, or memory.
+- Access tokens are returned as JSON and sent as Bearer tokens; refresh tokens are hashed in storage and transported in HTTP-only cookies. Preserve single-use SSE tickets. Add new privileged operationIDs to `adminOnlyOps` in [middleware_admin.go](backend/internal/api/v1/middleware_admin.go); manual handlers need explicit checks. UI visibility is not authorization.
+- Preserve the allowlist sanitizer in [frontend/src/utils/sanitize.ts](frontend/src/utils/sanitize.ts). Activity payloads remain safe, typed, and bounded; actor-only rows must not become public after user deletion. Discord failure messages use safe reasons, disable mentions, and exclude raw `LastError`.
 
-Key service packages: `auth`, `library`, `sync`, `matching`, `indexer`, `download`, `importer`, `monitor`, `metarefresh`, `media`, `subtitle`, `watched`, `notification`, `plexrefresh`, `settings`, `updater`.
+## Task-Specific References
 
-Supporting packages: `store` (data interface), `activity` (safe download target resolution), `eventbus`, `sse`, `jobqueue`, `worker`, `crypto`, `fileparse` (title parsing: resolution, source, season/episode, language extraction, profile matching), `dateutil`, `telemetry`, `logging`, `devharness` (loopback fake tracker/qBittorrent for disposable tests only).
+Before changing a domain below, read its current code/tests and the relevant section of [docs/DECISIONS.md](docs/DECISIONS.md). Search by ADR number rather than loading the whole file; later superseding decisions take precedence. [docs/ROADMAP.md](docs/ROADMAP.md) is feature history/planning, not an implementation contract.
 
-Integration clients: `tmdb`, `tvdb`, `qbittorrent`, `plex`, `discord`, `flaresolverr`, `opensubtitles` (under `integration/`).
+| Area | Preserve / Read |
+| --- | --- |
+| Downloads, imports, notifications | ADR-134, ADR-138, ADR-142. History uses a growing newest-first prefix, filtering before limiting, not mutable offsets. Preserve `DownloadedAt` through retries; do not backfill unknown legacy times. Notify only persisted terminal failures, not retries/cancellation. Episode-ID backfill skips `importing` and retries on later refreshes. |
+| Download paths and episode targeting | `qbit_download_path` is the local mount; `qbit_save_path` is the optional remote override. ADR-118/119/144: NULL `episode_id` does not prove a season pack; unnumbered specials are ambiguous. Preserve episode-id > episode-key > season > item status resolution. Explicit import fallback is single-video only; resync retains known episode keys unless parsing supplies conflicting information. |
+| Monitoring and metadata | ADR-120, ADR-133, ADR-137, ADR-144. Episode override > season > false, keyed by item/season/episode numbers, not metadata episode IDs. Compare freshness using server `InputUpdatedAt`, not completion/receipt time. `SetMonitorSearchStartedAt` must not bump `UpdatedAt` or overwrite settings. Check current `matching`/`metarefresh` tests for refresh/backfill behavior. |
+| Discover and timeline | ADR-135/136. Identity is `(source, mediaType, externalId)`; never guess cross-provider aliases by title. Preserve bounded page/date windows, abort/stale-response guards, and scroll position. Empty timeline windows are not an end marker; initial/Today views center today. |
+| Requesters | ADR-140. Request intent is separate from mutable monitoring; repeat requests are additive/idempotent, later attribution uses effective false-to-true transitions. Display cumulative requesters, not historical scopes as current monitoring. |
+| Activity and watched state | ADR-141/142/143. Append-only history, cumulative requesters, live state, and latest diagnostics remain independent. Watched identity includes media type; enforce shared/private visibility before pagination. Details is the default tab; fetch each Activity disclosure only when active and expanded, preserving cache while rejecting late responses. |
+| Indexers and release selection | ADR-074, ADR-112, ADR-121, ADR-123. Keep `SanitizeYAML` before parsing provider definitions. Untagged releases fall back to English only when no language was detected; `multi` retains priority. Preferred release is a soft preference after profile ranking. |
+| Migration design | ADR-125 and ADR-142; retain the custom driver, adoption boundary, and transactional version tracking. |
 
-## Architecture Rules
+## Maintaining This File
 
-### Data access
-
-- All DB access through `Store` interface (`store/store.go`), implemented in `store/sqlite/`. Models and query projections live in `store/` (`models.go`, `monitor_decision.go`, `timeline.go`). Services never touch GORM/DB directly.
-- `WithTx(fn func(Store) error)` for multi-step writes.
-- All FKs use GORM `constraint:OnDelete:CASCADE` (or `SET NULL`). SQLite FK enforcement via `?_pragma=foreign_keys(1)`. Never write manual cascade deletes.
-- **Pure-Go SQLite** (`glebarez/sqlite`). No CGO. Never add CGO-dependent SQLite drivers.
-
-### Migrations
-
-Schema is managed entirely by `golang-migrate`; GORM AutoMigrate is not used. Add paired embedded SQL files under `store/sqlite/migrations/` as `NNNN_name.up.sql` and `NNNN_name.down.sql`, then bump `latestMigrationVersion` in `store/sqlite/migrator.go`. Version state lives in `schema_migrations`. Preserve the pure-Go SQLite driver and verify fresh install plus legacy adoption tests.
-
-Current migrations reach version 10: `0005` adds latest monitor snapshots, `0006` indexes timeline dates, `0007` adds nullable evaluated-input timestamps, `0008` adds scoped requester attribution, `0009` separates title, whole-series, and future-season intent, and `0010` adds per-media activity, exact watched identity, and the media-deletion claim. Legacy snapshots keep unknown input freshness. Tests that rewind a migration version must also remove schema added after that version, not merely change the version row.
-
-### Backend patterns
-
-- **Thin handlers**: `api/v1/handlers_*.go` validate input, call service, map response. `Handlers` struct holds service refs + store (read-only).
-- **Event bus + SSE**: `eventbus` dispatches typed events. `sse` streams to frontends. Some event publishers injected via setter methods to avoid circular imports.
-- **Persist before lifecycle events**: `UpdateDownload` uses the supplied `UpdatedAt` as an optimistic concurrency check and returns `ErrNotFound` for stale/deleted snapshots. Only successful writes authorize lifecycle publication. Import completion's committed update also authorizes best-effort torrent cleanup; never insert another persistence gate afterward or hold a DB transaction across qBittorrent I/O.
-- **Shared singletons** — don't duplicate:
-  - `qbittorrent.Provider` — lazy-cached qBit client (settings-invalidated)
-  - `plex.Provider` — lazy-cached Plex client (settings-invalidated)
-  - `worker.Loop` — embed for all background workers
-  - `worker.Registry` — named worker registration, status listing, manual trigger, eventbus bridge via `MakePublisher`
-  - `matching.Service` — caches TMDB/TVDB clients keyed by API key
-  - Shared `*http.Client` with `otelhttp.NewTransport` — created once in `main.go`, injected everywhere
-  - `telemetry.Manager` — hot-swaps TracerProvider + LoggerProvider; noop when disabled. slog tee'd to OTLP via `otelslog` bridge with independent log level.
-
-### Security
-
-- **Path traversal**: All filesystem paths validated with `filepath.Clean` + `strings.HasPrefix` against `LIBRARY_BASEPATH`. Three enforcement points: library service, settings service (download path), importer. Always maintain this guard.
-- **At-rest encryption**: Sensitive settings use AES-256-GCM, master key from `MEDIAGATE_SECRET_KEY` via SHA-256. `enc:` prefix on ciphertext. Encryption/decryption in `settings.Service` only.
-- **Secrets**: Stored with `Sensitive=true` in settings table. Indexer secrets use key pattern `indexer:{id}:{fieldName}`.
-- **Auth**: JWT access (15min) + refresh tokens (SHA-256 hashed) in HTTP-only cookies. Login/Refresh/Logout/Setup are manual HTTP handlers (not in OpenAPI — need cookie access). SSE uses single-use 30s tickets.
-- **Admin role**: `IsAdmin` bool on User model. First user promoted via migration V7 + Setup/Bootstrap. Centralized `AdminMiddleware` (operationID-based `StrictMiddlewareFunc`) guards ~40 operations. Manual handlers (DB export) have inline admin checks. Frontend: router guards (`meta.admin`), sidebar filtering, UI element hiding.
-- **XSS**: Indexer definition HTML content sanitized via DOMParser-based allowlist sanitizer (`frontend/src/utils/sanitize.ts`).
-
-## Gotchas
-
-- **Discover filtering**: Membership and card identity are keyed by `(source, mediaType, externalId)`, not numeric ID alone. Keep Recently Added unfiltered. Retain raw provider pages, continue past fully hidden pages with a five-page automatic scan budget, and preserve abort/stale-response guards. Cross-provider TVDB/TMDB membership remains unresolved; do not guess by title.
-- **Episode timeline**: Followed means a monitored series item. Include dated past/future episodes even when individually unmonitored, resolving episode override > season > false. Fetch half-open `[from, to)` windows (31-day API maximum; frontend uses 14 days), keep nearby cache/DOM bounded, and preserve the visible date during panning and SSE invalidation. Initial load and the Today action must center the current-day column using the measured rail width. Empty windows are not the end of the timeline.
-- **Monitor decision freshness**: One latest snapshot per item, at most 50 prioritized details. `CheckedAt` is completion time; nullable `InputUpdatedAt` copies the evaluated item's `UpdatedAt`. Compare server versions only, never a browser receipt timestamp. Season/episode edits touch the parent transactionally; `SetMonitorSearchStartedAt` updates only the marker without bumping `UpdatedAt` or rewriting monitoring settings. Old snapshots remain unknown, not backfilled.
-- **Media activity**: Details is the default operational tab; Activity contains only the collapsed saved-check and history disclosures. Fetch either panel only while Activity is selected and that disclosure is expanded. Preserve cached data/expansion across tab switches, abort hidden requests, and reject late responses by generation and item ID. Activity is append-only history and never calculates live monitoring or requester state.
-- **Requester attribution**: Persist request intent independently from mutable monitor settings. `media` is title attribution only; `whole_series`, `future_seasons`, `season`, and `episode` carry monitoring intent. Attribute later edits from effective false-to-true transitions only, compacting only scopes wholly enabled by that action. Whole-series compaction must account for metadata season count when provider episode fetches are incomplete. Repeat requests are idempotent and may enable scopes, but must never disable monitoring selected by another requester. User deletion keeps anonymous history; media deletion cascades it. The details page intentionally shows only cumulative requesters because scope rows are historical, not proof of current active monitoring.
-- **Deletion and auto-grab**: Claim deletion, disable parent monitoring, clear overrides, cancel downloads, and append preparation activity in one transaction before external cleanup. The persisted claim blocks new requests/grabs/files while cleanup runs; no SQLite transaction spans external I/O. The monitor's fresh version/scope check, URL dedup/blocklist check, insert, and queued activity share a transaction. Never restore a stale whole-item snapshot merely to update a search marker.
-- **Import ownership and notifications**: Metadata episode-ID backfill skips `importing` snapshots and revisits deferred work on later successful refreshes, even unchanged ones. Publish terminal failure events only after persistence, not on retries/cancellation. Discord uses fixed safe reasons instead of raw `LastError`, disables mentions, and retains best-effort delivery rather than a durable notification queue.
-- **YAML escape sanitization**: Prowlarr YAML definitions have escapes (`\/`, `\d`) that `yaml.v3` rejects. `SanitizeYAML` preprocesses before parsing. `remote.go` uses regex fallback for ID extraction.
-- **Two download paths**: `qbit_download_path` = local mount (import/sync/hardlink). `qbit_save_path` = optional qBittorrent override when its NAS mount differs. When empty, falls back to `qbit_download_path`.
-- **Episode monitoring hierarchy**: `EpisodeMonitor` → `SeasonMonitor` → not monitored. Keyed by `(MediaItemID, SeasonNumber, EpisodeNumber)` — NOT by `Episode.ID` — survives re-match. Toggling a season deletes episode overrides. Disabling item monitoring clears all episode monitors.
-- **Download season pack detection**: `buildDownloadMap` in the monitor uses title parsing (not just `episode_id == nil`) to determine if a download is a season pack. UI-created downloads may have `season_number` set without `episode_id` even for single episodes — relying solely on NULL `episode_id` would block the entire season. Single-episode downloads without `episode_id` are now keyed by `(seasonNumber, episodeNumber)` from title parsing to prevent re-downloads.
-- **Episode download status resolution**: `AssembleEpisodes` uses a four-tier `resolveDownloadStatuses()` function: episode-id > episode-key (parsed from title) > season > item. Downloads with `episode_id = NULL` but a parseable single-episode title (e.g. `S01E07`) are scoped to that episode only, not the entire season. True season packs (season-only or episode range titles) still apply season-wide. `metarefresh` backfills `episode_id` on orphan downloads after metadata refresh discovers the episode.
-- **Download deduplication**: Three-layer guard prevents duplicate downloads: (1) `store.HasActiveDownloadByURL` checks `(mediaItemID, downloadURL)` before insert, (2) `download.Service.Create()` and `monitor.createAutoDownload()` both call it, (3) frontend tracks download state by URL string (not array index). `store.ActiveDownloadStatuses` is the single source of truth for what "active" means — used by both store and monitor.
-- **Downloads history pagination**: The All Downloads page requests a growing newest-first prefix: 30 records initially, then +100. Status filtering must happen before ordering/limiting, filter changes reset the window, and polling/SSE refreshes must retain the current limit. `hasMore` is derived with a `limit + 1` query; do not replace this with mutable offset pages without handling inserts and stale responses.
-- **Downloaded timestamp**: `Download.DownloadedAt` records qBittorrent's `completion_on` time when the payload becomes complete. Preserve it through import retries and later lifecycle transitions. Legacy terminal rows stay NULL because `updated_at` and `completed_at` represent different events and are not valid backfills; the UI may show them only as a clearly labelled `Downloaded by` upper-bound fallback.
-- **Metadata refresh episode backfill**: `RefreshSeriesMetadata` handles two cases: (1) new season added → backfill old last season + fetch episodes for new seasons, (2) season count unchanged → re-fetch ALL known seasons' episodes and insert any missing ones (`backfillSeasonEpisodes`). Also corrects stale season counts when provider reports fewer than stored. Ended/canceled series are skipped entirely at the `metarefresh` level. TVDB season counting uses `MaxSeasonNumber()` (highest season number) instead of `len(Seasons)` to exclude specials and duplicate orderings.
-- **English language fallback**: In `fileparse.MatchesLanguages` and `LanguageScore`, untagged release titles (no detectable language token) are treated as English when `"eng"` is in the profile — applies in BOTH "or" and "and" modes. The `len(detected) == 0` guard is critical: genuinely-detected non-English releases (e.g. `[ger]`) must NOT be morphed into English. The fallback runs after the `multi` short-circuit, so `multi` keeps top priority. Side effect in OR-mode ranking: untagged releases out-rank explicitly-tagged non-English releases when `eng` is first in profile — intentional.
-- **Biome + Vue SFCs**: Biome's `noUnusedImports` cannot see `<template>` usage — it WILL remove component imports that are only used in templates. The rule is disabled for `*.vue` files in `biome.json` overrides. NEVER re-enable it without adding `unplugin-vue-components`.
-
-## Production Debugging
-
-Production runs on an LXC accessible via `ssh root@media-gate`. Service: `media-gate.service`.
-
-**Log script**: `scripts/prod-logs.sh` fetches journalctl logs over SSH. Supports level filtering (`-l`), grep (`-g`), follow mode (`-f`), time range (`-s`/`-u`), and save to file (`-o` → `tmp/logs/`). Use the `/prod-logs` command to invoke it interactively.
-
-## Configuration
-
-Config loads from `backend/.env` and/or `MEDIAGATE_`-prefixed env vars (koanf). See `backend/.env.example` for all keys. `SECRET_KEY` is required (encryption + JWT signing).
+Keep durable, repository-wide rules and verified commands here. Put feature history and detailed rationale in the relevant docs/tests and link them above. Update affected instructions with behavior changes; avoid duplicating package inventories, migration counts, local-only slash commands, or machine-specific production access details.
 
 <!-- icm:start -->
-## Persistent memory (ICM) — MANDATORY
+## Persistent Memory (ICM)
 
-This project uses [ICM](https://github.com/rtk-ai/icm) for persistent memory across sessions.
-You MUST use it actively. Not optional.
+ICM use is required when available. Recall before starting work:
 
-### Recall (before starting work)
 ```bash
-icm recall "query"                        # search memories
-icm recall "query" -t "topic-name"        # filter by topic
-icm recall-context "query" --limit 5      # formatted for prompt injection
+icm recall "media-gate <task keywords>"
 ```
 
-### Store — MANDATORY triggers
-You MUST call `icm store` when ANY of the following happens:
-1. **Error resolved** → `icm store -t errors-resolved -c "description" -i high -k "keyword1,keyword2"`
-2. **Architecture/design decision** → `icm store -t decisions-{project} -c "description" -i high`
-3. **User preference discovered** → `icm store -t preferences -c "description" -i critical`
-4. **Significant task completed** → `icm store -t context-{project} -c "summary of work done" -i high`
-5. **Conversation exceeds ~20 tool calls without a store** → store a progress summary
+Store durable findings when an error is resolved, a design decision is made, a user preference is discovered, or significant work is completed. For long tasks, store a progress summary after roughly 20 tool calls without a store. Do this before the final response.
 
-Do this BEFORE responding to the user. Not after. Not later. Immediately.
-
-Do NOT store: trivial details, info already in CLAUDE.md, ephemeral state (build logs, git status).
-
-### Other commands
 ```bash
-icm update <id> -c "updated content"     # edit memory in-place
-icm health                                # topic hygiene audit
-icm topics                                # list all topics
+icm store -t context-media-gate -c "<verified outcome and relevant context>" -i high
 ```
+
+Use `errors-resolved` for fixes, `decisions-media-gate` for decisions, and `preferences` with `-i critical` for user preferences. Update an existing memory with `icm update <id> -c "<correction>"` when superseded. Do not store secrets, routine logs/git status, or copies of repository guidance. Memories are leads to verify, not authority over current code or user instructions. If ICM is unavailable, report the limitation and continue without claiming recall/storage succeeded.
 <!-- icm:end -->

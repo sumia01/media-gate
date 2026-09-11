@@ -10,6 +10,14 @@ type TorrentSeasonEpisode struct {
 	Season     *int // nil if no season detected
 	Episode    *int // nil if no episode (e.g. season pack)
 	EpisodeEnd *int // non-nil for episode ranges like S01E01-E10
+	Special    bool // season-only title explicitly describes a special, not a full season
+}
+
+// IsSeasonPack distinguishes ordinary season-only releases from unnumbered
+// specials. A special's episode number must come from an explicit target, not
+// from guessing that every episode in its season is covered.
+func (p TorrentSeasonEpisode) IsSeasonPack() bool {
+	return p.Season != nil && p.Episode == nil && !p.Special
 }
 
 var (
@@ -29,7 +37,8 @@ var (
 	// Season 2
 	torrentSeasonOnlyRe = regexp.MustCompile(`(?i)Season[\s._-]*(\d{1,2})`)
 	// 2x05
-	torrentNxNRe = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
+	torrentNxNRe     = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
+	torrentSpecialRe = regexp.MustCompile(`(?i)(?:^|[\s.\-_\[(])specials?(?:[\s.\-_\])]|$)`)
 )
 
 // ParseTorrentSeasonEpisode extracts season and episode info from a torrent title.
@@ -56,9 +65,12 @@ func ParseTorrentSeasonEpisode(title string) TorrentSeasonEpisode {
 		return result
 	}
 
-	if m := torrentSOnlyRe.FindStringSubmatch(title); m != nil {
-		s, _ := strconv.Atoi(m[1])
+	if m := torrentSOnlyRe.FindStringSubmatchIndex(title); m != nil {
+		s, _ := strconv.Atoi(title[m[2]:m[3]])
 		result.Season = &s
+		// Look after the season token so series names such as "Special Ops"
+		// do not turn ordinary season packs into specials.
+		result.Special = torrentSpecialRe.MatchString(title[m[3]:])
 		return result
 	}
 
@@ -70,9 +82,10 @@ func ParseTorrentSeasonEpisode(title string) TorrentSeasonEpisode {
 		return result
 	}
 
-	if m := torrentSeasonOnlyRe.FindStringSubmatch(title); m != nil {
-		s, _ := strconv.Atoi(m[1])
+	if m := torrentSeasonOnlyRe.FindStringSubmatchIndex(title); m != nil {
+		s, _ := strconv.Atoi(title[m[2]:m[3]])
 		result.Season = &s
+		result.Special = torrentSpecialRe.MatchString(title[m[3]:])
 		return result
 	}
 

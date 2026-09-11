@@ -568,6 +568,13 @@ func (s *Service) applyResyncCandidate(preimage *resyncPreimage, candidate *resy
 			fresh := candidate.freshByPath[path]
 			current, exists := currentByPath[path]
 			if exists {
+				// Unnumbered files can carry an explicit import/repair target.
+				// Keep it when parsing has no stronger information; a newly
+				// parsed episode or a conflicting season still replaces it.
+				if fresh.episodeNumber == nil && current.SeasonNumber != nil && current.EpisodeNumber != nil &&
+					(fresh.seasonNumber == nil || *fresh.seasonNumber == *current.SeasonNumber) {
+					fresh.seasonNumber, fresh.episodeNumber = current.SeasonNumber, current.EpisodeNumber
+				}
 				if !fileNeedsUpdate(current, fresh) {
 					continue
 				}

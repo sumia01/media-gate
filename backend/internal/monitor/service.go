@@ -389,6 +389,10 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 		if len(filtered) == 0 {
 			continue
 		}
+		// A finished release is still URL-deduplicated, but its title is no
+		// longer evidence that it contains a missing episode. Try unused
+		// candidates rather than repeatedly selecting an incomplete pack.
+		filtered = withoutImportedReleases(filtered, downloads)
 
 		wantedRatio := float64(len(wantedEps)) / float64(airedPerSeason[seasonNum])
 
@@ -420,10 +424,10 @@ func (s *Service) processSeries(item *store.MediaItem, meta *store.MediaMetadata
 			}
 
 			parsed := fileparse.ParseTorrentSeasonEpisode(best.Title)
-			if parsed.Season != nil && parsed.Episode == nil {
+			if parsed.IsSeasonPack() {
 				// Season pack — create one download for the whole season
 				sn := seasonNum
-				detail := s.createAutoDownload(item, *best, nil, &sn)
+				detail := s.createAutoDownload(item, *best, &epID, &sn)
 				detail.SeasonNumber = &sn
 				check.add(detail)
 				foundAny = foundAny || detail.Outcome == "grabbed"
@@ -475,7 +479,7 @@ func (s *Service) findBestForEpisode(results []indexer.TorrentResult, ep store.E
 					}
 				}
 			}
-		} else {
+		} else if parsed.IsSeasonPack() {
 			// Season pack (no episode number)
 			if bestSeasonPack == nil {
 				bestSeasonPack = r
@@ -547,6 +551,8 @@ func (s *Service) resolveProfile(item *store.MediaItem) *store.MediaProfile {
 	return nil
 }
 
+// episodeID identifies the wanted episode even when the chosen release is a
+// season pack. It lets the final transaction recheck actual file coverage.
 func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.TorrentResult, episodeID *uint, seasonNumber *int) store.MonitorDecisionDetail {
 	dl := &store.Download{
 		MediaItemID:  item.ID,
@@ -560,6 +566,9 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 		Size:         result.Size,
 		ImdbID:       result.ImdbID,
 		Status:       "pending",
+	}
+	if fileparse.ParseTorrentSeasonEpisode(result.Title).IsSeasonPack() {
+		dl.EpisodeID = nil
 	}
 
 	var detail store.MonitorDecisionDetail
@@ -578,6 +587,31 @@ func (s *Service) createAutoDownload(item *store.MediaItem, result indexer.Torre
 			detail = decisionDetail("no_eligible_targets", "Media settings or metadata changed during the search, so the selected release was not queued. The monitor will reevaluate the item on its next check.")
 			detail.SelectedTitle = safeSelectedTitle(result.Title)
 			return nil
+		}
+		if episodeID != nil {
+			episodes, err := tx.ListEpisodesByMediaItem(item.ID)
+			if err != nil {
+				return err
+			}
+			var target *store.Episode
+			for i := range episodes {
+				if episodes[i].ID == *episodeID {
+					target = &episodes[i]
+					break
+				}
+			}
+			if target == nil {
+				detail = decisionDetail("no_eligible_targets", "The selected episode no longer exists; no download was queued.")
+				return nil
+			}
+			files, err := tx.ListMediaFilesByMediaItem(item.ID)
+			if err != nil {
+				return err
+			}
+			if buildFileMap(files)[fileKey(target.SeasonNumber, target.EpisodeNumber)] {
+				detail = decisionDetail("already_present", "A library file appeared during the search; no duplicate was queued.")
+				return nil
+			}
 		}
 		exists, err := tx.HasActiveDownloadByURL(item.ID, result.DownloadURL)
 		if err != nil {
@@ -744,7 +778,7 @@ type downloadKey struct {
 func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 	m := make(map[downloadKey]bool)
 	for _, dl := range downloads {
-		if !activeStatuses[dl.Status] {
+		if !activeStatuses[dl.Status] || isImportedDownload(dl) {
 			continue
 		}
 		if dl.EpisodeID != nil {
@@ -754,7 +788,7 @@ func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 		// track downloads that lack an episode_id (e.g. created via the UI
 		// when the episode doesn't exist in the DB yet).
 		parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
-		if parsed.Season != nil && parsed.Episode == nil && dl.SeasonNumber != nil && dl.EpisodeID == nil {
+		if parsed.IsSeasonPack() && dl.SeasonNumber != nil && dl.EpisodeID == nil {
 			// Season pack
 			m[downloadKey{seasonNumber: *dl.SeasonNumber}] = true
 		}
@@ -781,6 +815,29 @@ func buildDownloadMap(downloads []store.Download) map[downloadKey]bool {
 	return m
 }
 
+// Once import has committed, MediaFiles are authoritative for episode coverage.
+// Keep store.ActiveDownloadStatuses unchanged: completed releases must remain
+// URL-deduplicated even if their contents do not cover the requested episode.
+func isImportedDownload(dl store.Download) bool {
+	return dl.LinkedToLibrary && (dl.Status == "seeding" || dl.Status == "completed")
+}
+
+func withoutImportedReleases(results []indexer.TorrentResult, downloads []store.Download) []indexer.TorrentResult {
+	imported := make(map[string]bool)
+	for _, dl := range downloads {
+		if isImportedDownload(dl) {
+			imported[dl.DownloadURL] = true
+		}
+	}
+	filtered := make([]indexer.TorrentResult, 0, len(results))
+	for _, result := range results {
+		if !imported[result.DownloadURL] {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
 func hasActiveDownloadForEpisode(m map[downloadKey]bool, episodeID *uint, seasonNumber int, episodeNumber int) bool {
 	if episodeID != nil && m[downloadKey{episodeID: *episodeID}] {
 		return true
@@ -798,6 +855,15 @@ func buildFileMap(files []store.MediaFile) map[string]bool {
 	for _, f := range files {
 		if f.SeasonNumber != nil && f.EpisodeNumber != nil {
 			m[fileKey(*f.SeasonNumber, *f.EpisodeNumber)] = true
+			parsed := fileparse.ParseTorrentSeasonEpisode(f.FileName)
+			// A range in an actual imported filename proves coverage after the
+			// download stops blocking. Do not expand a conflicting explicit key.
+			if parsed.Season != nil && parsed.Episode != nil && parsed.EpisodeEnd != nil &&
+				*parsed.Season == *f.SeasonNumber && *parsed.Episode == *f.EpisodeNumber {
+				for episode := *parsed.Episode + 1; episode <= *parsed.EpisodeEnd; episode++ {
+					m[fileKey(*f.SeasonNumber, episode)] = true
+				}
+			}
 		}
 	}
 	return m

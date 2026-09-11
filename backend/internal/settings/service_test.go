@@ -109,6 +109,8 @@ func (s *settingsStubStore) DeleteEpisodeMonitorsBySeason(uint, int) error    { 
 func (s *settingsStubStore) DeleteEpisodeMonitorsByMediaItem(uint) error      { return nil }
 
 func (s *settingsStubStore) CreateEpisode(*store.Episode) error                    { return nil }
+func (s *settingsStubStore) UpdateEpisode(*store.Episode) error                    { return nil }
+func (s *settingsStubStore) DeleteEpisode(uint) error                              { return nil }
 func (s *settingsStubStore) ListEpisodesByMediaItem(uint) ([]store.Episode, error) { return nil, nil }
 func (s *settingsStubStore) GetEpisodeByNumber(uint, int, int) (*store.Episode, error) {
 	return nil, nil

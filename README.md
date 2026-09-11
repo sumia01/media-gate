@@ -66,6 +66,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Complete episode data: season/episode structure, air dates, runtimes
 - Poster downloading and local caching
 - Library-wide batch matching with progress tracking
+- Re-matching the same provider entry preserves episode IDs and their download associations
 - Configurable primary metadata source (TMDB or TVDB)
 
 ### Discover & Search
@@ -143,6 +144,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 - Hardlinks completed downloads into organized library directories (preserves seeding)
 - Season pack and single-episode detection via title parsing
+- Single-video episode releases with unnumbered filenames retain an explicitly selected episode; the assignment survives re-sync
 - Post-import status recalculation
 - Seeding obligation tracking: per-indexer seed ratio and seed time requirements
 - Automatic torrent cleanup after seeding obligations are met
@@ -156,6 +158,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Toggle entire seasons (clears episode-level overrides)
 - Auto-monitor new seasons when they appear
 - Profile-based filtering of search results before grabbing
+- Imported releases use actual library-file coverage, so an incomplete season pack does not hide missing episodes; already imported release URLs remain deduplicated
+- Unnumbered `Special` releases require an explicit episode selection instead of being treated as full season packs
 - Latest auto-download decision on the read-only Activity tab: release/profile counts, blocklisted selections, existing downloads, missing metadata, and actual grabs
 - Distinguishes no enabled indexers, genuine empty searches, and partial/complete indexer failures
 - Persists one bounded snapshot per item (up to 50 details), keeping the evaluated input version separate from completion time so settings changes during a search remain visibly stale
@@ -269,7 +273,7 @@ The UI includes a dedicated **Workers panel** with real-time SSE-driven status f
 
 | Layer | Tech |
 |-------|------|
-| Backend | Go 1.22+, stdlib `net/http`, GORM, `log/slog`, koanf |
+| Backend | Go (version pinned in [`backend/go.mod`](backend/go.mod)), stdlib `net/http`, GORM, `log/slog`, koanf |
 | Frontend | Vue 3 + TypeScript (Composition API), Tailwind CSS v4, Vue Router, Lucide icons |
 | Database | SQLite via pure-Go driver (`glebarez/sqlite`) — no CGO needed |
 | API contract | OpenAPI spec &rarr; `oapi-codegen` (Go) + `openapi-typescript` (TS) |
@@ -348,7 +352,7 @@ Most settings are configurable through the web UI after initial setup.
 
 **Proxmox LXC:** `deploy/proxmox-lxc.sh` is an interactive script that creates a Debian 12 LXC container, downloads the binary from GitHub Releases, sets up a systemd unit, and optionally configures a CIFS NAS mount. Includes an in-place update script.
 
-**Releases:** GitHub Actions builds cross-platform binaries on `v*` tag push.
+**Releases:** GitHub Actions builds the Linux amd64 binary on `v*` tag push.
 
 ## Project structure
 

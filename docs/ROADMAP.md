@@ -626,7 +626,19 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Migration, service, API, frontend, and disposable-harness regression coverage
 - [ ] Optional follow-up: automatic payload/import completion and terminal failure history, plus automatic subtitle outcomes
 
+## Phase 10.1: Episode Targeting and Import Coverage Hardening ✅
+→ See ADR-144
+
+- [x] Preserve an explicitly selected episode for single-video, unnumbered releases; keep samples, multi-video packs/ranges, foreign targets, and conflicting filename numbering outside the fallback
+- [x] Preserve known file episode assignments through re-sync when parsing is ambiguous, while allowing explicit filename information to correct stale values
+- [x] Retain episode IDs and download references on same-provider re-match; update metadata in place, delete only removed keys, and preserve transaction rollback and in-flight download ownership
+- [x] Distinguish unnumbered specials from season packs in automatic selection, activity targets, and episode download status
+- [x] Use actual imported-file coverage for finished series downloads, including compatible numbered file ranges; skip previously imported candidates while retaining release URL deduplication
+- [x] Recheck wanted-episode file presence inside the final automatic-grab transaction to avoid queuing a duplicate after a concurrent import
+- [x] Regression coverage for episode/pack/range imports, re-sync, provider changes, rollback, missing-episode recovery, and search races; verify both the special-episode flow and ordinary download/import flow with disposable fake integrations
+
 ## Known Bugs ⬜
+- [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
 - [x] Cardigann `urlencode` filter missing — text field filters (e.g. API key encoding in download URLs) silently skipped

@@ -44,7 +44,7 @@ func DownloadTargets(st store.Store, item *store.MediaItem, dl *store.Download) 
 		}
 		return episodeTargets(*parsed.Season, *parsed.Episode, end)
 	}
-	if parsed.Season != nil && parsed.Episode == nil {
+	if parsed.IsSeasonPack() {
 		seasonNumber := *parsed.Season
 		return []store.MediaActivityTarget{{
 			Scope: store.MediaActivityScopeSeason, SeasonNumber: &seasonNumber, ObjectID: &objectID,

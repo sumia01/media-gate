@@ -195,6 +195,12 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 		s.retryImport(dl, "failed to get torrent files from qBittorrent: "+err.Error())
 		return
 	}
+	targetEpisode, err := s.singleEpisodeTarget(item, dl, files)
+	if err != nil {
+		slog.Warn("importer: failed to resolve episode target", "download_id", dl.ID, "error", err)
+		s.retryImport(dl, "failed to load the selected episode")
+		return
+	}
 
 	// Load paths already imported for this item so a re-import (e.g. a download
 	// reset from a crashed "importing" state) doesn't hardlink duplicates.
@@ -271,6 +277,15 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 			if seasonNum == nil && dl.SeasonNumber != nil {
 				seasonNum = dl.SeasonNumber
 			}
+			episodeNum := info.EpisodeNumber
+			if episodeNum == nil && targetEpisode != nil {
+				// A season embedded in an otherwise unnumbered filename still
+				// prevents relabelling a file from a different season.
+				fileSeason := fileparse.ParseTorrentSeasonEpisode(fileName).Season
+				if fileSeason == nil || *fileSeason == targetEpisode.SeasonNumber {
+					seasonNum, episodeNum = &targetEpisode.SeasonNumber, &targetEpisode.EpisodeNumber
+				}
+			}
 
 			// Create MediaFile record
 			mf := &store.MediaFile{
@@ -281,7 +296,7 @@ func (s *Service) importOne(client *qbittorrent.Client, dl *store.Download) {
 				Resolution:    info.Resolution,
 				SourceType:    info.SourceType,
 				SeasonNumber:  seasonNum,
-				EpisodeNumber: info.EpisodeNumber,
+				EpisodeNumber: episodeNum,
 				AddedAt:       time.Now(),
 			}
 

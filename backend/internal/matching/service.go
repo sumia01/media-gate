@@ -1217,16 +1217,12 @@ func (s *Service) replaceMatch(expected *matchVersion, candidate *store.MediaMet
 				return fmt.Errorf("deleting previous metadata: %w", err)
 			}
 		}
-		if err := tx.DeleteEpisodesByMediaItem(currentItem.ID); err != nil {
-			return fmt.Errorf("deleting previous episodes: %w", err)
-		}
 		if err := tx.CreateMediaMetadata(&persistedMeta); err != nil {
 			return fmt.Errorf("saving metadata: %w", err)
 		}
-		for _, episode := range episodes {
-			if err := tx.CreateEpisode(newEpisodeFromData(currentItem.ID, episode)); err != nil {
-				return fmt.Errorf("creating episode S%02dE%02d: %w", episode.seasonNumber, episode.episodeNumber, err)
-			}
+		sameProvider := currentMeta != nil && currentMeta.Source == persistedMeta.Source && currentMeta.ExternalID == persistedMeta.ExternalID
+		if err := replaceMatchEpisodes(tx, currentItem.ID, currentEpisodes, episodes, sameProvider); err != nil {
+			return err
 		}
 		if currentItem.Source != "request" {
 			currentItem.Status = "available"

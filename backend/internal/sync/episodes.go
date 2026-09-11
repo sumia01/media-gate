@@ -176,6 +176,9 @@ func resolveDownloadStatuses(downloads []store.Download) (
 			// Parse title to distinguish single-episode downloads from actual season packs.
 			// Downloads created via season search may lack episode_id even for single episodes.
 			parsed := fileparse.ParseTorrentSeasonEpisode(dl.Title)
+			if parsed.Special {
+				continue // an unnumbered special does not describe a whole season
+			}
 			if parsed.Episode != nil && parsed.EpisodeEnd == nil {
 				// Single-episode download — scope status to that episode only.
 				key := fmt.Sprintf("S%dE%d", *dl.SeasonNumber, *parsed.Episode)

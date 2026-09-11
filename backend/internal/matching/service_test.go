@@ -221,6 +221,31 @@ func (m *memStore) CreateEpisode(ep *store.Episode) error {
 	return nil
 }
 
+func (m *memStore) UpdateEpisode(ep *store.Episode) error {
+	for i, existing := range m.eps[ep.MediaItemID] {
+		if existing.ID == ep.ID {
+			m.eps[ep.MediaItemID][i] = *ep
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
+func (m *memStore) DeleteEpisode(id uint) error {
+	if m.deleteEpisodesErr != nil {
+		return m.deleteEpisodesErr
+	}
+	for itemID, episodes := range m.eps {
+		for i, episode := range episodes {
+			if episode.ID == id {
+				m.eps[itemID] = append(episodes[:i], episodes[i+1:]...)
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 func (m *memStore) ListEpisodesByMediaItem(itemID uint) ([]store.Episode, error) {
 	return append([]store.Episode(nil), m.eps[itemID]...), nil
 }

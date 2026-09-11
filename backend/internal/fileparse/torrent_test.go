@@ -65,6 +65,34 @@ func TestParseResolution(t *testing.T) {
 	}
 }
 
+func TestTorrentSeasonPackClassification(t *testing.T) {
+	for _, tc := range []struct {
+		title   string
+		pack    bool
+		special bool
+	}{
+		{"Black.Mirror.S02.Special.White.Christmas.1080p.WEB-DL", false, true},
+		{"Show Season 2 Specials 720p", false, true},
+		{"Show.S02E04.Special.1080p", false, false},
+		{"Show.S02E04-E05.1080p", false, false},
+		{"Show.S02.720p.BluRay", true, false},
+		{"Show.S02.COMPLETE.1080p", true, false},
+		{"Show Season 2 Complete", true, false},
+		{"Special.Ops.S02.1080p", true, false},
+		{"Special Season 2", true, false},
+		{"Show.S02.Specialized.1080p", true, false},
+		{"S02", true, false},
+		{"Movie.Special.Edition.1080p", false, false},
+	} {
+		t.Run(tc.title, func(t *testing.T) {
+			parsed := ParseTorrentSeasonEpisode(tc.title)
+			if parsed.IsSeasonPack() != tc.pack || parsed.Special != tc.special {
+				t.Fatalf("parsed=%+v, pack=%t; want pack=%t special=%t", parsed, parsed.IsSeasonPack(), tc.pack, tc.special)
+			}
+		})
+	}
+}
+
 func TestParseSource(t *testing.T) {
 	tests := []struct {
 		input string

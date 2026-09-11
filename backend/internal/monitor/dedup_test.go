@@ -71,6 +71,19 @@ func TestBuildDownloadMap(t *testing.T) {
 				{episodeID: 10},
 			},
 		},
+		{
+			name:      "imported completed episode uses file coverage",
+			downloads: []store.Download{{EpisodeID: ptr(uint(10)), Status: "completed", LinkedToLibrary: true, Title: "Show.S01E01.720p"}},
+		},
+		{
+			name:      "imported seeding range uses file coverage",
+			downloads: []store.Download{{EpisodeID: ptr(uint(10)), Status: "seeding", LinkedToLibrary: true, Title: "Show.S01E01-E03.720p"}},
+		},
+		{
+			name:      "retry of imported episode still blocks while importing",
+			downloads: []store.Download{{EpisodeID: ptr(uint(10)), Status: "importing", LinkedToLibrary: true, Title: "Show.S01E01.720p"}},
+			wantKeys:  []downloadKey{{episodeID: 10}},
+		},
 	}
 
 	for _, tt := range tests {

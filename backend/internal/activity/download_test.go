@@ -28,6 +28,7 @@ func TestDownloadTargetsUsesParsedScopeNotNullEpisodeID(t *testing.T) {
 		{name: "episode range", dl: store.Download{ID: 3, MediaItemID: 1, SeasonNumber: &season, Title: "Show.S02E04-E06.1080p"}, scope: store.MediaActivityScopeEpisode, count: 3},
 		{name: "season pack", dl: store.Download{ID: 4, MediaItemID: 1, SeasonNumber: &season, Title: "Show.S02.1080p"}, scope: store.MediaActivityScopeSeason, count: 1},
 		{name: "ambiguous", dl: store.Download{ID: 5, MediaItemID: 1, SeasonNumber: &season, Title: "Show.1080p"}, scope: store.MediaActivityScopeUnknown, count: 1},
+		{name: "unnumbered special", dl: store.Download{ID: 6, MediaItemID: 1, SeasonNumber: &season, Title: "Show.S02.Special.1080p"}, scope: store.MediaActivityScopeUnknown, count: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			targets, total := DownloadTargets(&downloadTargetStore{}, item, &tc.dl)
