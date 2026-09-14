@@ -15,6 +15,40 @@ export function parseGenres(genres: string | undefined | null): string[] {
     .filter(Boolean)
 }
 
+type LibraryFilterItem = {
+  title: string
+  metadata?: { genres?: string }
+}
+
+/** Return the unique genres represented by the current library items. */
+export function libraryGenres(items: readonly LibraryFilterItem[]): string[] {
+  const genres = new Map<string, string>()
+  for (const item of items) {
+    for (const genre of parseGenres(item.metadata?.genres)) {
+      const name = genre.trim()
+      const key = name.toLowerCase()
+      if (name && !genres.has(key)) genres.set(key, name)
+    }
+  }
+  return [...genres.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
+
+/** Filter by a title substring and by any of the selected genres. */
+export function filterLibraryItems<T extends LibraryFilterItem>(
+  items: readonly T[],
+  query: string,
+  selectedGenres: readonly string[],
+): T[] {
+  const titleQuery = query.trim().toLowerCase()
+  const genreKeys = new Set(selectedGenres.map((genre) => genre.trim().toLowerCase()).filter(Boolean))
+
+  return items.filter((item) => {
+    if (titleQuery && !item.title.toLowerCase().includes(titleQuery)) return false
+    if (!genreKeys.size) return true
+    return parseGenres(item.metadata?.genres).some((genre) => genreKeys.has(genre.trim().toLowerCase()))
+  })
+}
+
 /**
  * Build a profile image URL from a TMDB path or TVDB full URL.
  */

@@ -637,6 +637,16 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Recheck wanted-episode file presence inside the final automatic-grab transaction to avoid queuing a duplicate after a concurrent import
 - [x] Regression coverage for episode/pack/range imports, re-sync, provider changes, rollback, missing-episode recovery, and search races; verify both the special-episode flow and ordinary download/import flow with disposable fake integrations
 
+## Phase 10.2: Live Library Title and Genre Filters ✅
+→ See ADR-145
+
+- [x] Live, case-insensitive substring filtering of library titles, including partial-word matches and trimmed input
+- [x] Genre popup populated from all items in the current library, with sorted case-insensitive deduplication and multi-select OR matching combined with title search
+- [x] Neutral, visually secondary search styling; desktop placement between title and path/actions, mobile placement below the title, and safe long-title truncation
+- [x] Filtered/total counts, separate no-match messaging, title/genre clearing, reset on library changes, and pruning of selections no longer represented after refresh
+- [x] Keyboard-operable genre checkboxes, Escape/outside dismissal with trigger focus restoration, and dismissal when focus leaves the controls
+- [x] Shared-helper regression tests plus desktop/mobile fixture-based browser verification in the disposable harness
+
 ## Known Bugs ⬜
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

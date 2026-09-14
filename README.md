@@ -55,6 +55,9 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Automatic directory scanning with video file detection (resolution, source type, season/episode parsing)
 - Series folder grouping ("Show Name Season N" folders merged under one title)
 - Media item status tracking: `new`, `requested`, `partial`, `available`, `missing`
+- Instantly filter the library grid by any part of a title, case-insensitively (`agon` finds *House of the Dragon*)
+- Combine title search with a genre popup drawn from that library's metadata; selecting multiple genres matches any of them, with live result counts and clear controls
+- Subdued library filters sit between the title and path/actions on desktop and below the title on mobile; filters reset when switching libraries
 - Re-sync individual items or entire libraries as async jobs with progress tracking
 - Path traversal protection enforced at all filesystem access points
 
@@ -388,7 +391,7 @@ media-gate/
 - **Event-driven** — internal event bus with typed events, SSE broker pushes to frontends
 - **Thin HTTP handlers** — handlers are pure adapters; all business logic lives in service packages
 
-Design decisions are documented as ADRs in `docs/DECISIONS.md`. Full roadmap in `docs/ROADMAP.md`.
+See the [feature summary](docs/FEATURE_SUMMARY.md) for a workflow-oriented overview. Design decisions are documented as ADRs in `docs/DECISIONS.md`. Full roadmap in `docs/ROADMAP.md`.
 
 ## Status
 

@@ -5,11 +5,12 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import LibraryFilters from '@/components/media/LibraryFilters.vue'
 import { useEventStream } from '@/composables/useEventStream'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useJobQueue } from '@/composables/useJobQueue'
 import type { Library, MediaItem, MediaProfile } from '@/types/api'
-import { posterUrl } from '@/utils/media'
+import { filterLibraryItems, libraryGenres, posterUrl } from '@/utils/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +25,17 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 const showMatchModal = ref(false)
+const titleFilter = ref('')
+const selectedGenres = ref<string[]>([])
+
+const availableGenres = computed(() => libraryGenres(items.value))
+const filteredItems = computed(() => filterLibraryItems(items.value, titleFilter.value, selectedGenres.value))
+const hasActiveFilters = computed(() => Boolean(titleFilter.value.trim() || selectedGenres.value.length))
+
+function clearFilters() {
+  titleFilter.value = ''
+  selectedGenres.value = []
+}
 
 const watchedSet = ref<Set<string>>(new Set())
 
@@ -242,6 +254,7 @@ watch(
   () => route.params.id,
   () => {
     matchingItemId.value = null
+    clearFilters()
     loadAll()
   },
 )
@@ -259,11 +272,11 @@ onBeforeRouteLeave(() => {
 <template>
   <div>
     <!-- Header -->
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
-      <div v-if="library" class="flex items-center gap-3">
-        <h1 class="text-xl font-semibold text-gray-100 tracking-tight">{{ library.name }}</h1>
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <div v-if="library" class="order-1 flex min-w-0 max-w-full items-center gap-3">
+        <h1 class="min-w-0 truncate text-xl font-semibold text-gray-100 tracking-tight">{{ library.name }}</h1>
         <span
-          class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
+          class="shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
           :class="library.mediaType === 'movie'
             ? 'bg-violet-600/20 text-violet-300'
             : 'bg-fuchsia-600/20 text-fuchsia-300'"
@@ -271,7 +284,14 @@ onBeforeRouteLeave(() => {
           {{ library.mediaType }}
         </span>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
+      <LibraryFilters
+        v-if="library"
+        v-model:query="titleFilter"
+        v-model:selected-genres="selectedGenres"
+        :genres="availableGenres"
+        class="order-2"
+      />
+      <div class="order-3 flex items-center gap-2 flex-wrap md:ml-auto">
         <span v-if="library" class="text-xs text-gray-500 font-mono hidden md:inline">{{ library.path }}</span>
         <!-- Default profile select -->
         <select
@@ -333,10 +353,25 @@ onBeforeRouteLeave(() => {
 
     <!-- Media grid -->
     <div v-else>
-      <p class="text-xs text-gray-500 mb-4">{{ total }} items</p>
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
+      <p class="text-xs text-gray-500 mb-4" aria-live="polite">
+        {{ hasActiveFilters ? `${filteredItems.length} of ${total} items` : `${total} items` }}
+      </p>
+      <div
+        v-if="!filteredItems.length"
+        class="flex flex-col items-center justify-center py-20 text-gray-500"
+      >
+        <p class="text-sm">No titles match the current filters.</p>
+        <button
+          type="button"
+          class="mt-3 text-xs text-gray-400 underline underline-offset-4 hover:text-gray-200 transition-colors"
+          @click="clearFilters"
+        >
+          Clear filters
+        </button>
+      </div>
+      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-5">
         <div
-          v-for="item in items"
+          v-for="item in filteredItems"
           :key="item.id"
           class="group relative rounded-lg overflow-hidden bg-[#161b2e] border transition-colors duration-200 cursor-pointer"
           :class="item.id === matchingItemId
