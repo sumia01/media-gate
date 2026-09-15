@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Film, Tv, UserRound } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import DiscoverCard from '@/components/media/DiscoverCard.vue'
@@ -22,6 +22,9 @@ const loading = ref(true)
 const loadFailed = ref(false)
 const movieLimit = ref(35)
 const seriesLimit = ref(35)
+const activeTab = ref<'movie' | 'series'>('movie')
+const movieTab = ref<HTMLButtonElement | null>(null)
+const seriesTab = ref<HTMLButtonElement | null>(null)
 let request = 0
 let controller: AbortController | undefined
 
@@ -62,6 +65,26 @@ function emptyCreditsMessage(kind: 'movie' | 'series', hidden: number): string {
 const emptyMoviesMessage = computed(() => emptyCreditsMessage('movie', hiddenMovies.value))
 const emptySeriesMessage = computed(() => emptyCreditsMessage('series', hiddenSeries.value))
 
+function selectTab(tab: 'movie' | 'series', focus = false) {
+  activeTab.value = tab
+  if (!focus) return
+  void nextTick(() => (tab === 'movie' ? movieTab.value : seriesTab.value)?.focus())
+}
+
+function onTabKeydown(event: KeyboardEvent) {
+  let tab: 'movie' | 'series' | undefined
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    tab = activeTab.value === 'movie' ? 'series' : 'movie'
+  } else if (event.key === 'Home') {
+    tab = 'movie'
+  } else if (event.key === 'End') {
+    tab = 'series'
+  }
+  if (!tab) return
+  event.preventDefault()
+  selectTab(tab, true)
+}
+
 async function fetchCredits() {
   const currentRequest = ++request
   controller?.abort()
@@ -71,6 +94,7 @@ async function fetchCredits() {
   credits.value = null
   movieLimit.value = 35
   seriesLimit.value = 35
+  activeTab.value = 'movie'
 
   const parsedID = Number(props.personId)
   const personID = Number.isInteger(parsedID) && parsedID >= 0 ? parsedID : 0
@@ -183,12 +207,53 @@ onUnmounted(() => controller?.abort())
         @retry="fetchLibraryItems"
       />
 
-      <section class="mb-12">
-        <div class="mb-4 flex items-center gap-2">
+      <div
+        role="tablist"
+        aria-label="Credits by media type"
+        class="mb-4 flex border-b border-violet-900/30"
+        @keydown="onTabKeydown"
+      >
+        <button
+          id="person-credits-movies-tab"
+          ref="movieTab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'movie'"
+          aria-controls="person-credits-movies-panel"
+          :tabindex="activeTab === 'movie' ? 0 : -1"
+          class="-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400 sm:px-4"
+          :class="activeTab === 'movie' ? 'border-violet-400 text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-300'"
+          @click="selectTab('movie')"
+        >
           <Film class="h-5 w-5 text-violet-400" />
-          <h2 class="text-lg font-semibold tracking-tight text-gray-100">Movies</h2>
+          <span class="text-lg font-semibold tracking-tight">Movies</span>
           <span class="text-sm text-gray-500">{{ filteredMovies.length }}</span>
-        </div>
+        </button>
+        <button
+          id="person-credits-series-tab"
+          ref="seriesTab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'series'"
+          aria-controls="person-credits-series-panel"
+          :tabindex="activeTab === 'series' ? 0 : -1"
+          class="-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400 sm:px-4"
+          :class="activeTab === 'series' ? 'border-fuchsia-400 text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-300'"
+          @click="selectTab('series')"
+        >
+          <Tv class="h-5 w-5 text-fuchsia-400" />
+          <span class="text-lg font-semibold tracking-tight">Series</span>
+          <span class="text-sm text-gray-500">{{ filteredSeries.length }}</span>
+        </button>
+      </div>
+
+      <section
+        v-if="activeTab === 'movie'"
+        id="person-credits-movies-panel"
+        role="tabpanel"
+        aria-labelledby="person-credits-movies-tab"
+        class="mb-8"
+      >
         <div v-if="visibleMovies.length" class="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           <DiscoverCard
             v-for="item in visibleMovies"
@@ -212,12 +277,13 @@ onUnmounted(() => controller?.abort())
         </button>
       </section>
 
-      <section class="mb-8">
-        <div class="mb-4 flex items-center gap-2">
-          <Tv class="h-5 w-5 text-fuchsia-400" />
-          <h2 class="text-lg font-semibold tracking-tight text-gray-100">Series</h2>
-          <span class="text-sm text-gray-500">{{ filteredSeries.length }}</span>
-        </div>
+      <section
+        v-else
+        id="person-credits-series-panel"
+        role="tabpanel"
+        aria-labelledby="person-credits-series-tab"
+        class="mb-8"
+      >
         <div v-if="visibleSeries.length" class="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           <DiscoverCard
             v-for="item in visibleSeries"

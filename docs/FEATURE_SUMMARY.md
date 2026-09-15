@@ -17,7 +17,7 @@ designed for a homelab or lightweight server.
 ### Discover, request, and organize media
 
 - Browse recently added local media plus TMDB trending, popular, and similar-title feeds.
-- Open cast members from media details and browse their acting credits in separate movie and series sections.
+- Open cast members from media details and browse their acting credits in counted Movies and Series tabs with independent load-more controls.
 - Search TMDB and TVDB globally or from a library, inspect an external preview, and identify titles already in the local library.
 - Add movies or series to a selected library as requests, optionally selecting a quality profile and monitoring scope.
 - Track cumulative requesters while retaining the original request scope: title, whole series, future seasons, season, or individual episode.

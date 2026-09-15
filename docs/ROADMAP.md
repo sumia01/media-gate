@@ -652,7 +652,8 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 
 - [x] Persist TMDB/TVDB person IDs in new cast metadata while retaining compatibility with existing credit JSON
 - [x] Clickable, keyboard-focusable cast entries on saved-media and preview details, including a mobile horizontal cast strip
-- [x] TMDB combined acting credits split into popularity-ordered Movies and Series grids with duplicate and adult-title filtering
+- [x] TMDB combined acting credits split into popularity-ordered Movies and Series lists with duplicate and adult-title filtering
+- [x] Counted, keyboard-operable Movies and Series tabs with independent bounded load-more state
 - [x] Reuse Discover cards, watched/in-library badges, preview navigation, and the shared Hide in library preference
 - [x] Resolve TVDB people through exact TMDB remote identities and legacy TMDB credits through exact name/profile matches without ambiguous name guessing
 - [x] Provider, mapping, contract, type-check, lint, test, and production-build coverage

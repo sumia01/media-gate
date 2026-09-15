@@ -122,19 +122,36 @@ async function mountView(t) {
   return { root, requests, route }
 }
 
-test('person credits render bounded movie and series sections and ignore outgoing route changes', async (t) => {
+test('person credits switch between bounded movie and series tabs and ignore outgoing route changes', async (t) => {
   const view = await mountView(t)
   assert.equal(view.requests.length, 1)
   assert.deepEqual(view.requests[0].options.params.path, { source: 'tmdb', personId: 287 })
 
   let cards = findAll(view.root, (entry) => entry.type === 'article')
   assert.equal(cards.filter((entry) => entry.props.mediaType === 'movie').length, 35)
-  assert.equal(cards.filter((entry) => entry.props.mediaType === 'series').length, 2)
+  assert.equal(cards.filter((entry) => entry.props.mediaType === 'series').length, 0)
   const loadMore = findAll(
     view.root,
     (entry) => entry.type === 'button' && textContent(entry).includes('Load more movies'),
   )[0]
   loadMore.props.onClick()
+  await Vue.nextTick()
+  cards = findAll(view.root, (entry) => entry.type === 'article')
+  assert.equal(cards.filter((entry) => entry.props.mediaType === 'movie').length, 40)
+
+  const tabs = findAll(view.root, (entry) => entry.props.role === 'tab')
+  const moviesTab = tabs.find((entry) => textContent(entry).includes('Movies'))
+  const seriesTab = tabs.find((entry) => textContent(entry).includes('Series'))
+  assert.equal(moviesTab.props['aria-selected'], true)
+  assert.equal(seriesTab.props['aria-selected'], false)
+  seriesTab.props.onClick()
+  await Vue.nextTick()
+  cards = findAll(view.root, (entry) => entry.type === 'article')
+  assert.equal(cards.filter((entry) => entry.props.mediaType === 'movie').length, 0)
+  assert.equal(cards.filter((entry) => entry.props.mediaType === 'series').length, 2)
+  assert.equal(seriesTab.props['aria-selected'], true)
+
+  moviesTab.props.onClick()
   await Vue.nextTick()
   cards = findAll(view.root, (entry) => entry.type === 'article')
   assert.equal(cards.filter((entry) => entry.props.mediaType === 'movie').length, 40)

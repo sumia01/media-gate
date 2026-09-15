@@ -78,7 +78,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Discovery feeds: trending, popular movies, popular series
 - Recently added feed from local libraries
 - Full external media preview before adding to a library
-- Open cast members from saved or external media details to browse their acting credits in separate movie and series grids
+- Open cast members from saved or external media details to browse their acting credits in counted Movies and Series tabs with independent load-more controls
 - Actor credits reuse watched/in-library badges and the persistent "Hide in library" filter, with conservative TVDB-to-TMDB person identity resolution
 - Duplicate detection: results indicate if media already exists locally
 - Persistent "Hide in library" filter on Discover, category, and similar-title pages; Recently Added stays visible
