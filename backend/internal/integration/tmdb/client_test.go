@@ -2,7 +2,9 @@ package tmdb
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -28,6 +30,25 @@ func TestGetWithParams_TransportErrorDoesNotLeakAPIKey(t *testing.T) {
 
 	if strings.Contains(err.Error(), secretKey) {
 		t.Fatalf("error message leaks the API key: %q", err.Error())
+	}
+}
+
+func TestAPIErrorDoesNotExposeResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprint(w, `{"status_message":"private provider response"}`)
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", server.Client())
+	client.baseURL = server.URL
+	_, err := client.GetPerson(999)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), "private provider response") {
+		t.Fatalf("provider response leaked through error: %q", err)
 	}
 }
 

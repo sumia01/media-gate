@@ -2,9 +2,11 @@ package tvdb
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -76,6 +78,69 @@ func TestMaxSeasonNumber(t *testing.T) {
 				t.Errorf("MaxSeasonNumber() = %d, want %d", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPersonTMDBID(t *testing.T) {
+	person := &PersonDetails{RemoteIds: []RemoteID{
+		{ID: "nm0000093", SourceName: "IMDB"},
+		{ID: "287", SourceName: "TheMovieDB.com"},
+	}}
+	if got := person.TMDBID(); got != 287 {
+		t.Errorf("TMDBID() = %d, want 287", got)
+	}
+
+	person.RemoteIds = []RemoteID{{ID: "not-a-number", SourceName: "TMDB"}}
+	if got := person.TMDBID(); got != 0 {
+		t.Errorf("TMDBID() = %d, want 0 for invalid ID", got)
+	}
+}
+
+func TestGetPersonExtended(t *testing.T) {
+	var loginCalls int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", newLoginHandler(&loginCalls))
+	mux.HandleFunc("/people/77/extended", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer token-1" {
+			t.Errorf("Authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"data":{"id":77,"name":"Test Actor","image":"https://example.test/actor.jpg","remoteIds":[{"id":"287","sourceName":"TheMovieDB.com"}]}}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient("test-key", server.Client())
+	client.baseURL = server.URL
+	person, err := client.GetPerson(77)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if person.ID != 77 || person.Name != "Test Actor" || person.TMDBID() != 287 {
+		t.Fatalf("unexpected person: %+v", person)
+	}
+}
+
+func TestAPIErrorDoesNotExposeResponseBody(t *testing.T) {
+	var loginCalls int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", newLoginHandler(&loginCalls))
+	mux.HandleFunc("/people/77/extended", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprint(w, `{"message":"private provider response"}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient("test-key", server.Client())
+	client.baseURL = server.URL
+	_, err := client.GetPerson(77)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), "private provider response") {
+		t.Fatalf("provider response leaked through error: %q", err)
 	}
 }
 

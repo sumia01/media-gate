@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -19,6 +20,15 @@ type Client struct {
 	token      string
 	httpClient *http.Client
 	mu         sync.Mutex
+}
+
+type APIError struct {
+	Operation  string
+	StatusCode int
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("TVDB %s returned %d", e.Operation, e.StatusCode)
 }
 
 func NewClient(apiKey string, httpClient *http.Client) *Client {
@@ -47,7 +57,7 @@ func (c *Client) authenticate() error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("TVDB login returned %d: %s", resp.StatusCode, string(body))
+		return &APIError{Operation: "login", StatusCode: resp.StatusCode}
 	}
 
 	var loginResp struct {
@@ -122,6 +132,25 @@ func (c *Client) GetSeries(id int) (*SeriesDetails, error) {
 	return &resp.Data, nil
 }
 
+func (c *Client) GetPerson(id int) (*PersonDetails, error) {
+	if err := c.ensureAuthenticated(); err != nil {
+		return nil, err
+	}
+
+	body, err := c.get(fmt.Sprintf("/people/%d/extended", id), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Data PersonDetails `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &resp.Data, nil
+}
+
 func (c *Client) GetSeriesEpisodes(seriesID, seasonNumber int) ([]EpisodeEntry, error) {
 	if err := c.ensureAuthenticated(); err != nil {
 		return nil, err
@@ -163,7 +192,7 @@ func (c *Client) get(path string, params url.Values) ([]byte, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("TVDB API returned %d: %s", status, string(body))
+		return nil, &APIError{Operation: "API", StatusCode: status}
 	}
 
 	return body, nil
@@ -282,6 +311,30 @@ type SeriesDetails struct {
 	Status         Status          `json:"status"`
 	RemoteIds      []RemoteID      `json:"remoteIds"`
 	ContentRatings []ContentRating `json:"contentRatings"`
+}
+
+type PersonDetails struct {
+	ID        int        `json:"id"`
+	Name      string     `json:"name"`
+	Image     string     `json:"image"`
+	RemoteIds []RemoteID `json:"remoteIds"`
+}
+
+// TMDBID returns the numeric TMDB person ID when TVDB supplies that remote
+// identity. Source names are not enum-constrained by TVDB, so accept its
+// common long and abbreviated spellings without treating other IDs as TMDB.
+func (d *PersonDetails) TMDBID() int {
+	for _, remote := range d.RemoteIds {
+		source := strings.ToLower(strings.TrimSpace(remote.SourceName))
+		if source != "tmdb" && !strings.Contains(source, "themoviedb") {
+			continue
+		}
+		id, err := strconv.Atoi(remote.ID)
+		if err == nil && id > 0 {
+			return id
+		}
+	}
+	return 0
 }
 
 // ImdbID extracts the IMDb ID from the RemoteIds list, if present.

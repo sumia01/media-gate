@@ -647,6 +647,16 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Keyboard-operable genre checkboxes, Escape/outside dismissal with trigger focus restoration, and dismissal when focus leaves the controls
 - [x] Shared-helper regression tests plus desktop/mobile fixture-based browser verification in the disposable harness
 
+## Phase 10.3: Actor Filmography Discovery ✅
+→ See ADR-146
+
+- [x] Persist TMDB/TVDB person IDs in new cast metadata while retaining compatibility with existing credit JSON
+- [x] Clickable, keyboard-focusable cast entries on saved-media and preview details, including a mobile horizontal cast strip
+- [x] TMDB combined acting credits split into popularity-ordered Movies and Series grids with duplicate and adult-title filtering
+- [x] Reuse Discover cards, watched/in-library badges, preview navigation, and the shared Hide in library preference
+- [x] Resolve TVDB people through exact TMDB remote identities and legacy TMDB credits through exact name/profile matches without ambiguous name guessing
+- [x] Provider, mapping, contract, type-check, lint, test, and production-build coverage
+
 ## Known Bugs ⬜
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

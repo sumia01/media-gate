@@ -1503,6 +1503,63 @@ paths:
                   totalPages:
                     type: integer
 
+  /discover/person/{source}/{personId}:
+    parameters:
+      - name: source
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - tmdb
+            - tvdb
+        description: Credit provider (tmdb or tvdb)
+      - name: personId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+        description: Provider person ID, or 0 for legacy credits that predate stored person IDs
+    get:
+      operationId: getPersonCredits
+      tags:
+        - discover
+      summary: Movies and series featuring a cast member
+      description: Uses TMDB combined cast credits. TVDB people are resolved through their TMDB remote ID when available.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Display name and exact-match fallback for legacy credits
+        - name: image
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Provider profile image used to disambiguate legacy TMDB credits
+      responses:
+        "200":
+          description: Person details and acting credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonCredits"
+        "400":
+          description: Invalid credit provider or person ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Person could not be resolved without guessing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /media-profiles:
     get:
       operationId: listMediaProfiles
@@ -3079,6 +3136,35 @@ components:
           type: string
         order:
           type: integer
+        source:
+          type: string
+          description: Person identity provider (tmdb or tvdb)
+        personId:
+          type: integer
+
+    PersonCredits:
+      type: object
+      required:
+        - name
+        - movies
+        - series
+      properties:
+        name:
+          type: string
+        profileUrl:
+          type: string
+        biography:
+          type: string
+        knownForDepartment:
+          type: string
+        movies:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoverItem"
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoverItem"
 
     MediaProfile:
       type: object

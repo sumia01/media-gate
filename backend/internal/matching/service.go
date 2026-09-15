@@ -1909,6 +1909,16 @@ func (s *Service) TMDBClient() *tmdb.Client {
 	return s.cachedTMDB(apiKey)
 }
 
+// TVDBClient returns a cached TVDB client configured with the current API key,
+// or nil if no key is configured.
+func (s *Service) TVDBClient() *tvdb.Client {
+	apiKey, err := s.settings.Get(settings.KeyTVDBApiKey)
+	if err != nil || apiKey == "" {
+		return nil
+	}
+	return s.cachedTVDB(apiKey)
+}
+
 type MetadataRefreshResult struct {
 	Changed       bool
 	ActivityAdded bool
@@ -2357,11 +2367,13 @@ func contentRatingsToJSON(ratings map[string]string) string {
 }
 
 type CreditPerson struct {
-	Name  string `json:"name"`
-	Role  string `json:"role"`
-	Type  string `json:"type"`
-	Image string `json:"image,omitempty"`
-	Order int    `json:"order"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Type     string `json:"type"`
+	Image    string `json:"image,omitempty"`
+	Order    int    `json:"order"`
+	Source   string `json:"source,omitempty"`
+	PersonID int    `json:"personId,omitempty"`
 }
 
 func tmdbCreditsToJSON(credits *tmdb.Credits) string {
@@ -2376,11 +2388,13 @@ func tmdbCreditsToJSON(credits *tmdb.Credits) string {
 			break
 		}
 		people = append(people, CreditPerson{
-			Name:  c.Name,
-			Role:  c.Character,
-			Type:  "cast",
-			Image: c.ProfilePath,
-			Order: c.Order,
+			Name:     c.Name,
+			Role:     c.Character,
+			Type:     "cast",
+			Image:    c.ProfilePath,
+			Order:    c.Order,
+			Source:   "tmdb",
+			PersonID: c.ID,
 		})
 	}
 
@@ -2395,11 +2409,13 @@ func tmdbCreditsToJSON(credits *tmdb.Credits) string {
 			continue
 		}
 		people = append(people, CreditPerson{
-			Name:  c.Name,
-			Role:  c.Job,
-			Type:  "crew",
-			Image: c.ProfilePath,
-			Order: crewCount,
+			Name:     c.Name,
+			Role:     c.Job,
+			Type:     "crew",
+			Image:    c.ProfilePath,
+			Order:    crewCount,
+			Source:   "tmdb",
+			PersonID: c.ID,
 		})
 		crewCount++
 	}
@@ -2424,20 +2440,24 @@ func tvdbCharactersToJSON(characters []tvdb.Character) string {
 	for _, c := range characters {
 		if castTypes[c.PeopleType] && castCount < 10 {
 			people = append(people, CreditPerson{
-				Name:  c.PersonName,
-				Role:  c.Name,
-				Type:  "cast",
-				Image: c.PersonImgURL,
-				Order: c.Sort,
+				Name:     c.PersonName,
+				Role:     c.Name,
+				Type:     "cast",
+				Image:    c.PersonImgURL,
+				Order:    c.Sort,
+				Source:   "tvdb",
+				PersonID: c.PeopleID,
 			})
 			castCount++
 		} else if crewTypes[c.PeopleType] && crewCount < 5 {
 			people = append(people, CreditPerson{
-				Name:  c.PersonName,
-				Role:  c.PeopleType,
-				Type:  "crew",
-				Image: c.PersonImgURL,
-				Order: crewCount,
+				Name:     c.PersonName,
+				Role:     c.PeopleType,
+				Type:     "crew",
+				Image:    c.PersonImgURL,
+				Order:    crewCount,
+				Source:   "tvdb",
+				PersonID: c.PeopleID,
 			})
 			crewCount++
 		}

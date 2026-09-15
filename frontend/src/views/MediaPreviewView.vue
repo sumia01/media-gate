@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ArrowLeft, ExternalLink, Eye, EyeOff, Play, Plus, Search } from 'lucide-vue-next'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import client from '@/api/client'
 import ContentRatingTile from '@/components/ContentRatingTile.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import AddToLibraryModal from '@/components/media/AddToLibraryModal.vue'
 import IndexerSearchModal from '@/components/media/IndexerSearchModal.vue'
-import type { ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
+import type { CreditPerson, ExternalMediaDetail, ExternalSeasonSummary } from '@/types/api'
 import { parseGenres, profileImageUrl } from '@/utils/media'
 
 const route = useRoute()
@@ -56,6 +56,17 @@ const contentRatings = computed(() => detail.value?.contentRatings ?? [])
 const credits = computed(() => detail.value?.credits ?? [])
 const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
 const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
+
+function personCreditsRoute(person: CreditPerson) {
+  return {
+    name: 'discover-person',
+    params: {
+      source: person.source || detail.value?.source || 'tmdb',
+      personId: person.personId ?? 0,
+    },
+    query: { name: person.name, image: person.image },
+  }
+}
 
 async function checkWatched(d = detail.value, request = detailRequest) {
   if (!d) return
@@ -154,8 +165,14 @@ function handleAdded(mediaItemId: number) {
   router.push({ name: 'media-detail', params: { id: mediaItemId } })
 }
 
-onMounted(fetchDetail)
-watch(() => [route.params.source, route.params.externalId, route.query.mediaType], fetchDetail)
+function loadRoute() {
+  if (route.name !== 'media-preview') return
+  void fetchDetail()
+}
+
+onMounted(loadRoute)
+onUnmounted(() => detailRequest++)
+watch(() => [route.params.source, route.params.externalId, route.query.mediaType], loadRoute, { flush: 'post' })
 </script>
 
 <template>
@@ -280,28 +297,30 @@ watch(() => [route.params.source, route.params.externalId, route.query.mediaType
           </div>
 
           <!-- Cast -->
-          <div v-if="cast.length" class="hidden md:block mb-6">
+          <div v-if="cast.length" class="mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Cast</h3>
-            <div class="flex flex-wrap gap-3">
-              <div
+            <div class="flex gap-3 overflow-x-auto pb-2 md:flex-wrap md:overflow-visible md:pb-0">
+              <router-link
                 v-for="(person, i) in cast"
                 :key="'cast-' + i"
-                class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-900/20"
+                :to="personCreditsRoute(person)"
+                class="flex min-w-48 items-center gap-2.5 rounded-lg border border-violet-900/20 bg-[#161b2e] px-3 py-2 transition-colors hover:border-violet-500/40 hover:bg-violet-950/20 focus-visible:outline-2 focus-visible:outline-violet-400 md:min-w-0"
               >
                 <div class="w-8 h-8 rounded-full bg-violet-900/30 flex-shrink-0 overflow-hidden">
                   <img
                     v-if="profileImageUrl(person)"
                     :src="profileImageUrl(person)!"
-                    :alt="person.name"
+                    alt=""
                     class="w-full h-full object-cover"
                     @error="($event.target as HTMLImageElement).style.display = 'none'"
+                    @load="($event.target as HTMLImageElement).style.display = ''"
                   />
                 </div>
                 <div class="min-w-0">
                   <p class="text-sm text-gray-200 truncate">{{ person.name }}</p>
                   <p class="text-[11px] text-gray-500 truncate">{{ person.role }}</p>
                 </div>
-              </div>
+              </router-link>
             </div>
           </div>
 

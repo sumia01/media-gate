@@ -78,6 +78,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Discovery feeds: trending, popular movies, popular series
 - Recently added feed from local libraries
 - Full external media preview before adding to a library
+- Open cast members from saved or external media details to browse their acting credits in separate movie and series grids
+- Actor credits reuse watched/in-library badges and the persistent "Hide in library" filter, with conservative TVDB-to-TMDB person identity resolution
 - Duplicate detection: results indicate if media already exists locally
 - Persistent "Hide in library" filter on Discover, category, and similar-title pages; Recently Added stays visible
 - Library identities include media type, so a movie and series with the same provider ID are not confused. TVDB-to-TMDB identity normalization remains a known limitation of badges and filtering
@@ -249,8 +251,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 | Service | Purpose |
 |---------|---------|
-| **TMDB** | Movie/series metadata, posters, trending/popular feeds |
-| **TVDB** | Series metadata, episode data |
+| **TMDB** | Movie, series, and person metadata; posters; discovery feeds; acting credits |
+| **TVDB** | Series metadata, episode data, and person identity bridging to TMDB |
 | **qBittorrent** | Torrent downloading, progress tracking, cleanup |
 | **Prowlarr/Indexers** | 700+ torrent indexer definitions (Cardigann YAML) |
 | **FlareSolverr** | Cloudflare challenge bypass for protected indexer sites |

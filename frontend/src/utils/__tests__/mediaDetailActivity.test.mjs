@@ -84,7 +84,7 @@ function component(text, exposeActivity = false) {
 
 async function mountView(t) {
   const exports = {}
-  const route = Vue.reactive({ params: { id: '1' } })
+  const route = Vue.reactive({ name: 'media-detail', params: { id: '1' } })
   const streamListeners = new Map()
   const requests = []
   const mutations = []
@@ -335,6 +335,39 @@ test('activity and metadata events refresh only the current item without opening
   await settle()
   tabs = findAll(view.root, (entry) => entry.props.role === 'tab')
   assert.equal(tabs[1].props['aria-selected'], true, 'ordinary same-item refresh preserves Activity')
+})
+
+test('cast links retain person identity without refetching the outgoing media route', async (t) => {
+  const view = await mountView(t)
+  view.setItem({
+    metadata: {
+      credits: [
+        {
+          name: 'Example Actor',
+          role: 'Lead',
+          type: 'cast',
+          image: '/actor.jpg',
+          source: 'tvdb',
+          personId: 77,
+        },
+      ],
+    },
+  })
+  view.streamListeners.get('media.metadata_refreshed')?.({ mediaItemId: 1 })
+  await settle()
+
+  const personLink = findAll(view.root, (entry) => entry.props.to?.name === 'discover-person')[0]
+  assert.deepEqual(personLink.props.to, {
+    name: 'discover-person',
+    params: { source: 'tvdb', personId: 77 },
+    query: { name: 'Example Actor', image: '/actor.jpg' },
+  })
+
+  const requestsBeforeLeaving = view.requests.length
+  view.route.name = 'discover-person'
+  view.route.params = { source: 'tvdb', personId: '77' }
+  await settle()
+  assert.equal(view.requests.length, requestsBeforeLeaving)
 })
 
 test('late resync and watched completions cannot mutate or invalidate the next route', async (t) => {

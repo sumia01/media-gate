@@ -14,8 +14,9 @@ defineEmits<{
 </script>
 
 <template>
-  <div
-    class="group relative rounded-lg overflow-hidden bg-[#161b2e] border border-violet-900/20 hover:border-violet-500/40 transition-colors duration-200 cursor-pointer"
+  <button
+    type="button"
+    class="group relative w-full cursor-pointer overflow-hidden rounded-lg border border-violet-900/20 bg-[#161b2e] text-left transition-colors duration-200 hover:border-violet-500/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
     @click="$emit('click', item)"
   >
     <div class="aspect-[2/3] bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 flex items-center justify-center overflow-hidden relative">
@@ -26,7 +27,7 @@ defineEmits<{
         class="w-full h-full object-cover"
         loading="lazy"
       />
-      <div class="absolute top-2 left-2 z-10 flex items-center gap-1">
+      <div class="absolute top-2 right-2 left-2 z-10 flex flex-wrap items-center gap-1">
         <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded"
           :class="item.mediaType === 'movie' ? 'bg-violet-600/90 text-violet-100' : 'bg-fuchsia-600/90 text-fuchsia-100'"
         >
@@ -49,5 +50,5 @@ defineEmits<{
       <p class="text-sm font-medium text-gray-200 truncate">{{ item.title }}</p>
       <p class="text-xs text-gray-500 mt-1">{{ item.year }}</p>
     </div>
-  </div>
+  </button>
 </template>

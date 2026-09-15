@@ -20,6 +20,14 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type APIError struct {
+	StatusCode int
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("TMDB API returned %d", e.StatusCode)
+}
+
 func NewClient(apiKey string, httpClient *http.Client) *Client {
 	return &Client{
 		baseURL:    defaultBaseURL,
@@ -91,6 +99,56 @@ func (c *Client) GetTV(id int) (*TVDetails, error) {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return &details, nil
+}
+
+func (c *Client) GetPerson(id int) (*PersonDetails, error) {
+	body, err := c.getWithParams(fmt.Sprintf("/person/%d", id), url.Values{"append_to_response": {"combined_credits"}})
+	if err != nil {
+		return nil, err
+	}
+	var details PersonDetails
+	if err := json.Unmarshal(body, &details); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &details, nil
+}
+
+// ResolvePerson finds an exact TMDB person match for legacy credit data that
+// predates stored person IDs. A matching profile path disambiguates duplicate
+// names; without one, only a unique exact name is accepted.
+func (c *Client) ResolvePerson(name, profilePath string) (int, error) {
+	if strings.TrimSpace(name) == "" {
+		return 0, nil
+	}
+	body, err := c.getWithParams("/search/person", url.Values{"query": {name}})
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		Results    []PersonSearchResult `json:"results"`
+		TotalPages int                  `json:"total_pages"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, fmt.Errorf("decoding response: %w", err)
+	}
+
+	exact := make([]PersonSearchResult, 0, len(resp.Results))
+	for _, person := range resp.Results {
+		if strings.EqualFold(strings.TrimSpace(person.Name), strings.TrimSpace(name)) {
+			exact = append(exact, person)
+		}
+	}
+	if profilePath != "" {
+		for _, person := range exact {
+			if person.ProfilePath == profilePath {
+				return person.ID, nil
+			}
+		}
+	}
+	if len(exact) == 1 && resp.TotalPages <= 1 {
+		return exact[0].ID, nil
+	}
+	return 0, nil
 }
 
 func (c *Client) GetTVSeason(seriesID, seasonNumber int) (*TVSeasonDetails, error) {
@@ -266,7 +324,7 @@ func (c *Client) getWithParams(path string, params url.Values) ([]byte, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, c.redact(fmt.Errorf("TMDB API returned %d: %s", resp.StatusCode, string(body)))
+		return nil, &APIError{StatusCode: resp.StatusCode}
 	}
 
 	return body, nil
@@ -311,6 +369,53 @@ type TVResult struct {
 	FirstAirDate string  `json:"first_air_date"`
 	PosterPath   string  `json:"poster_path"`
 	VoteAverage  float64 `json:"vote_average"`
+}
+
+type PersonSearchResult struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	ProfilePath string `json:"profile_path"`
+}
+
+type PersonCredit struct {
+	ID           int     `json:"id"`
+	MediaType    string  `json:"media_type"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
+	VoteAverage  float64 `json:"vote_average"`
+	Popularity   float64 `json:"popularity"`
+	Adult        bool    `json:"adult"`
+}
+
+func (c PersonCredit) DisplayTitle() string {
+	if c.MediaType == "movie" {
+		return c.Title
+	}
+	return c.Name
+}
+
+func (c PersonCredit) Date() string {
+	if c.MediaType == "movie" {
+		return c.ReleaseDate
+	}
+	return c.FirstAirDate
+}
+
+type CombinedCredits struct {
+	Cast []PersonCredit `json:"cast"`
+}
+
+type PersonDetails struct {
+	ID                 int             `json:"id"`
+	Name               string          `json:"name"`
+	Biography          string          `json:"biography"`
+	ProfilePath        string          `json:"profile_path"`
+	KnownForDepartment string          `json:"known_for_department"`
+	CombinedCredits    CombinedCredits `json:"combined_credits"`
 }
 
 type TrendingResult struct {

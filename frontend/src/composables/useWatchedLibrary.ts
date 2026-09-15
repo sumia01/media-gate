@@ -5,7 +5,7 @@ import { type DiscoverIdentity, discoverKey } from '@/composables/useDiscoverFil
 import type { DiscoverItem } from '@/types/api'
 
 // Shared watched/in-library badge state and preview navigation for discover
-// grids (HomeView, DiscoverCategoryView, SimilarMediaView).
+// grids, including category, similar-title, and person-credit views.
 export function useWatchedLibrary() {
   const router = useRouter()
 
@@ -15,6 +15,7 @@ export function useWatchedLibrary() {
   const libraryLoading = ref(true)
   const libraryFailed = ref(false)
   const controller = new AbortController()
+  let libraryRequest: Promise<void> | undefined
   onUnmounted(() => controller.abort())
 
   function isWatched(item: DiscoverIdentity): boolean {
@@ -45,7 +46,7 @@ export function useWatchedLibrary() {
     }
   }
 
-  async function fetchLibraryItems() {
+  async function loadLibraryItems() {
     libraryLoading.value = true
     libraryFailed.value = false
     try {
@@ -65,7 +66,19 @@ export function useWatchedLibrary() {
     }
   }
 
-  function goToPreview(item: DiscoverItem) {
+  function fetchLibraryItems(): Promise<void> {
+    if (!libraryRequest) {
+      const request = loadLibraryItems()
+      libraryRequest = request
+      void request.finally(() => {
+        if (libraryRequest === request) libraryRequest = undefined
+      })
+    }
+    return libraryRequest
+  }
+
+  async function goToPreview(item: DiscoverItem) {
+    if (!libraryReady.value && !libraryFailed.value) await fetchLibraryItems()
     const mediaId = libraryMediaId(item)
     if (mediaId !== undefined) {
       router.push({ name: 'media-detail', params: { id: mediaId } })

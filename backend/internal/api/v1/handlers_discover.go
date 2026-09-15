@@ -2,11 +2,17 @@ package apiv1
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
+	"github.com/sumia01/media-gate/internal/integration/tvdb"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -168,6 +174,120 @@ func (h *Handlers) GetSimilarMedia(_ context.Context, request GetSimilarMediaReq
 		return nil, err
 	}
 	return GetSimilarMedia200JSONResponse{Items: items, Page: page, TotalPages: totalPages}, nil
+}
+
+func (h *Handlers) GetPersonCredits(_ context.Context, request GetPersonCreditsRequestObject) (GetPersonCreditsResponseObject, error) {
+	if request.Source != "tmdb" && request.Source != "tvdb" {
+		return GetPersonCredits400JSONResponse{Code: http.StatusBadRequest, Message: "unsupported credit provider"}, nil
+	}
+	if request.PersonId < 0 {
+		return GetPersonCredits400JSONResponse{Code: http.StatusBadRequest, Message: "person ID must not be negative"}, nil
+	}
+	requestedName := ""
+	if request.Params.Name != nil {
+		requestedName = *request.Params.Name
+	}
+	response := PersonCredits{
+		Name:   requestedName,
+		Movies: []DiscoverItem{},
+		Series: []DiscoverItem{},
+	}
+	client := h.matchSvc.TMDBClient()
+	if client == nil {
+		return GetPersonCredits200JSONResponse(response), nil
+	}
+
+	personID := request.PersonId
+	if request.Source == "tvdb" && personID > 0 {
+		tvdbClient := h.matchSvc.TVDBClient()
+		if tvdbClient == nil {
+			return GetPersonCredits404JSONResponse{Code: http.StatusNotFound, Message: "cast member could not be resolved"}, nil
+		}
+		person, err := tvdbClient.GetPerson(request.PersonId)
+		if err != nil {
+			var apiErr *tvdb.APIError
+			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+				return GetPersonCredits404JSONResponse{Code: http.StatusNotFound, Message: "cast member could not be resolved"}, nil
+			}
+			return nil, err
+		}
+		personID = person.TMDBID()
+		if personID == 0 {
+			// If TVDB has no explicit TMDB identity, only its provider-owned
+			// name may participate in the conservative exact-name fallback.
+			requestedName = person.Name
+		}
+	}
+
+	if personID <= 0 {
+		profilePath := ""
+		if request.Source == "tmdb" && request.Params.Image != nil && strings.HasPrefix(*request.Params.Image, "/") {
+			profilePath = *request.Params.Image
+		}
+		resolvedID, err := client.ResolvePerson(requestedName, profilePath)
+		if err != nil {
+			return nil, err
+		}
+		personID = resolvedID
+	}
+	if personID <= 0 {
+		return GetPersonCredits404JSONResponse{Code: http.StatusNotFound, Message: "cast member could not be resolved"}, nil
+	}
+
+	person, err := client.GetPerson(personID)
+	if err != nil {
+		var apiErr *tmdb.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return GetPersonCredits404JSONResponse{Code: http.StatusNotFound, Message: "cast member could not be resolved"}, nil
+		}
+		return nil, err
+	}
+	response.Name = person.Name
+	if person.ProfilePath != "" {
+		profileURL := tmdbPosterW342 + person.ProfilePath
+		response.ProfileUrl = &profileURL
+	}
+	if person.Biography != "" {
+		response.Biography = &person.Biography
+	}
+	if person.KnownForDepartment != "" {
+		response.KnownForDepartment = &person.KnownForDepartment
+	}
+	response.Movies, response.Series = personCreditsToDiscoverItems(person.CombinedCredits.Cast)
+	return GetPersonCredits200JSONResponse(response), nil
+}
+
+func personCreditsToDiscoverItems(credits []tmdb.PersonCredit) ([]DiscoverItem, []DiscoverItem) {
+	ordered := append([]tmdb.PersonCredit(nil), credits...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Popularity != ordered[j].Popularity {
+			return ordered[i].Popularity > ordered[j].Popularity
+		}
+		if ordered[i].Date() != ordered[j].Date() {
+			return ordered[i].Date() > ordered[j].Date()
+		}
+		return ordered[i].ID < ordered[j].ID
+	})
+
+	movies := make([]DiscoverItem, 0)
+	series := make([]DiscoverItem, 0)
+	seen := make(map[string]struct{}, len(ordered))
+	for _, credit := range ordered {
+		if credit.Adult || credit.ID <= 0 || (credit.MediaType != "movie" && credit.MediaType != "tv") || credit.DisplayTitle() == "" {
+			continue
+		}
+		key := credit.MediaType + ":" + strconv.Itoa(credit.ID)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		if credit.MediaType == "movie" {
+			movies = append(movies, toDiscoverItem(credit.ID, credit.Title, credit.ReleaseDate, credit.Overview, credit.PosterPath, credit.VoteAverage, DiscoverItemMediaTypeMovie))
+			continue
+		}
+		series = append(series, toDiscoverItem(credit.ID, credit.Name, credit.FirstAirDate, credit.Overview, credit.PosterPath, credit.VoteAverage, DiscoverItemMediaTypeSeries))
+	}
+	return movies, series
 }
 
 // resolveTVDBSeries memoizes TMDB /find lookups of TVDB series ids. The

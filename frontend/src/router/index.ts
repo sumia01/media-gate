@@ -11,6 +11,7 @@ import LoginView from '@/views/LoginView.vue'
 import MediaDetailView from '@/views/MediaDetailView.vue'
 import MediaPreviewView from '@/views/MediaPreviewView.vue'
 import MediaProfilesView from '@/views/MediaProfilesView.vue'
+import PersonCreditsView from '@/views/PersonCreditsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import SimilarMediaView from '@/views/SimilarMediaView.vue'
 import UserProfileView from '@/views/UserProfileView.vue'
@@ -63,6 +64,12 @@ const router = createRouter({
           path: 'discover/similar/:source/:externalId',
           name: 'discover-similar',
           component: SimilarMediaView,
+          props: true,
+        },
+        {
+          path: 'discover/person/:source/:personId',
+          name: 'discover-person',
+          component: PersonCreditsView,
           props: true,
         },
         {

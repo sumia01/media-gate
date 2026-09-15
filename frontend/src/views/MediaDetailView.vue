@@ -16,7 +16,15 @@ import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 import SubtitleList from '@/components/media/SubtitleList.vue'
 import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
 import { useEventStream } from '@/composables/useEventStream'
-import type { Library, MediaFile, MediaItem, MediaItemUpdate, MediaProfile, SeasonSummary } from '@/types/api'
+import type {
+  CreditPerson,
+  Library,
+  MediaFile,
+  MediaItem,
+  MediaItemUpdate,
+  MediaProfile,
+  SeasonSummary,
+} from '@/types/api'
 import { formatBytes, parseGenres, posterUrl, profileImageUrl } from '@/utils/media'
 import { mediaRequesterNames } from '@/utils/mediaRequests'
 
@@ -104,6 +112,17 @@ const trailerUrl = computed(() => metadata.value?.trailerUrl ?? null)
 const credits = computed(() => metadata.value?.credits ?? [])
 const cast = computed(() => credits.value.filter((c) => c.type === 'cast'))
 const crew = computed(() => credits.value.filter((c) => c.type === 'crew'))
+
+function personCreditsRoute(person: CreditPerson) {
+  return {
+    name: 'discover-person',
+    params: {
+      source: person.source || metadata.value?.source || 'tmdb',
+      personId: person.personId ?? 0,
+    },
+    query: { name: person.name, image: person.image },
+  }
+}
 
 async function fetchItem(id: number, includeRelated = true) {
   const request = ++itemRequest
@@ -540,6 +559,7 @@ function handleSubtitleEvent(data: any) {
 }
 
 function loadAll() {
+  if (route.name !== 'media-detail') return
   const id = Number(route.params.id)
   if (item.value?.id !== id) {
     activeTab.value = 'details'
@@ -579,6 +599,7 @@ onMounted(() => {
   }
 })
 onUnmounted(() => {
+  itemRequest++
   for (const type of mediaEvents) {
     off(type, handleMediaEvent)
   }
@@ -841,28 +862,30 @@ watch(() => route.params.id, loadAll)
           </div>
 
           <!-- Cast -->
-          <div v-if="cast.length" class="hidden md:block mb-6">
+          <div v-if="cast.length" class="mb-6">
             <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Cast</h3>
-            <div class="flex flex-wrap gap-3">
-              <div
+            <div class="flex gap-3 overflow-x-auto pb-2 md:flex-wrap md:overflow-visible md:pb-0">
+              <router-link
                 v-for="(person, i) in cast"
                 :key="'cast-' + i"
-                class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#161b2e] border border-violet-900/20"
+                :to="personCreditsRoute(person)"
+                class="flex min-w-48 items-center gap-2.5 rounded-lg border border-violet-900/20 bg-[#161b2e] px-3 py-2 transition-colors hover:border-violet-500/40 hover:bg-violet-950/20 focus-visible:outline-2 focus-visible:outline-violet-400 md:min-w-0"
               >
                 <div class="w-8 h-8 rounded-full bg-violet-900/30 flex-shrink-0 overflow-hidden">
                   <img
                     v-if="profileImageUrl(person)"
                     :src="profileImageUrl(person)!"
-                    :alt="person.name"
+                    alt=""
                     class="w-full h-full object-cover"
                     @error="($event.target as HTMLImageElement).style.display = 'none'"
+                    @load="($event.target as HTMLImageElement).style.display = ''"
                   />
                 </div>
                 <div class="min-w-0">
                   <p class="text-sm text-gray-200 truncate">{{ person.name }}</p>
                   <p class="text-[11px] text-gray-500 truncate">{{ person.role }}</p>
                 </div>
-              </div>
+              </router-link>
             </div>
           </div>
 

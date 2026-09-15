@@ -17,6 +17,7 @@ designed for a homelab or lightweight server.
 ### Discover, request, and organize media
 
 - Browse recently added local media plus TMDB trending, popular, and similar-title feeds.
+- Open cast members from media details and browse their acting credits in separate movie and series sections.
 - Search TMDB and TVDB globally or from a library, inspect an external preview, and identify titles already in the local library.
 - Add movies or series to a selected library as requests, optionally selecting a quality profile and monitoring scope.
 - Track cumulative requesters while retaining the original request scope: title, whole series, future seasons, season, or individual episode.
@@ -78,8 +79,8 @@ designed for a homelab or lightweight server.
 
 | Service | Implemented use |
 | --- | --- |
-| TMDB | Movie/series metadata, artwork, trailers, discovery, and similar titles |
-| TVDB | Series metadata and episode data |
+| TMDB | Movie/series/person metadata, artwork, trailers, discovery, similar titles, and acting credits |
+| TVDB | Series metadata, episode data, and person identity bridging to TMDB |
 | qBittorrent | Torrent submission, status polling, file inspection, and cleanup |
 | Cardigann/Prowlarr definitions | Torrent indexer configuration and search |
 | FlareSolverr | Optional support for protected indexers |
