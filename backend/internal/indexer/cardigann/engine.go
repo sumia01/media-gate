@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -154,23 +155,23 @@ func (e *Engine) Login(ctx context.Context) error {
 	// page that must be present on the subsequent POST, otherwise login fails.
 	preReq, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL, nil)
 	if err != nil {
-		return fmt.Errorf("creating login pre-request: %w", err)
+		return fmt.Errorf("creating login pre-request: %w", redactURLError(err))
 	}
 	preResp, err := e.doRequest(preReq)
 	if err != nil {
-		return fmt.Errorf("login pre-request: %w", err)
+		return fmt.Errorf("login pre-request: %w", redactURLError(err))
 	}
 	preResp.Body.Close()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, loginURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return fmt.Errorf("creating login request: %w", err)
+		return fmt.Errorf("creating login request: %w", redactURLError(err))
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := e.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("login request: %w", err)
+		return fmt.Errorf("login request: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -260,12 +261,12 @@ func (e *Engine) verifyLogin(ctx context.Context) error {
 	testURL := e.resolveURL(e.def.Login.Test.Path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testURL, nil)
 	if err != nil {
-		return fmt.Errorf("creating login test request: %w", err)
+		return fmt.Errorf("creating login test request: %w", redactURLError(err))
 	}
 
 	resp, err := e.doRequest(req)
 	if err != nil {
-		return fmt.Errorf("login test request: %w", err)
+		return fmt.Errorf("login test request: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -346,7 +347,7 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating search request: %w", err)
+		return nil, fmt.Errorf("creating search request: %w", redactURLError(err))
 	}
 
 	for name, vals := range e.def.Search.Headers {
@@ -359,16 +360,26 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		}
 	}
 
+	start := time.Now()
 	resp, err := e.doRequest(req)
 	if err != nil {
-		return nil, fmt.Errorf("search request: %w", err)
+		return nil, fmt.Errorf("search request: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
+	finalURL := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = redactURL(resp.Request.URL.String())
+	}
 	slog.Debug("indexer search response",
 		"indexer", e.def.ID,
 		"status", resp.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"final_url", finalURL,
 		"content_type", resp.Header.Get("Content-Type"),
+		"content_encoding", resp.Header.Get("Content-Encoding"),
+		"content_length", resp.ContentLength,
+		"retry_after", resp.Header.Get("Retry-After"),
 	)
 
 	if resp.StatusCode != http.StatusOK {
@@ -380,15 +391,19 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 		return nil, fmt.Errorf("reading search response: %w", err)
 	}
 
-	slog.Debug("indexer search response body",
-		"indexer", e.def.ID,
-		"body_length", len(body),
-		"body_preview", truncate(string(body), 2000),
-	)
-
-	// JSON response path.
-	if e.def.Search.Paths[0].Response.Type == "json" {
-		return e.parseRowsJSON(body, tmplCtx)
+	responseType := e.def.Search.Paths[0].Response.Type
+	if responseType == "json" {
+		results, err := e.parseRowsJSON(body, tmplCtx)
+		if err != nil {
+			return nil, err
+		}
+		slog.Debug("indexer search parsed",
+			"indexer", e.def.ID,
+			"response_type", "json",
+			"body_length", len(body),
+			"results", len(results),
+		)
+		return results, nil
 	}
 
 	// HTML response path.
@@ -399,13 +414,20 @@ func (e *Engine) Search(ctx context.Context, query SearchQuery) ([]SearchResult,
 
 	rowSelector := e.def.Search.Rows.Selector
 	rowCount := doc.Find(rowSelector).Length()
-	slog.Debug("indexer search row matching",
+	results, err := e.parseRows(doc, tmplCtx)
+	if err != nil {
+		return nil, err
+	}
+	slog.Debug("indexer search parsed",
 		"indexer", e.def.ID,
+		"response_type", "html",
+		"body_length", len(body),
 		"row_selector", rowSelector,
 		"rows_found", rowCount,
+		"results", len(results),
 	)
 
-	return e.parseRows(doc, tmplCtx)
+	return results, nil
 }
 
 // FetchDownload fetches a download URL using the engine's authenticated session.
@@ -458,7 +480,7 @@ func (e *Engine) FetchDownload(ctx context.Context, downloadURL string) ([]byte,
 func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating download request: %w", err)
+		return nil, fmt.Errorf("creating download request: %w", redactURLError(err))
 	}
 
 	// Apply search.headers (e.g. x-milkie-auth) to download requests too.
@@ -479,7 +501,7 @@ func (e *Engine) fetchURL(ctx context.Context, url string) ([]byte, error) {
 
 	resp, err := e.doRequest(req)
 	if err != nil {
-		return nil, fmt.Errorf("download request: %w", err)
+		return nil, fmt.Errorf("download request: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -521,10 +543,10 @@ type flareSolverrResponse struct {
 }
 
 type flareSolverrSolution struct {
-	URL     string                `json:"url"`
-	Status  int                   `json:"status"`
-	Cookies []flareSolverrCookie  `json:"cookies"`
-	Headers map[string]string     `json:"headers"`
+	URL      string               `json:"url"`
+	Status   int                  `json:"status"`
+	Cookies  []flareSolverrCookie `json:"cookies"`
+	Headers  map[string]string    `json:"headers"`
 	Response string               `json:"response"`
 }
 
@@ -562,14 +584,14 @@ func (e *Engine) doFlareSolverr(ctx context.Context, targetURL string) (*http.Re
 		strings.TrimRight(fsURL, "/")+"/v1",
 		bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("creating FlareSolverr request: %w", err)
+		return nil, fmt.Errorf("creating FlareSolverr request: %w", redactURLError(err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("FlareSolverr request failed: %w", err)
+		return nil, fmt.Errorf("FlareSolverr request failed: %w", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -578,7 +600,7 @@ func (e *Engine) doFlareSolverr(ctx context.Context, targetURL string) (*http.Re
 		return nil, fmt.Errorf("decoding FlareSolverr response: %w", err)
 	}
 	if fsResp.Status != "ok" {
-		return nil, fmt.Errorf("FlareSolverr error: %s", fsResp.Message)
+		return nil, fmt.Errorf("FlareSolverr error: %s", redactURLsInText(fsResp.Message))
 	}
 
 	// Inject cookies from FlareSolverr into the engine's jar for subsequent requests.
@@ -618,7 +640,11 @@ func (e *Engine) doRequest(req *http.Request) (*http.Response, error) {
 		slog.Debug("routing through FlareSolverr", "indexer", e.def.ID, "url", redactURL(req.URL.String()))
 		return e.doFlareSolverr(req.Context(), req.URL.String())
 	}
-	return e.httpClient.Do(req)
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return nil, redactURLError(err)
+	}
+	return resp, nil
 }
 
 func (e *Engine) parseRows(doc *goquery.Document, tmplCtx *TemplateContext) ([]SearchResult, error) {
@@ -737,11 +763,11 @@ func (e *Engine) buildSearchResult(fields map[string]string, tmplCtx *TemplateCo
 	}
 
 	r := &SearchResult{
-		Title:       fields["title"],
-		Details:     e.maybeResolveURL(fields["details"]),
-		Download:    e.maybeResolveURL(fields["download"]),
-		Size:        fields["size"],
-		ImdbID:      extractImdbID(fields["imdbid"]),
+		Title:    fields["title"],
+		Details:  e.maybeResolveURL(fields["details"]),
+		Download: e.maybeResolveURL(fields["download"]),
+		Size:     fields["size"],
+		ImdbID:   extractImdbID(fields["imdbid"]),
 	}
 
 	r.Category, r.CategoryDesc = e.mapCategory(fields["category"])
@@ -820,16 +846,65 @@ func (e *Engine) resolveURL(path string) string {
 	return e.baseURL + "/" + strings.TrimLeft(path, "/")
 }
 
-// redactURL strips query parameters from a URL for safe logging.
+// redactURL strips userinfo, query parameters, and fragments for safe logging.
 func redactURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "[invalid-url]"
 	}
+	if u.User != nil {
+		u.User = url.User("redacted")
+	}
 	if u.RawQuery != "" {
 		u.RawQuery = "[redacted]"
 	}
+	if u.Fragment != "" {
+		u.Fragment = "redacted"
+		u.RawFragment = ""
+	}
 	return u.String()
+}
+
+var (
+	urlPattern       = regexp.MustCompile(`(?i)https?://[^\s"'<>]+`)
+	quotedURLPattern = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+)
+
+// redactURLsInText sanitizes HTTP URLs and quoted URL references in error text.
+func redactURLsInText(s string) string {
+	// net/http quotes redirect locations and parse errors, including relative
+	// references. Decode the whole quoted value so escaped quotes cannot hide keys.
+	s = quotedURLPattern.ReplaceAllStringFunc(s, func(quoted string) string {
+		raw, err := strconv.Unquote(quoted)
+		if err != nil {
+			return quoted
+		}
+		if !strings.ContainsAny(raw, "?#") && !strings.Contains(raw, "://") && !strings.HasPrefix(raw, "//") {
+			return quoted
+		}
+		return strconv.Quote(redactURL(raw))
+	})
+	return urlPattern.ReplaceAllStringFunc(s, redactURL)
+}
+
+// redactedError wraps an error whose message may contain credential-bearing
+// URLs. Error() returns the redacted text while Unwrap preserves the original
+// chain so errors.Is/errors.As keep working.
+type redactedError struct {
+	err error
+}
+
+func (e *redactedError) Error() string { return redactURLsInText(e.err.Error()) }
+
+func (e *redactedError) Unwrap() error { return e.err }
+
+// redactURLError sanitizes the full rendered message, including URLs echoed by
+// inner HTTP errors, while preserving the original chain for errors.Is/As.
+func redactURLError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &redactedError{err: err}
 }
 
 func (e *Engine) maybeResolveURL(val string) string {
@@ -915,13 +990,6 @@ func parseFloat(s string, defaultVal float64) float64 {
 		return defaultVal
 	}
 	return f
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "...[truncated]"
 }
 
 // --- JSON response support ---

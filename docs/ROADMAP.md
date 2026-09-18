@@ -658,7 +658,18 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Resolve TVDB people through exact TMDB remote identities and legacy TMDB credits through exact name/profile matches without ambiguous name guessing
 - [x] Provider, mapping, contract, type-check, lint, test, and production-build coverage
 
+## Phase 10.4: Indexer Diagnostic Logging Hardening ✅
+→ See ADR-147
+
+- [x] Remove raw search-response previews so provider HTML/JSON and embedded account keys are not dumped to DEBUG logs
+- [x] Add response status/timing, redacted final URL, content metadata, and `Retry-After` diagnostics
+- [x] Consolidate body-size and parsing diagnostics into `indexer search parsed`, with result counts for HTML/JSON and candidate row counts for HTML
+- [x] Redact URL userinfo, query strings, and fragments in indexer request failures and FlareSolverr error messages, including quoted relative URLs inside malformed-redirect errors
+- [x] Preserve enclosing error context and original cause traversal for cancellation, deadlines, and typed timeout checks
+- [x] Regression coverage for body-content exclusion, malformed absolute/relative redirects, escaped quotes, text/JSON warning logs, and nested error-chain preservation
+
 ## Known Bugs ⬜
+- [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding

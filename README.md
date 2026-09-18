@@ -246,6 +246,14 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Hot-swappable TracerProvider and LoggerProvider (noop when disabled)
 - Automatic HTTP span propagation via shared instrumented client
 - Configurable from the UI: enable/disable, endpoint, service name, log level
+- With `LOG_LEVEL=debug`, indexer searches report HTTP status, request duration, redacted final URL, content metadata, and `Retry-After` without logging response bodies
+- Parsed-result diagnostics include response type and body size; HTML searches also show candidate row and usable result counts to distinguish empty pages from failed row extraction
+- Indexer request errors redact URL userinfo, query strings, and fragments, including nested errors from malformed absolute or relative redirects, while retaining useful failure context
+
+Indexer URL hosts and paths remain visible for diagnosis: credentials embedded in
+path segments are not masked, and existing log archives are not rewritten. See
+[ADR-147](docs/DECISIONS.md#adr-147-indexer-diagnostics-log-metadata-and-sanitize-rendered-errors)
+for the logging contract and redaction limits.
 
 ## Integrations
 
