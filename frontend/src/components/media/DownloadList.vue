@@ -307,8 +307,8 @@ watch(() => props.refreshKey, fetchDownloads)
         >
           <!-- Download row -->
           <div class="px-4 py-3 rounded-lg bg-[#161b2e] border border-violet-900/20">
-            <div class="flex items-start justify-between gap-4">
-              <div class="min-w-0 flex-1">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+              <div class="min-w-0 lg:flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
                   <!-- Status badge -->
                   <span
@@ -373,16 +373,16 @@ watch(() => props.refreshKey, fetchDownloads)
                 <!-- Speed display -->
                 <div
                   v-if="(dl.status === 'downloading' || dl.status === 'seeding') && (dl.downloadSpeed || dl.uploadSpeed)"
-                  class="mt-1 flex items-center gap-3 text-[10px] text-gray-500"
+                  class="mt-1 flex flex-wrap items-center gap-3 text-[10px] text-gray-500"
                 >
-                  <span v-if="dl.downloadSpeed"><ArrowDown class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.downloadSpeed) }}</span>
-                  <span v-if="dl.uploadSpeed"><ArrowUp class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.uploadSpeed) }}</span>
+                  <span v-if="dl.downloadSpeed" class="whitespace-nowrap"><ArrowDown class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.downloadSpeed) }}</span>
+                  <span v-if="dl.uploadSpeed" class="whitespace-nowrap"><ArrowUp class="w-3 h-3 inline-block" /> {{ formatSpeed(dl.uploadSpeed) }}</span>
                 </div>
               </div>
 
               <!-- Right side: size + actions -->
-              <div class="flex items-center gap-2 flex-shrink-0">
-                <span v-if="dl.size" class="text-xs text-gray-500">{{ formatSize(dl.size) }}</span>
+              <div class="flex flex-wrap items-center gap-2 lg:flex-shrink-0">
+                <span v-if="dl.size" class="text-xs text-gray-500 whitespace-nowrap">{{ formatSize(dl.size) }}</span>
 
                 <!-- Tracker link -->
                 <a
@@ -499,8 +499,8 @@ watch(() => props.refreshKey, fetchDownloads)
           :key="dl.id"
           class="px-4 py-3 rounded-lg bg-[#161b2e] border border-emerald-900/20"
         >
-          <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0 flex-1">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+            <div class="min-w-0 lg:flex-1">
               <div class="flex items-center gap-2 flex-wrap">
                 <!-- Imported badge -->
                 <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300">
@@ -529,8 +529,8 @@ watch(() => props.refreshKey, fetchDownloads)
             </div>
 
             <!-- Right side: size + delete -->
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <span v-if="dl.size" class="text-xs text-gray-500">{{ formatSize(dl.size) }}</span>
+            <div class="flex flex-wrap items-center gap-2 lg:flex-shrink-0">
+              <span v-if="dl.size" class="text-xs text-gray-500 whitespace-nowrap">{{ formatSize(dl.size) }}</span>
 
               <!-- Tracker link -->
               <a

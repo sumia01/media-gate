@@ -37,7 +37,7 @@ Command sources: [Makefile](Makefile), [frontend/package.json](frontend/package.
 
 - Add or update regression tests for changed behavior. Start with focused tests, then run affected backend/frontend suites and lint. Run `make build` for API or embedded-asset integration changes. Never rely on cached Go test results.
 - Use the disposable harness for UI/API interaction, auth, SSE, migrations, workers, imports, integration protocols, or multi-service changes. It complements focused regression tests; its smoke flow does not cover every feature or replace browser checks.
-- For visible UI changes, check the affected flow at desktop and mobile sizes. Preserve the existing Vue/Tailwind design language.
+- For visible UI changes, check the affected flow at desktop, tablet (including sidebar-visible layouts), and mobile sizes. Preserve the existing Vue/Tailwind design language.
 - For documentation-only changes, verify commands/references and run `git diff --check`; runtime suites are unnecessary unless behavior changed. Report blocked or skipped checks, not assumed passes. Inspect [.github/workflows](.github/workflows) before assuming CI enforces a check.
 
 ### Disposable Harness

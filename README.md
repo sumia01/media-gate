@@ -140,6 +140,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - qBittorrent health check: skips sending if unreachable to avoid burning retries
 - Real-time progress, speed, and ETA tracking
 - Inspect torrent file list per download
+- Responsive media-detail download and library-copy cards: controls wrap below the content on phones and tablets, keeping titles, timestamps, and progress readable
 - Paginated all-downloads history: newest 30 initially, then 100 more per click, with status filters applied before pagination
 - Download completion date on every finished row: exact qBittorrent time for new downloads, closest recorded `Downloaded by` time for legacy history
 - Dual path support: local mount path vs qBittorrent NAS mount override

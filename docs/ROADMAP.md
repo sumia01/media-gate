@@ -670,6 +670,7 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
+- [x] Media-detail download and library-copy cards squeezed titles, timestamps, and progress behind a fixed action row on mobile — stack content and wrapping controls below 1024px, including tablet layouts with the sidebar, and keep size/speed labels intact
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked
 - [x] BitHU indexer search returns no results despite connection test succeeding
