@@ -57,7 +57,10 @@ const seasonMonitorMediaItemId = ref<number | null>(null)
 const showMonitorSettings = ref(false)
 // Settings carried from the edit dialog into the season-selection step, merged
 // into the single PATCH the season modal's confirm sends.
-const pendingMonitorSettings = ref<{ mediaProfileId?: number; preferredRelease: string } | null>(null)
+const pendingMonitorSettings = ref<Pick<
+  MonitorSettingsPayload,
+  'mediaProfileId' | 'preferredRelease' | 'forceRelease'
+> | null>(null)
 const showSubtitleSearch = ref(false)
 const subtitleSearchSeason = ref<number | undefined>()
 const subtitleSearchEpisode = ref<number | undefined>()
@@ -283,6 +286,7 @@ async function onMonitorSettingsNext(payload: MonitorSettingsPayload) {
   pendingMonitorSettings.value = {
     mediaProfileId: payload.mediaProfileId,
     preferredRelease: payload.preferredRelease,
+    forceRelease: payload.forceRelease,
   }
   seasonMonitorSeasons.value = seasons
   seasonMonitorNewSeasons.value = payload.monitorNewSeasons
@@ -342,6 +346,7 @@ async function onSeasonMonitorConfirm(
   if (pendingMonitorSettings.value) {
     update.mediaProfileId = pendingMonitorSettings.value.mediaProfileId
     update.preferredRelease = pendingMonitorSettings.value.preferredRelease
+    update.forceRelease = pendingMonitorSettings.value.forceRelease
     pendingMonitorSettings.value = null
   }
   if (await updateMediaItem(update, mediaItemId)) episodeRefreshKey.value++

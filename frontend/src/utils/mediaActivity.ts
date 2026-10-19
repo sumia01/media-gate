@@ -31,6 +31,7 @@ const knownActions = new Set([
 const fieldLabels: Record<string, string> = {
   media_profile: 'Media profile',
   preferred_release: 'Preferred release',
+  force_release: 'Only matching releases',
   title: 'Title',
   year: 'Year',
   status: 'Status',

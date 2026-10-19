@@ -246,6 +246,33 @@ func TestPreferReleases(t *testing.T) {
 	})
 }
 
+func TestFilterByRelease(t *testing.T) {
+	results := []TorrentResult{
+		{Title: "Show.1080p-OTHER"},
+		{Title: "Show.1080p-FLUX"},
+		{Title: "Show.720p-ethel.PROPER"},
+	}
+	for _, tc := range []struct {
+		name     string
+		keywords string
+		input    []TorrentResult
+		want     []string
+	}{
+		{"any keyword matches in ranked order", " ETHEL, , flux ", results, titles(results[1:])},
+		{"no match blocks all", "MISSING", results, nil},
+		{"empty is unrestricted", "", results, titles(results)},
+		{"commas and whitespace are unrestricted", " , , ", results, titles(results)},
+		{"single non-match is rejected", "ETHEL", results[:1], nil},
+		{"single match is kept", "flux", results[1:2], titles(results[1:2])},
+		{"empty results", "FLUX", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertTitles(t, FilterByRelease(tc.input, tc.keywords), tc.want)
+		})
+	}
+	assertTitles(t, results, []string{"Show.1080p-OTHER", "Show.1080p-FLUX", "Show.720p-ethel.PROPER"})
+}
+
 func TestMatchesPreferredRelease(t *testing.T) {
 	tests := []struct {
 		name      string

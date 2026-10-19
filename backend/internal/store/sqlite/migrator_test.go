@@ -72,6 +72,7 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	//
 	// Extend this list whenever a post-baseline migration adds schema.
 	for _, stmt := range []string{
+		`ALTER TABLE media_items DROP COLUMN force_release`,
 		`ALTER TABLE media_metadata DROP COLUMN content_ratings`,
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 		`DROP TABLE monitor_decisions`,
@@ -104,6 +105,9 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	}
 	if got.PreferredRelease != "ETHEL" {
 		t.Errorf("preferred_release changed on adoption: got %q, want %q", got.PreferredRelease, "ETHEL")
+	}
+	if !got.ForceRelease {
+		t.Error("force_release should default on after legacy adoption")
 	}
 
 	gotMeta, err := s2.GetMediaMetadataByMediaItem(item.ID)
@@ -195,13 +199,14 @@ func TestFreshInstallSchema(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&v); err != nil {
 		t.Fatalf("reading schema_migrations: %v", err)
 	}
-	if v != 10 || latestMigrationVersion != 10 {
-		t.Errorf("fresh install version = %d and latestMigrationVersion = %d, want both 10", v, latestMigrationVersion)
+	if v != 11 || latestMigrationVersion != 11 {
+		t.Errorf("fresh install version = %d and latestMigrationVersion = %d, want both 11", v, latestMigrationVersion)
 	}
 
 	mustHaveColumn(t, sqlDB, "media_metadata", "trailer_url")
 	mustHaveColumn(t, sqlDB, "media_metadata", "content_ratings")
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
+	mustHaveColumn(t, sqlDB, "media_items", "force_release")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
 	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
 	mustHaveColumn(t, sqlDB, "monitor_decisions", "input_updated_at")
@@ -237,6 +242,9 @@ func TestMediaActivityMigrationFromVersionNineDoesNotBackfill(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
+		t.Fatalf("stripping version 11 schema: %v", err)
+	}
 	down, err := migrationsFS.ReadFile(migrationsDir + "/0010_media_activity.down.sql")
 	if err != nil {
 		t.Fatalf("reading 0010 down migration: %v", err)
@@ -264,8 +272,8 @@ func TestMediaActivityMigrationFromVersionNineDoesNotBackfill(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatalf("reading migrated version: %v", err)
 	}
-	if version != 10 {
-		t.Fatalf("migrated version = %d, want 10", version)
+	if version != latestMigrationVersion {
+		t.Fatalf("migrated version = %d, want %d", version, latestMigrationVersion)
 	}
 	if err := sqlDB.QueryRow(`SELECT count(*) FROM media_activity`).Scan(&activityCount); err != nil {
 		t.Fatalf("counting migrated activity: %v", err)
@@ -332,6 +340,9 @@ func TestMediaActivityMigrationRollbackAndReapply(t *testing.T) {
 	}
 	defer m.Close()
 
+	if err := m.Migrate(10); err != nil {
+		t.Fatalf("restoring version 10 schema: %v", err)
+	}
 	if err := m.Steps(-1); err != nil {
 		t.Fatalf("rolling back 0010: %v", err)
 	}
@@ -422,6 +433,9 @@ func TestMediaActivityMigrationRollbackRefusesIdentityCollision(t *testing.T) {
 	}
 	defer m.Close()
 
+	if err := m.Migrate(10); err != nil {
+		t.Fatalf("restoring version 10 schema: %v", err)
+	}
 	if err := m.Steps(-1); err == nil {
 		t.Fatal("rollback with old-key movie/series collision succeeded")
 	}
@@ -473,6 +487,7 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 	sqlDB, _ := s1.db.DB()
 	// Recreate version 3, including removal of tables/indexes added afterward.
 	for _, stmt := range []string{
+		`ALTER TABLE media_items DROP COLUMN force_release`,
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 		`DROP TABLE monitor_decisions`,
 		`DROP INDEX idx_episodes_air_date`,
@@ -523,6 +538,9 @@ func TestMediaRequestsMigrationPreservesExistingData(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
+		t.Fatalf("dropping force_release: %v", err)
+	}
 	if _, err := sqlDB.Exec(`DROP TABLE media_requests`); err != nil {
 		t.Fatalf("dropping media_requests: %v", err)
 	}
@@ -581,6 +599,9 @@ func TestRequestIntentScopesMigrationPreservesVersionEightRows(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
+		t.Fatalf("dropping force_release: %v", err)
+	}
 	if _, err := sqlDB.Exec(`DROP TABLE media_activity`); err != nil {
 		t.Fatalf("dropping media_activity: %v", err)
 	}

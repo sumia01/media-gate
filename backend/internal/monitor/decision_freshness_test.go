@@ -243,6 +243,21 @@ func TestAutoDownloadRejectsSelectionWhenParentChangesDuringSearch(t *testing.T)
 			},
 		},
 		{
+			name:      "force release mode parent touch",
+			mediaType: "movie",
+			title:     "Show.1080p-OLD",
+			touch: func(t *testing.T, _ *Service, st *decisionTestStore, item *store.MediaItem) {
+				fresh, err := st.GetMediaItem(item.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fresh.ForceRelease = !fresh.ForceRelease
+				if err := st.UpdateMediaItem(fresh); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
 			name:      "preferred release parent touch",
 			mediaType: "movie",
 			title:     "Show.1080p-OLD",

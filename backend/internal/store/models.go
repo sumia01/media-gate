@@ -33,7 +33,8 @@ type MediaItem struct {
 	MonitorNewSeasons      bool `gorm:"not null;default:true"`
 	MonitorSearchStartedAt *time.Time
 	DeletionPending        bool   `gorm:"not null;default:false"`
-	PreferredRelease       string `gorm:"not null;default:''"` // comma-separated keywords preferred when auto-grabbing releases
+	PreferredRelease       string `gorm:"not null;default:''"`   // comma-separated keywords preferred when auto-grabbing releases
+	ForceRelease           bool   `gorm:"not null;default:true"` // restrict auto-grabs to matching keywords when the list is non-empty
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }

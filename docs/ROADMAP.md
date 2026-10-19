@@ -523,7 +523,7 @@
 - [x] ~20+ frontend files converted to use Lucide components
 
 ## Phase 9.0: Preferred release & auto-download editing ✅
-→ See ADR-123
+→ See ADR-123; soft-only selection is extended by ADR-148 / Phase 10.5
 - [x] Per-item `PreferredRelease` field (comma-separated keywords) on media items
 - [x] Soft preference: `indexer.PreferReleases` stably floats title-substring matches to the front of the already-profile-ranked list; when nothing matches, the normal best-ranked release is still grabbed (never blocks a download)
 - [x] Applied in `monitor.filterByProfile` so both movie (`filtered[0]`) and series (`findBestForEpisode`) auto-grab pick it up; runs even when no quality profile is set
@@ -668,8 +668,20 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Preserve enclosing error context and original cause traversal for cancellation, deadlines, and typed timeout checks
 - [x] Regression coverage for body-content exclusion, malformed absolute/relative redirects, escaped quotes, text/JSON warning logs, and nested error-chain preservation
 
+## Phase 10.5: Forced Release Selection ✅
+→ See ADR-148
+
+- [x] Per-item, default-on **Only matching releases** switch reuses the existing comma-separated keywords; require any case-insensitive title-substring match after profile filtering/ranking, or wait when no release matches
+- [x] Disabling force mode restores the original soft preference; empty/whitespace/comma-only lists remain unrestricted, and manual searches/downloads remain explicit overrides
+- [x] Migration `0011` enables force mode for new and existing media without changing saved keyword lists; persist explicit false values across updates and restarts
+- [x] OpenAPI `forceRelease` read/update contract: PATCH omission preserves the saved mode, responses include false, and settings/history commit together
+- [x] Carry release mode through the series season-selection step in one PATCH; retain final input-version checks so concurrent settings changes cannot authorize stale automatic grabs
+- [x] Keep the settings body scrollable and header/footer visible on short screens without changing the shared modal; verify desktop, sidebar-visible tablet, portrait mobile, and 667×375 / 568×320 landscape layouts with and without quality profiles
+- [x] Backend filter/selection/freshness/API/history/migration regression tests, frontend settings/series-flow/layout coverage, and fake-backed monitor plus built-binary smoke verification
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
+- [x] Auto-download settings pushed Save/Next/Cancel below short landscape viewports — scroll only the settings body and prevent heading/title/footer shrink; see Phase 10.5
 - [x] Media-detail download and library-copy cards squeezed titles, timestamps, and progress behind a fixed action row on mobile — stack content and wrapping controls below 1024px, including tablet layouts with the sidebar, and keep size/speed labels intact
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1
 - [x] Indexer test button tests ALL configured indexers instead of only the one clicked

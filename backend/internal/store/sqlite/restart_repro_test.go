@@ -31,6 +31,7 @@ func TestMediaItemFieldsSurviveRestart(t *testing.T) {
 	}
 	item.PreferredRelease = "ETHEL"
 	item.MonitorNewSeasons = false // non-default, so a reset-to-default is detectable
+	item.ForceRelease = false
 	if err := s1.UpdateMediaItem(item); err != nil {
 		t.Fatalf("UpdateMediaItem: %v", err)
 	}
@@ -51,5 +52,8 @@ func TestMediaItemFieldsSurviveRestart(t *testing.T) {
 	}
 	if got.MonitorNewSeasons != false {
 		t.Errorf("monitor_new_seasons lost on restart: got %v, want false", got.MonitorNewSeasons)
+	}
+	if got.ForceRelease {
+		t.Error("force_release reset to true on restart")
 	}
 }

@@ -29,7 +29,7 @@ designed for a homelab or lightweight server.
 
 - Automatically match local items to TMDB or TVDB, with confidence scoring and manual search, match, unmatch, and re-match controls.
 - Display stored metadata including artwork, overview, genres, ratings, runtime, release date, content ratings, IMDb link, trailer, cast, crew, files, and episodes.
-- Support per-library defaults and per-item overrides for media profiles, monitoring, future-season monitoring, and preferred release keywords.
+- Support library-default and per-item media profiles, plus per-item monitoring, future-season monitoring, and release keywords with default-on forced matching or optional soft preference.
 - Track movie/series availability from actual files and, for monitored series, the selected aired-episode coverage.
 - Maintain a read-only Activity tab with cursor-paginated media history, requester attribution, watched changes, metadata/resync actions, direct user actions, and the latest automatic-search diagnostic.
 
@@ -37,7 +37,7 @@ designed for a homelab or lightweight server.
 
 - Monitor movies, entire series, seasons, or individual episodes using the hierarchy episode override, then season setting, then unmonitored.
 - Optionally monitor newly discovered seasons and choose a season-pack strategy: prefer packs, prefer episodes, or packs only.
-- Run an automatic-search worker that finds suitable releases for monitored media, applies profile filtering/ranking and preferred-release ordering, avoids duplicates and repeatedly failed releases, and queues selected downloads.
+- Run an automatic-search worker that finds suitable releases for monitored media, applies profile filtering/ranking and forced-release filtering or preferred-release ordering, avoids duplicates and repeatedly failed releases, and queues selected downloads.
 - Show a followed-series episode timeline with past and future air dates, availability and monitoring state, and download status.
 - Persist the latest automatic-search decision, including no-result, blocked, partial-provider-failure, stale-input, and selected-release context.
 - Refresh monitored series metadata in the background to add newly available seasons and episodes and reconcile earlier downloads with newly created episode records.

@@ -2275,3 +2275,17 @@ TMDB IDs are used directly. A TVDB person ID is resolved through `/people/{id}/e
 **Limits**: This is targeted URL redaction, not a general secret detector. Hosts and path segments remain visible; path-embedded credentials are a tracked follow-up. Quoted diagnostics containing URL delimiters can be conservatively over-redacted. HTTP client decoding can affect observed content headers/length, and synthetic responses may lack them. Existing log archives and provider credentials are not modified.
 
 **Verification**: `backend/internal/indexer/cardigann/engine_logging_test.go` covers response-body exclusion, diagnostic fields, URL redaction, full error-chain preservation, and local `httptest` redirects with absolute, root-relative, path-relative, and escaped-quote locations. The malformed-redirect cases reproduced the leak before the fix and verify both returned errors and text/JSON warning logs afterward.
+
+## ADR-148: Default-on forced release keywords with optional soft preference
+**Date**: 2026-10-18
+**Status**: Accepted; partially supersedes ADR-123
+
+**Context**: Soft preferred-release ordering can download an unwanted release when no listed keyword matches. Users need an explicit way to wait for one of their listed releases instead.
+
+**Decision**: Keep the existing comma-separated `preferredRelease` keywords and add per-item `forceRelease`. Migration `0011` defaults the mode on for new and existing items without changing saved keywords. After quality-profile filtering/ranking, force mode keeps only releases matching at least one keyword; disabling it retains ADR-123's stable soft preference. Matching remains case-insensitive substring matching shared with manual-search annotations. Empty/whitespace/comma-only lists never restrict selection. Season-pack preference still selects among eligible results, and existing final input-version checks reject selections made before a settings change.
+
+The auto-download settings modal exposes a default-on “Only matching releases” switch, preserves explicitly saved false values, and carries the mode through the series season-selection step. Its settings body can shrink and scroll independently while the heading, media title, and action footer remain visible on short screens; the shared `BaseModal` is unchanged. PATCH omission preserves the saved mode; responses include false explicitly. Mode changes and their settings activity commit together. Manual searches and explicit manual grabs remain unrestricted overrides, as with quality profiles; the mode only controls automatic grabs and never cancels existing downloads.
+
+**Rationale**: A separate mode preserves the useful soft behavior while making strict waiting the default. Reusing the current keyword list and profile-ranked selection pipeline avoids a competing matching or ranking policy.
+
+**Verification**: Regression tests cover hard/soft selection for movies and series, profile-ranked ordering, empty keywords, stale-selection suppression, API false/omitted values, transactional activity rollback, migration defaults/constraints/downgrades, restart persistence, and the series settings flow. A structural frontend regression protects the scroll-body/non-shrinking header-footer layout; disposable browser checks verify actual bounds, scrolling, Save/Next, and Cancel on desktop, tablet, portrait mobile, and 667×375 / 568×320 landscape viewports with and without profiles. Fake tracker/qBittorrent checks verify strict no-match waiting, soft fallback, and the built-binary search-to-import smoke flow.

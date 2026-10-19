@@ -336,6 +336,7 @@ func TestMonitorDecisionBoundedAndSafe(t *testing.T) {
 func TestMonitorPreferredReleaseAndPackThresholdPreserved(t *testing.T) {
 	svc, st, search, item := newDecisionTest(t, "series")
 	item.PreferredRelease = "PREFERRED"
+	item.ForceRelease = false
 	search.results = []indexer.TorrentResult{
 		{Title: "Show.S01.Complete.1080p-OTHER", DownloadURL: "other"},
 		{Title: "Show.S01.Complete.1080p-PREFERRED", DownloadURL: "preferred"},
@@ -514,6 +515,7 @@ search:
 					t.Fatal(err)
 				}
 				item.MediaProfileID, item.PreferredRelease = &profile.ID, "PREFERRED"
+				item.ForceRelease = false
 				idxSvc, err := indexer.NewService(st, svc.settings, cache)
 				if err != nil {
 					t.Fatal(err)

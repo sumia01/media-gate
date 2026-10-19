@@ -87,6 +87,10 @@ test('targets and typed changes use natural safe wording', () => {
     'Season 2: off -> on (effective state remains off)',
   )
   assert.equal(fieldChangeText({ field: 'media_profile', before: 'HD', after: 'UHD' }), 'Media profile: HD -> UHD')
+  assert.equal(
+    fieldChangeText({ field: 'force_release', before: 'true', after: 'false' }),
+    'Only matching releases: true -> false',
+  )
   assert.equal(activityTargetLabel({ scope: 'unknown', title: 'Misleading title' }), 'Unknown scope')
 })
 

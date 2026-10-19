@@ -164,11 +164,16 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Toggle entire seasons (clears episode-level overrides)
 - Auto-monitor new seasons when they appear
 - Profile-based filtering of search results before grabbing
+- Per-item, comma-separated release keywords in the media-detail auto-download settings; matching is case-insensitive against the release title
+- Default-on **Only matching releases** mode waits for a release matching any listed keyword after quality-profile filtering. Turn it off to prefer matching releases but allow the best-ranked fallback; an empty list never restricts selection, and manual downloads remain explicit overrides
+- Scrollable auto-download settings keep the heading and Save/Next/Cancel buttons visible on short screens, including landscape phones
 - Imported releases use actual library-file coverage, so an incomplete season pack does not hide missing episodes; already imported release URLs remain deduplicated
 - Unnumbered `Special` releases require an explicit episode selection instead of being treated as full season packs
 - Latest auto-download decision on the read-only Activity tab: release/profile counts, blocklisted selections, existing downloads, missing metadata, and actual grabs
 - Distinguishes no enabled indexers, genuine empty searches, and partial/complete indexer failures
 - Persists one bounded snapshot per item (up to 50 details), keeping the evaluated input version separate from completion time so settings changes during a search remain visibly stale
+
+**Upgrade note:** forced matching defaults on for existing items too, preserving their saved keyword lists. Turn off **Only matching releases** on an item to retain the previous soft-preference behavior. Existing downloads are not cancelled or replaced.
 
 ### Metadata Refresh
 

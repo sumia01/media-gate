@@ -343,7 +343,7 @@ func TestDirectMonitoringActivityCapturesInheritanceDisableAndFinalBulkState(t *
 }
 
 func TestActivityAppendFailureRollsBackDirectMediaMutations(t *testing.T) {
-	for _, kind := range []string{"media", "settings", "season", "episode"} {
+	for _, kind := range []string{"media", "settings", "force release", "season", "episode"} {
 		t.Run(kind, func(t *testing.T) {
 			h, st, item, ctx := monitorToggleFixture(t)
 			if err := st.UpsertEpisodeMonitor(&store.EpisodeMonitor{MediaItemID: item.ID, SeasonNumber: 1, EpisodeNumber: 1, Monitored: true}); err != nil {
@@ -370,6 +370,11 @@ func TestActivityAppendFailureRollsBackDirectMediaMutations(t *testing.T) {
 				preferred := "NEW-GROUP"
 				_, err = h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{
 					Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{PreferredRelease: &preferred},
+				})
+			case "force release":
+				forced := false
+				_, err = h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{
+					Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{ForceRelease: &forced},
 				})
 			case "season":
 				_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{

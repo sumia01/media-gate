@@ -126,6 +126,8 @@ async function mountView(t) {
       if (path === '/media/{id}') return { data: item(options.params.path.id) }
       if (path === '/libraries/{id}') return { data: { id: 10, name: 'Shows', path: '/shows', mediaType: 'series' } }
       if (path === '/media/{id}/files') return { data: { files: [] } }
+      if (path === '/media/{id}/episodes')
+        return { data: { seasons: [{ seasonNumber: 1, monitored: true, episodes: [] }] } }
       if (path === '/media-profiles') return { data: { profiles: [] } }
       if (path === '/settings') return { data: { settings: {} } }
       if (path === '/watched/check') return { data: { watched: false } }
@@ -335,6 +337,29 @@ test('activity and metadata events refresh only the current item without opening
   await settle()
   tabs = findAll(view.root, (entry) => entry.props.role === 'tab')
   assert.equal(tabs[1].props['aria-selected'], true, 'ordinary same-item refresh preserves Activity')
+})
+
+test('series settings keep force mode through season selection in one PATCH', async (t) => {
+  const view = await mountView(t)
+  for (const forceRelease of [false, true]) {
+    findAll(view.root, (entry) => entry.props.title === 'Edit auto-download settings')[0].props.onClick()
+    await settle()
+    const settings = findAll(view.root, (entry) => entry.text === 'settings modal')[0]
+    await settings.props.onNext({
+      monitored: true,
+      monitorNewSeasons: true,
+      preferredRelease: 'ETHEL, FLUX',
+      forceRelease,
+    })
+    await settle()
+    const seasons = findAll(view.root, (entry) => entry.text === 'season modal')[0]
+    await seasons.props.onConfirm([{ seasonNumber: 1, monitored: true }], true, [])
+    await settle()
+    assert.equal(view.mutations.at(-1).method, 'PATCH')
+    assert.equal(view.mutations.at(-1).options.body.forceRelease, forceRelease)
+    assert.equal(view.mutations.at(-1).options.body.preferredRelease, 'ETHEL, FLUX')
+  }
+  assert.equal(view.mutations.length, 2, 'only the season confirmation persists settings')
 })
 
 test('cast links retain person identity without refetching the outgoing media route', async (t) => {

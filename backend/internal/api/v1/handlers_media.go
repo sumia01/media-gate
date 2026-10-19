@@ -178,6 +178,9 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 		if req.Body.PreferredRelease != nil {
 			current.PreferredRelease = *req.Body.PreferredRelease
 		}
+		if req.Body.ForceRelease != nil {
+			current.ForceRelease = *req.Body.ForceRelease
+		}
 		if err := tx.UpdateMediaItem(current); err != nil {
 			return err
 		}
@@ -211,7 +214,7 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 		if err != nil {
 			return err
 		}
-		fieldChanges := make([]store.MediaActivityFieldChange, 0, 2)
+		fieldChanges := make([]store.MediaActivityFieldChange, 0, 3)
 		if profileID != nil && !sameUintPointers(beforeItem.MediaProfileID, afterItem.MediaProfileID) {
 			var beforeProfile *store.MediaProfile
 			if beforeItem.MediaProfileID != nil {
@@ -231,6 +234,11 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 		if req.Body.PreferredRelease != nil && beforeItem.PreferredRelease != afterItem.PreferredRelease {
 			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{
 				Field: "preferred_release", Before: stringPointer(beforeItem.PreferredRelease), After: stringPointer(afterItem.PreferredRelease),
+			})
+		}
+		if req.Body.ForceRelease != nil && beforeItem.ForceRelease != afterItem.ForceRelease {
+			fieldChanges = append(fieldChanges, store.MediaActivityFieldChange{
+				Field: "force_release", Before: stringPointer(fmt.Sprint(beforeItem.ForceRelease)), After: stringPointer(fmt.Sprint(afterItem.ForceRelease)),
 			})
 		}
 

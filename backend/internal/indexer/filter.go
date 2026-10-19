@@ -168,6 +168,22 @@ func PreferReleases(results []TorrentResult, preferred string) []TorrentResult {
 	return append(preferredResults, rest...)
 }
 
+// FilterByRelease keeps only results matching at least one release keyword,
+// preserving their profile-ranked order. An empty keyword list is unrestricted.
+func FilterByRelease(results []TorrentResult, preferred string) []TorrentResult {
+	keywords := parsePreferredKeywords(preferred)
+	if len(keywords) == 0 {
+		return results
+	}
+	filtered := make([]TorrentResult, 0, len(results))
+	for _, r := range results {
+		if fileparse.ContainsExcludedTagLower(r.Title, keywords) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
 // MatchesPreferredRelease reports whether a torrent title matches any of the
 // comma-separated preferred-release keywords (case-insensitive substring).
 // Mirrors the matching PreferReleases uses, exposed for per-result annotation.

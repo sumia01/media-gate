@@ -512,9 +512,10 @@ func (s *Service) filterByProfile(results []indexer.TorrentResult, item *store.M
 		globalTags := s.loadGlobalExcludeTags()
 		filtered = indexer.FilterByMediaProfile(results, profile, globalTags...)
 	}
-	// Soft per-item preferred-release boost: stably float matching releases to
-	// the top so the picker (first match) grabs them, without blocking grabs
-	// when nothing matches. Runs even when no profile is set.
+	// Release restrictions and preferences apply even without a quality profile.
+	if item.ForceRelease {
+		return indexer.FilterByRelease(filtered, item.PreferredRelease)
+	}
 	return indexer.PreferReleases(filtered, item.PreferredRelease)
 }
 

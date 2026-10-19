@@ -121,7 +121,7 @@ func searchDecision(total, eligible int, diagnostics indexer.SearchDiagnostics) 
 	case total == 0:
 		d = decisionDetail("no_results", fmt.Sprintf("No releases were returned by %d successful indexers.", diagnostics.Attempted-diagnostics.Failed))
 	case eligible == 0:
-		d = decisionDetail("profile_rejected", "All returned releases were rejected by the quality profile or global exclusions.")
+		d = decisionDetail("profile_rejected", "All returned releases were rejected by the quality profile, global exclusions, or forced release keywords.")
 	}
 	d.TotalResults = total
 	d.RejectedResults = total - eligible
