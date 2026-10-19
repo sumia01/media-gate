@@ -27,6 +27,7 @@ For a clean checkout, run these **in order**: `make tools` at the root, `npm ci`
 | `backend/` | `go test -count=1 ./internal/crypto/...` | Example focused package test |
 | `backend/` | `golangci-lint run ./...` | Backend lint |
 | `frontend/` | `npm test` | Frontend regression tests |
+| `frontend/` | `npm audit` | Known dependency advisories, including development/build tooling |
 | `frontend/` | `npm run type-check` | Vue/TypeScript checks |
 | `frontend/` | `npm run lint` | Biome checks; `npm run lint:fix` applies fixes |
 | `frontend/` | `npm run build` | Type-check and Vite production build |
@@ -36,6 +37,7 @@ Command sources: [Makefile](Makefile), [frontend/package.json](frontend/package.
 ## Verification
 
 - Add or update regression tests for changed behavior. Start with focused tests, then run affected backend/frontend suites and lint. Run `make build` for API or embedded-asset integration changes. Never rely on cached Go test results.
+- For frontend dependency updates, keep `package.json` and `package-lock.json` together, prefer compatible patched releases, and preserve cross-platform optional dependency entries. Verify clean `npm ci`, full `npm audit` (including development dependencies), frontend tests/type-check/lint, and `make build`.
 - Use the disposable harness for UI/API interaction, auth, SSE, migrations, workers, imports, integration protocols, or multi-service changes. It complements focused regression tests; its smoke flow does not cover every feature or replace browser checks.
 - For visible UI changes, check the affected flow at desktop, tablet (including sidebar-visible layouts), and mobile sizes. For modals and suggestion lists, also verify inputs and action controls remain visible at short viewport heights. Preserve the existing Vue/Tailwind design language.
 - For documentation-only changes, verify commands/references and run `git diff --check`; runtime suites are unnecessary unless behavior changed. Report blocked or skipped checks, not assumed passes. Inspect [.github/workflows](.github/workflows) before assuming CI enforces a check.

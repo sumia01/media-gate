@@ -328,8 +328,14 @@ Run backend tests without cached results and use Node.js 24 for the frontend reg
 ```bash
 (cd backend && go test -count=1 ./...)
 (cd frontend && npm test)
+(cd frontend && npm audit) # include development/build dependencies
 scripts/lint-all.sh   # run from the repository root; check both linter outputs
 ```
+
+Frontend dependency updates are recorded in `frontend/package-lock.json`; use
+`npm ci` in `frontend/` to install the reviewed versions. Audit the full tree,
+including build tooling. The production binary still embeds the frontend and
+does not require a Node.js runtime.
 
 ### Production build
 

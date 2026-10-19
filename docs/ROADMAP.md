@@ -702,6 +702,14 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Keep fuzzy behavior strictly in autocomplete; automatic download eligibility and manual match annotations retain their case-insensitive substring rules
 - [x] Uncached backend and frontend regression suites, both linters, type-checking, and the generated-API/embedded-frontend production build
 
+## Phase 10.8: Frontend Dependency Security Refresh ✅
+
+- [x] Raise direct dependency minimums to Vue `3.5.44` and Vite `7.3.7`, retaining the existing major versions
+- [x] Update vulnerable transitive dependencies, including `shell-quote`, Babel, Redocly/JS-YAML, PostCSS, esbuild, and source-map tooling, without forced upgrades or overrides
+- [x] Preserve cross-platform optional dependency entries and verify reproducible `npm ci`; full `npm audit`, including development dependencies, reports zero findings as checked on 2026-10-19 (previously 14, including one critical)
+- [x] Verify backend/frontend regression suites, both linters, type-checking, full production build, fake-only local and built-binary harness smoke flows, and desktop/tablet/mobile browser interactions
+- [x] Document full-tree dependency auditing; no application behavior, API, configuration, or database changes
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7
