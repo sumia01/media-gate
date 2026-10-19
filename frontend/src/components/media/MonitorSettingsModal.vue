@@ -12,7 +12,9 @@ export type MonitorSettingsPayload = {
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
+import ReleaseKeywordsInput from '@/components/media/ReleaseKeywordsInput.vue'
 import type { MediaItem, MediaProfile } from '@/types/api'
+import { parseReleaseKeywords } from '@/utils/releaseKeywords'
 
 const props = defineProps<{
   item: MediaItem
@@ -32,8 +34,14 @@ const isSeries = props.item.mediaType === 'series'
 const monitored = ref(props.item.monitored ?? false)
 const monitorNewSeasons = ref(props.item.monitorNewSeasons ?? true)
 const mediaProfileId = ref<number | null>(props.item.mediaProfileId ?? null)
-const preferredRelease = ref(props.item.preferredRelease ?? '')
+const preferredRelease = ref((props.item.preferredRelease ?? '').toLowerCase())
+const settingsBody = ref<HTMLDivElement | null>(null)
 const forceRelease = ref(props.item.forceRelease ?? true)
+const hasReleaseKeywords = computed(() => parseReleaseKeywords(preferredRelease.value).length > 0)
+const releaseLabel = computed(() => {
+  if (!hasReleaseKeywords.value) return 'Release keywords'
+  return forceRelease.value ? 'Forced releases' : 'Preferred releases'
+})
 
 // A monitored series continues to a season-selection step, mirroring the add flow.
 const needsSeasonStep = computed(() => monitored.value && isSeries)
@@ -43,7 +51,7 @@ function onSave() {
     monitored: monitored.value,
     monitorNewSeasons: monitorNewSeasons.value,
     mediaProfileId: mediaProfileId.value ?? undefined,
-    preferredRelease: preferredRelease.value.trim(),
+    preferredRelease: parseReleaseKeywords(preferredRelease.value).join(', '),
     forceRelease: forceRelease.value,
   }
   if (needsSeasonStep.value) {
@@ -59,7 +67,7 @@ function onSave() {
     <h3 class="text-base font-semibold text-gray-100 mb-1 flex-shrink-0">Auto-download settings</h3>
     <p class="text-xs text-gray-500 mb-4 truncate flex-shrink-0">{{ item.title }}</p>
 
-    <div class="min-h-0 overflow-y-auto">
+    <div ref="settingsBody" class="min-h-0 overflow-y-auto">
       <!-- Auto-download toggle -->
       <div class="mb-3 px-1">
         <label class="flex items-center gap-3 cursor-pointer">
@@ -112,16 +120,14 @@ function onSave() {
       <!-- Release keywords and selection mode -->
       <div v-if="monitored" class="mb-4 px-1">
         <label for="release-keywords" class="block text-xs text-gray-500 mb-1.5">
-          {{ forceRelease ? 'Forced releases' : 'Preferred releases' }}
+          {{ releaseLabel }}
         </label>
-        <input
+        <ReleaseKeywordsInput
           id="release-keywords"
           v-model="preferredRelease"
-          type="text"
-          placeholder="e.g. ETHEL, FLUX"
-          class="w-full text-sm bg-[#161b2e] border border-violet-900/20 rounded-lg px-3 py-2 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-violet-500/50"
+          :scroll-container="settingsBody"
         />
-        <div class="flex items-center gap-3 mt-3">
+        <div v-if="hasReleaseKeywords" class="flex items-center gap-3 mt-3">
           <button
             type="button"
             role="switch"
@@ -139,14 +145,14 @@ function onSave() {
           </button>
           <span id="force-release-label" class="text-sm text-gray-300">Only matching releases</span>
         </div>
-        <p id="release-mode-help" class="text-xs text-gray-500 mt-1.5">
+        <p v-if="hasReleaseKeywords" id="release-mode-help" class="text-xs text-gray-500 mt-1.5">
           {{ forceRelease
             ? 'Auto-download only releases matching at least one keyword. If none match, wait for a matching release.'
             : 'Prefer matching releases when available; otherwise auto-download the best-ranked release.' }}
         </p>
         <p class="text-xs text-gray-500 mt-1.5">
-          Comma-separated keywords matched against the release title. Leave empty for no restriction
-          or preference. Manual downloads are unaffected.
+          Comma-separated, case-insensitive keywords. Previously saved keywords are suggested as you
+          type. Leave empty for no restriction or preference. Manual downloads are unaffected.
         </p>
       </div>
     </div>

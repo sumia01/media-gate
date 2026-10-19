@@ -484,6 +484,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /release-keywords:
+    get:
+      operationId: listReleaseKeywords
+      tags: [media]
+      summary: Suggest the current user's previously saved release keywords
+      description: Returns up to 10 lowercase keywords matching a case-insensitive literal prefix. Only successful media settings saves add history; it survives media deletion and is removed with the user. Keywords longer than 256 characters remain valid filters but are not collected for autocomplete.
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+      responses:
+        "200":
+          description: Previously saved keywords belonging only to the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keywords]
+                properties:
+                  keywords:
+                    type: array
+                    maxItems: 10
+                    items:
+                      type: string
+                      maxLength: 256
+        "400":
+          description: Invalid prefix
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /media/external-ids:
     get:
       operationId: getMediaExternalIds
@@ -3091,7 +3133,7 @@ components:
           type: boolean
         preferredRelease:
           type: string
-          description: Comma-separated release title keywords (case-insensitive substring match). Empty string clears the release restriction or preference.
+          description: Comma-separated release title keywords (case-insensitive substring match), normalized to lowercase, trimmed, and deduplicated on save. Empty string clears the release restriction or preference. Successful saves remember keywords for the current user's autocomplete history.
         forceRelease:
           type: boolean
           description: Require a preferredRelease keyword match for automatic downloads when the keyword list is non-empty. False restores soft preference; omitted leaves the saved mode unchanged.

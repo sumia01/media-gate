@@ -69,6 +69,8 @@ type Store interface {
 	GetMediaItemByExternalID(libraryID uint, source string, externalID int) (*MediaItem, error)
 	ListMonitoredMediaItems() ([]MediaItem, error)
 	ListRecentMediaItems(limit int) ([]MediaItem, error)
+	RememberReleaseKeywords(userID uint, keywords []string) error
+	ListReleaseKeywords(userID uint, prefix string) ([]string, error)
 
 	CreateMediaRequest(request *MediaRequest) error
 	ListMediaRequestsByMediaItem(mediaItemID uint) ([]MediaRequestAttribution, error)

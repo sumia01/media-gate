@@ -33,6 +33,9 @@ func TestForceReleaseMigrationDefaultsAndPreservesSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
+	if err := m.Migrate(11); err != nil {
+		t.Fatalf("restoring version 11 schema: %v", err)
+	}
 	if err := m.Steps(-1); err != nil {
 		t.Fatalf("rolling back force-release migration: %v", err)
 	}
@@ -53,7 +56,7 @@ func TestForceReleaseMigrationDefaultsAndPreservesSettings(t *testing.T) {
 		!got.UpdatedAt.Equal(before.UpdatedAt) || !got.CreatedAt.Equal(before.CreatedAt) {
 		t.Fatalf("migration changed settings or failed to default on: %+v", got)
 	}
-	if version, dirty, err := driver.Version(); err != nil || version != 11 || dirty {
+	if version, dirty, err := driver.Version(); err != nil || version != latestMigrationVersion || dirty {
 		t.Fatalf("upgrade version = %d dirty=%v err=%v", version, dirty, err)
 	}
 	// Verify the database default and constraints independently of GORM defaults.

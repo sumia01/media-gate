@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/auth"
+	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
@@ -176,7 +178,11 @@ func (h *Handlers) UpdateMediaItem(ctx context.Context, req UpdateMediaItemReque
 			current.MonitorNewSeasons = *req.Body.MonitorNewSeasons
 		}
 		if req.Body.PreferredRelease != nil {
-			current.PreferredRelease = *req.Body.PreferredRelease
+			keywords := fileparse.ParseReleaseKeywords(*req.Body.PreferredRelease)
+			current.PreferredRelease = strings.Join(keywords, ", ")
+			if err := tx.RememberReleaseKeywords(userID, keywords); err != nil {
+				return err
+			}
 		}
 		if req.Body.ForceRelease != nil {
 			current.ForceRelease = *req.Body.ForceRelease

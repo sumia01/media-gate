@@ -296,6 +296,22 @@ func TestMatchesPreferredRelease(t *testing.T) {
 	}
 }
 
+func TestReleaseKeywordCaseMatrix(t *testing.T) {
+	for _, keyword := range []string{"Ethel", "ETHEL", "EtHeL", "ethel"} {
+		for _, group := range []string{"Ethel", "ETHEL", "EtHeL", "ethel"} {
+			t.Run(keyword+"/"+group, func(t *testing.T) {
+				title := "Show.S01E01.1080p-" + group
+				results := []TorrentResult{{Title: "Show.S01E01-OTHER"}, {Title: title}}
+				if !MatchesPreferredRelease(title, keyword) {
+					t.Fatal("manual search annotation failed case-insensitive match")
+				}
+				assertTitles(t, FilterByRelease(results, keyword), []string{title})
+				assertTitles(t, PreferReleases(results, keyword), []string{title, results[0].Title})
+			})
+		}
+	}
+}
+
 func assertTitles(t *testing.T, got []TorrentResult, want []string) {
 	t.Helper()
 	gotTitles := titles(got)

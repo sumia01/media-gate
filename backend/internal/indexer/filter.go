@@ -3,7 +3,6 @@ package indexer
 import (
 	"encoding/json"
 	"sort"
-	"strings"
 
 	"github.com/sumia01/media-gate/internal/fileparse"
 	"github.com/sumia01/media-gate/internal/store"
@@ -149,7 +148,7 @@ func FilterByMediaProfile(results []TorrentResult, profile *store.MediaProfile, 
 // an empty string is a no-op. This is a soft preference: when nothing matches,
 // the original (already profile-ranked) order is returned unchanged.
 func PreferReleases(results []TorrentResult, preferred string) []TorrentResult {
-	keywords := parsePreferredKeywords(preferred)
+	keywords := fileparse.ParseReleaseKeywords(preferred)
 	if len(keywords) == 0 || len(results) < 2 {
 		return results
 	}
@@ -171,7 +170,7 @@ func PreferReleases(results []TorrentResult, preferred string) []TorrentResult {
 // FilterByRelease keeps only results matching at least one release keyword,
 // preserving their profile-ranked order. An empty keyword list is unrestricted.
 func FilterByRelease(results []TorrentResult, preferred string) []TorrentResult {
-	keywords := parsePreferredKeywords(preferred)
+	keywords := fileparse.ParseReleaseKeywords(preferred)
 	if len(keywords) == 0 {
 		return results
 	}
@@ -188,28 +187,11 @@ func FilterByRelease(results []TorrentResult, preferred string) []TorrentResult 
 // comma-separated preferred-release keywords (case-insensitive substring).
 // Mirrors the matching PreferReleases uses, exposed for per-result annotation.
 func MatchesPreferredRelease(title, preferred string) bool {
-	keywords := parsePreferredKeywords(preferred)
+	keywords := fileparse.ParseReleaseKeywords(preferred)
 	if len(keywords) == 0 {
 		return false
 	}
 	return fileparse.ContainsExcludedTagLower(title, keywords)
-}
-
-// parsePreferredKeywords splits a comma-separated preferred-release string into
-// lowercased, trimmed, non-empty keywords.
-func parsePreferredKeywords(preferred string) []string {
-	if strings.TrimSpace(preferred) == "" {
-		return nil
-	}
-	parts := strings.Split(preferred, ",")
-	keywords := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.ToLower(strings.TrimSpace(p))
-		if p != "" {
-			keywords = append(keywords, p)
-		}
-	}
-	return keywords
 }
 
 // MatchesMediaProfile checks if a single torrent result matches the given media profile.

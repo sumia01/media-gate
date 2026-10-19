@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import { compileScript, parse } from '@vue/compiler-sfc'
 import ts from 'typescript'
 import * as Vue from 'vue'
+import * as releaseKeywords from '../releaseKeywords.ts'
 
 const { descriptor } = parse(
   readFileSync(new URL('../../components/media/MonitorSettingsModal.vue', import.meta.url), 'utf8'),
@@ -16,6 +17,8 @@ const exports = {}
 new Function('require', 'exports', outputText)((name) => {
   if (name === 'vue') return Vue
   if (name === '@/components/BaseModal.vue') return { default: {} }
+  if (name === '@/components/media/ReleaseKeywordsInput.vue') return { default: {} }
+  if (name === '@/utils/releaseKeywords') return releaseKeywords
   assert.fail(`unexpected import: ${name}`)
 }, exports)
 
@@ -43,8 +46,25 @@ test('release mode defaults on and preserves an explicitly saved false', () => {
     state.onSave()
     assert.equal(events[0][0], 'save')
     assert.equal(events[0][1].forceRelease, expected)
-    assert.equal(events[0][1].preferredRelease, 'ETHEL, FLUX')
+    assert.equal(events[0][1].preferredRelease, 'ethel, flux')
   }
+})
+
+test('empty keyword lists hide the mode controls without resetting the saved mode', () => {
+  const { state, events } = setup({ mediaType: 'movie', forceRelease: false, preferredRelease: 'ETHEL' })
+  assert.equal(state.preferredRelease.value, 'ethel')
+  assert.equal(state.hasReleaseKeywords.value, true)
+  for (const value of ['', ' ', ', , ']) {
+    state.preferredRelease.value = value
+    assert.equal(state.hasReleaseKeywords.value, false)
+    assert.equal(state.releaseLabel.value, 'Release keywords')
+    state.onSave()
+    assert.equal(events.at(-1)[1].forceRelease, false)
+    assert.equal(events.at(-1)[1].preferredRelease, '')
+  }
+  state.preferredRelease.value = 'flux'
+  assert.equal(state.hasReleaseKeywords.value, true)
+  assert.equal(state.releaseLabel.value, 'Preferred releases')
 })
 
 test('toggle edits and blank keywords survive the monitored series next step', () => {
@@ -73,12 +93,18 @@ test('short modals scroll their settings while keeping the heading and actions o
   assert.ok(scroller, 'settings need their own vertically scrollable body')
   assert.ok(classes(scroller).includes('min-h-0'), 'body must shrink below its content height')
   assert.ok(
-    find(scroller, (node) => node.tag === 'input'),
+    find(scroller, (node) => node.tag === 'ReleaseKeywordsInput'),
     'release keywords belong in the scrollable body',
   )
   assert.ok(
     find(scroller, (node) => node.props.some((prop) => prop.name === 'role' && prop.value?.content === 'switch')),
   )
+  const modeControls = find(scroller, (node) =>
+    elements(node).some((child) =>
+      child.props.some((prop) => prop.name === 'role' && prop.value?.content === 'switch'),
+    ),
+  )
+  assert.ok(modeControls.props.some((prop) => prop.name === 'if' && prop.exp?.content === 'hasReleaseKeywords'))
 
   const heading = children.find((node) => node.tag === 'h3')
   const title = children.find((node) => node.tag === 'p')

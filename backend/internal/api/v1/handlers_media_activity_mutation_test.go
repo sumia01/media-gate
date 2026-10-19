@@ -203,7 +203,7 @@ func TestUpdateMediaItemAppendsMonitoringAndSafeSettingsWithSharedOperation(t *t
 	}
 	wantFields := map[string][2]string{
 		"media_profile":     {"Old profile (ID " + profileIDString(oldProfile.ID) + ")", "New profile (ID " + profileIDString(newProfile.ID) + ")"},
-		"preferred_release": {"OLD-GROUP", "NEW-GROUP"},
+		"preferred_release": {"OLD-GROUP", "new-group"},
 	}
 	for _, change := range settingsDetails.FieldChanges {
 		want, ok := wantFields[change.Field]

@@ -72,6 +72,7 @@ func TestAdoptExistingDatabasePreservesData(t *testing.T) {
 	//
 	// Extend this list whenever a post-baseline migration adds schema.
 	for _, stmt := range []string{
+		`DROP TABLE release_keywords`,
 		`ALTER TABLE media_items DROP COLUMN force_release`,
 		`ALTER TABLE media_metadata DROP COLUMN content_ratings`,
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
@@ -199,14 +200,15 @@ func TestFreshInstallSchema(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT version FROM schema_migrations LIMIT 1`).Scan(&v); err != nil {
 		t.Fatalf("reading schema_migrations: %v", err)
 	}
-	if v != 11 || latestMigrationVersion != 11 {
-		t.Errorf("fresh install version = %d and latestMigrationVersion = %d, want both 11", v, latestMigrationVersion)
+	if v != 12 || latestMigrationVersion != 12 {
+		t.Errorf("fresh install version = %d and latestMigrationVersion = %d, want both 12", v, latestMigrationVersion)
 	}
 
 	mustHaveColumn(t, sqlDB, "media_metadata", "trailer_url")
 	mustHaveColumn(t, sqlDB, "media_metadata", "content_ratings")
 	mustHaveColumn(t, sqlDB, "media_items", "preferred_release")
 	mustHaveColumn(t, sqlDB, "media_items", "force_release")
+	mustHaveColumn(t, sqlDB, "release_keywords", "keyword")
 	mustHaveColumn(t, sqlDB, "media_items", "monitor_new_seasons")
 	mustHaveColumn(t, sqlDB, "downloads", "downloaded_at")
 	mustHaveColumn(t, sqlDB, "monitor_decisions", "input_updated_at")
@@ -242,6 +244,9 @@ func TestMediaActivityMigrationFromVersionNineDoesNotBackfill(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`DROP TABLE release_keywords`); err != nil {
+		t.Fatalf("stripping version 12 schema: %v", err)
+	}
 	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
 		t.Fatalf("stripping version 11 schema: %v", err)
 	}
@@ -487,6 +492,7 @@ func TestDownloadedAtMigrationPreservesExistingDownloads(t *testing.T) {
 	sqlDB, _ := s1.db.DB()
 	// Recreate version 3, including removal of tables/indexes added afterward.
 	for _, stmt := range []string{
+		`DROP TABLE release_keywords`,
 		`ALTER TABLE media_items DROP COLUMN force_release`,
 		`ALTER TABLE downloads DROP COLUMN downloaded_at`,
 		`DROP TABLE monitor_decisions`,
@@ -538,6 +544,9 @@ func TestMediaRequestsMigrationPreservesExistingData(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`DROP TABLE release_keywords`); err != nil {
+		t.Fatalf("dropping release_keywords: %v", err)
+	}
 	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
 		t.Fatalf("dropping force_release: %v", err)
 	}
@@ -599,6 +608,9 @@ func TestRequestIntentScopesMigrationPreservesVersionEightRows(t *testing.T) {
 	}
 
 	sqlDB, _ := s1.db.DB()
+	if _, err := sqlDB.Exec(`DROP TABLE release_keywords`); err != nil {
+		t.Fatalf("dropping release_keywords: %v", err)
+	}
 	if _, err := sqlDB.Exec(`ALTER TABLE media_items DROP COLUMN force_release`); err != nil {
 		t.Fatalf("dropping force_release: %v", err)
 	}

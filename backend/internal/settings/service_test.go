@@ -57,6 +57,10 @@ func (s *settingsStubStore) GetMediaItemByExternalID(uint, string, int) (*store.
 }
 func (s *settingsStubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
 func (s *settingsStubStore) ListRecentMediaItems(int) ([]store.MediaItem, error) { return nil, nil }
+func (s *settingsStubStore) RememberReleaseKeywords(uint, []string) error { return nil }
+func (s *settingsStubStore) ListReleaseKeywords(uint, string) ([]string, error) {
+	return nil, nil
+}
 func (s *settingsStubStore) CreateMediaRequest(*store.MediaRequest) error        { return nil }
 func (s *settingsStubStore) ListMediaRequestsByMediaItem(uint) ([]store.MediaRequestAttribution, error) {
 	return nil, nil

@@ -679,8 +679,23 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Keep the settings body scrollable and header/footer visible on short screens without changing the shared modal; verify desktop, sidebar-visible tablet, portrait mobile, and 667×375 / 568×320 landscape layouts with and without quality profiles
 - [x] Backend filter/selection/freshness/API/history/migration regression tests, frontend settings/series-flow/layout coverage, and fake-backed monitor plus built-binary smoke verification
 
+## Phase 10.6: Personal Release Keyword Suggestions ✅
+→ See ADR-149
+
+- [x] Hide force/preferred controls for empty, whitespace-only, or comma-only input without resetting the saved force mode
+- [x] Lowercase input immediately and canonicalize saved keyword lists by trimming and case-insensitive deduplication
+- [x] Share the backend keyword parser between persistence, forced filtering, soft preference, and manual-search annotations; test every `Ethel` / `ETHEL` / `EtHeL` combination
+- [x] Migration `0012` stores per-user keyword history with case-insensitive uniqueness and user-deletion cascade, independent of media-item lifetime
+- [x] Authenticated, bounded `GET /release-keywords?prefix=...` returns only that user's saved names with literal, case-insensitive prefix matching
+- [x] Caret-aware comma-token suggestions support keyboard, pointer, and touch selection, skip already selected names, preserve the caret, and cancel/reject stale requests
+- [x] Fit multi-result dropdowns to the actual scroll-body height while retaining a visible input on short screens; keep the active token stable when arrows are pressed before results arrive
+- [x] Remember names only in successful settings transactions; failed saves and cancelled dialogs do not add history, and request failure never blocks manual input
+- [x] Canonicalization, user-isolation, literal-prefix, transaction-rollback, migration/restart, caret, request-cancellation, resize, and observer-cleanup regression coverage; verify real delayed-request keyboard behavior and multi-result dropdowns in the disposable browser harness
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
+- [x] Multi-result release suggestions scrolled the input out of short landscape viewports — fit the popup to the actual scroll body and reveal the input/list together, including after resize; see Phase 10.6
+- [x] Release autocomplete arrows moved the native caret to another comma token while debounce/network work was pending — consume native arrow movement before checking for available options; see Phase 10.6
 - [x] Auto-download settings pushed Save/Next/Cancel below short landscape viewports — scroll only the settings body and prevent heading/title/footer shrink; see Phase 10.5
 - [x] Media-detail download and library-copy cards squeezed titles, timestamps, and progress behind a fixed action row on mobile — stack content and wrapping controls below 1024px, including tablet layouts with the sidebar, and keep size/speed labels intact
 - [x] Unnumbered specials lost their selected episode during import/re-sync and same-provider re-match, while completed incomplete season packs suppressed missing-episode searches — see ADR-144 / Phase 10.1

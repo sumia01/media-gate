@@ -42,7 +42,7 @@ func TestUpdateMediaItemForceReleaseRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := readResponse.(GetMediaItem200JSONResponse)
-		if got.ForceRelease == nil || *got.ForceRelease != force || got.PreferredRelease == nil || *got.PreferredRelease != keywords {
+		if got.ForceRelease == nil || *got.ForceRelease != force || got.PreferredRelease == nil || *got.PreferredRelease != "ethel, flux" {
 			t.Fatalf("omitted mode changed saved settings: %+v", got)
 		}
 	}
