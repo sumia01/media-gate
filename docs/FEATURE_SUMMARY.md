@@ -30,7 +30,7 @@ designed for a homelab or lightweight server.
 - Automatically match local items to TMDB or TVDB, with confidence scoring and manual search, match, unmatch, and re-match controls.
 - Display stored metadata including artwork, overview, genres, ratings, runtime, release date, content ratings, IMDb link, trailer, cast, crew, files, and episodes.
 - Support library-default and per-item media profiles, plus per-item monitoring, future-season monitoring, and release keywords with default-on forced matching or optional soft preference.
-- Normalize release keywords to lowercase and suggest the current user's previously saved names across media items; hide the release-mode switch while the keyword list is empty.
+- Normalize release keywords to lowercase and offer the current user's previously saved names with fuzzy search in a floating, four-row scrollable dropdown that does not resize the form; hide the release-mode switch while the keyword list is empty.
 - Track movie/series availability from actual files and, for monitored series, the selected aired-episode coverage.
 - Maintain a read-only Activity tab with cursor-paginated media history, requester attribution, watched changes, metadata/resync actions, direct user actions, and the latest automatic-search diagnostic.
 

@@ -99,12 +99,16 @@ test('short modals scroll their settings while keeping the heading and actions o
   assert.ok(
     find(scroller, (node) => node.props.some((prop) => prop.name === 'role' && prop.value?.content === 'switch')),
   )
-  const modeControls = find(scroller, (node) =>
-    elements(node).some((child) =>
-      child.props.some((prop) => prop.name === 'role' && prop.value?.content === 'switch'),
-    ),
+  const modeRegion = find(scroller, (node) => node.props.some((prop) => prop.arg?.content === 'inert'))
+  assert.ok(
+    modeRegion.props.some((prop) => prop.arg?.content === 'inert' && prop.exp?.content === '!hasReleaseKeywords'),
   )
-  assert.ok(modeControls.props.some((prop) => prop.name === 'if' && prop.exp?.content === 'hasReleaseKeywords'))
+  assert.ok(modeRegion.props.some((prop) => prop.arg?.content === 'class' && prop.exp?.content.includes('invisible')))
+  assert.equal(
+    modeRegion.props.some((prop) => prop.name === 'if'),
+    false,
+    'hidden controls reserve their layout space',
+  )
 
   const heading = children.find((node) => node.tag === 'h3')
   const title = children.find((node) => node.tag === 'p')

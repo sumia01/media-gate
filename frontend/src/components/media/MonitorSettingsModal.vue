@@ -127,29 +127,36 @@ function onSave() {
           v-model="preferredRelease"
           :scroll-container="settingsBody"
         />
-        <div v-if="hasReleaseKeywords" class="flex items-center gap-3 mt-3">
-          <button
-            type="button"
-            role="switch"
-            :aria-checked="forceRelease"
-            aria-labelledby="force-release-label"
-            aria-describedby="release-mode-help"
-            class="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0 cursor-pointer"
-            :class="forceRelease ? 'bg-emerald-600' : 'bg-gray-600'"
-            @click="forceRelease = !forceRelease"
-          >
-            <span
-              class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
-              :class="forceRelease ? 'translate-x-4' : ''"
-            />
-          </button>
-          <span id="force-release-label" class="text-sm text-gray-300">Only matching releases</span>
+        <div
+          class="mt-3"
+          :class="{ invisible: !hasReleaseKeywords }"
+          :aria-hidden="!hasReleaseKeywords"
+          :inert="!hasReleaseKeywords"
+        >
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="forceRelease"
+              aria-labelledby="force-release-label"
+              aria-describedby="release-mode-help"
+              class="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0 cursor-pointer"
+              :class="forceRelease ? 'bg-emerald-600' : 'bg-gray-600'"
+              @click="forceRelease = !forceRelease"
+            >
+              <span
+                class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
+                :class="forceRelease ? 'translate-x-4' : ''"
+              />
+            </button>
+            <span id="force-release-label" class="text-sm text-gray-300">Only matching releases</span>
+          </div>
+          <p id="release-mode-help" class="text-xs text-gray-500 mt-1.5">
+            {{ forceRelease
+              ? 'Auto-download only releases matching at least one keyword. If none match, wait for a matching release.'
+              : 'Prefer matching releases when available; otherwise auto-download the best-ranked release.' }}
+          </p>
         </div>
-        <p v-if="hasReleaseKeywords" id="release-mode-help" class="text-xs text-gray-500 mt-1.5">
-          {{ forceRelease
-            ? 'Auto-download only releases matching at least one keyword. If none match, wait for a matching release.'
-            : 'Prefer matching releases when available; otherwise auto-download the best-ranked release.' }}
-        </p>
         <p class="text-xs text-gray-500 mt-1.5">
           Comma-separated, case-insensitive keywords. Previously saved keywords are suggested as you
           type. Leave empty for no restriction or preference. Manual downloads are unaffected.

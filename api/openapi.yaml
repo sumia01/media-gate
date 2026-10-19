@@ -489,7 +489,7 @@ paths:
       operationId: listReleaseKeywords
       tags: [media]
       summary: Suggest the current user's previously saved release keywords
-      description: Returns up to 10 lowercase keywords matching a case-insensitive literal prefix. Only successful media settings saves add history; it survives media deletion and is removed with the user. Keywords longer than 256 characters remain valid filters but are not collected for autocomplete.
+      description: Returns up to 10 lowercase saved-name suggestions ranked by case-insensitive exact, prefix, substring, ordered-subsequence, and single-typo/transposition matches. The prefix parameter contains the currently typed token. Fuzzy matching affects suggestions only, never download eligibility. Only successful media settings saves add history; it survives media deletion and is removed with the user. Keywords longer than 256 characters remain valid filters but are not collected for autocomplete.
       parameters:
         - name: prefix
           in: query

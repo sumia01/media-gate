@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -29,9 +30,45 @@ func (s *SQLiteStore) ListReleaseKeywords(userID uint, prefix string) ([]string,
 	if prefix == "" || utf8.RuneCountInString(prefix) > store.MaxReleaseKeywordLength {
 		return keywords, nil
 	}
-	pattern := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix) + "%"
-	err := s.db.Model(&store.ReleaseKeyword{}).
-		Where(`user_id = ? AND keyword LIKE ? ESCAPE '\'`, userID, pattern).
-		Order("keyword ASC").Limit(store.MaxReleaseKeywordSuggestions).Pluck("keyword", &keywords).Error
-	return keywords, err
+	// Stream only this user's vocabulary and retain a bounded best-match list.
+	// Applying a SQL limit first would silently miss non-prefix/fuzzy matches.
+	rows, err := s.db.Model(&store.ReleaseKeyword{}).Select("keyword").Where("user_id = ?", userID).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type match struct {
+		keyword string
+		score   int
+	}
+	matches := make([]match, 0, store.MaxReleaseKeywordSuggestions+1)
+	for rows.Next() {
+		var keyword string
+		if err := rows.Scan(&keyword); err != nil {
+			return nil, err
+		}
+		score := fileparse.ReleaseSuggestionScore(keyword, prefix)
+		if score < 0 {
+			continue
+		}
+		index := sort.Search(len(matches), func(i int) bool {
+			return matches[i].score > score || matches[i].score == score && matches[i].keyword > keyword
+		})
+		if index >= store.MaxReleaseKeywordSuggestions {
+			continue
+		}
+		matches = append(matches, match{})
+		copy(matches[index+1:], matches[index:])
+		matches[index] = match{keyword: keyword, score: score}
+		if len(matches) > store.MaxReleaseKeywordSuggestions {
+			matches = matches[:store.MaxReleaseKeywordSuggestions]
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, match := range matches {
+		keywords = append(keywords, match.keyword)
+	}
+	return keywords, nil
 }

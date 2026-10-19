@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import client from '@/api/client'
-import { insertReleaseKeyword, releaseKeywordToken } from '@/utils/releaseKeywords'
+import { insertReleaseKeyword, releaseKeywordPopupPosition, releaseKeywordToken } from '@/utils/releaseKeywords'
 
 const props = defineProps<{ id: string; modelValue: string; scrollContainer?: HTMLElement | null }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
-const control = ref<HTMLDivElement | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 const list = ref<HTMLUListElement | null>(null)
-const listMaxHeight = ref<string>()
+const popupPosition = ref<ReturnType<typeof releaseKeywordPopupPosition>>(null)
 const caret = ref(props.modelValue.length)
 const focused = ref(false)
 const dismissed = ref(false)
@@ -18,36 +17,60 @@ const loading = ref(false)
 const failed = ref(false)
 const token = computed(() => releaseKeywordToken(props.modelValue, caret.value))
 const listId = computed(() => `${props.id}-suggestions`)
-const expanded = computed(() => focused.value && !dismissed.value && suggestions.value.length > 0)
+const eligible = computed(() => token.value.prefix !== '' && [...token.value.prefix].length <= 256)
+const expanded = computed(() => focused.value && !dismissed.value && eligible.value)
+const status = computed(() => {
+  if (loading.value) return 'Searching saved keywords…'
+  if (failed.value) return 'Suggestions unavailable. You can still enter keywords.'
+  return suggestions.value.length ? `${suggestions.value.length} saved keywords found.` : 'No saved keywords match.'
+})
 
-async function revealSuggestions() {
-  await nextTick()
-  const container = props.scrollContainer
-  if (!expanded.value || !container || !input.value || !list.value) return
-  const inputBounds = input.value.getBoundingClientRect()
-  const gap = Math.max(0, list.value.getBoundingClientRect().top - inputBounds.bottom)
-  const available = Math.max(0, Math.floor(container.getBoundingClientRect().height - inputBounds.height - gap))
-  listMaxHeight.value = `min(9rem, ${available}px)`
-  await nextTick()
-  // Reveal the input and its fitted list together, never the list alone.
-  if (expanded.value) control.value?.scrollIntoView({ block: 'nearest' })
+function updatePopupPosition() {
+  if (!expanded.value || !input.value) {
+    popupPosition.value = null
+    return
+  }
+  const anchor = input.value.getBoundingClientRect()
+  const bounds = props.scrollContainer?.getBoundingClientRect()
+  if (bounds && (anchor.bottom <= bounds.top || anchor.top >= bounds.bottom)) {
+    popupPosition.value = null
+    return
+  }
+  const viewport = window.visualViewport
+  popupPosition.value = releaseKeywordPopupPosition(
+    anchor,
+    {
+      top: viewport?.offsetTop ?? 0,
+      left: viewport?.offsetLeft ?? 0,
+      width: viewport?.width ?? window.innerWidth,
+      height: viewport?.height ?? window.innerHeight,
+    },
+    suggestions.value.length,
+  )
 }
 
-watch(expanded, (isExpanded) => {
-  if (isExpanded) void revealSuggestions()
-})
+watch([expanded, () => suggestions.value.length, loading, failed], updatePopupPosition, { flush: 'post' })
 
 watch(
   [() => props.scrollContainer, input],
   ([container, field], _previous, onCleanup) => {
-    if (!container || !field) return
-    const observer = new ResizeObserver(() => {
-      if (expanded.value) void revealSuggestions()
-    })
-    observer.observe(container)
+    if (!field) return
+    const observer = new ResizeObserver(updatePopupPosition)
+    if (container) observer.observe(container)
     observer.observe(field)
-    onCleanup(() => observer.disconnect())
-    if (expanded.value) void revealSuggestions()
+    window.addEventListener('resize', updatePopupPosition)
+    window.addEventListener('scroll', updatePopupPosition, true)
+    const viewport = window.visualViewport
+    viewport?.addEventListener('resize', updatePopupPosition)
+    viewport?.addEventListener('scroll', updatePopupPosition)
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener('resize', updatePopupPosition)
+      window.removeEventListener('scroll', updatePopupPosition, true)
+      viewport?.removeEventListener('resize', updatePopupPosition)
+      viewport?.removeEventListener('scroll', updatePopupPosition)
+    })
+    updatePopupPosition()
   },
   { flush: 'post', immediate: true },
 )
@@ -55,15 +78,19 @@ watch(
 watch(
   [token, focused, dismissed],
   ([current, hasFocus, isDismissed], _previous, onCleanup) => {
-    suggestions.value = []
     active.value = -1
-    loading.value = false
     failed.value = false
-    if (!hasFocus || isDismissed || !current.prefix || [...current.prefix].length > 256) return
+    if (!hasFocus || isDismissed || !eligible.value) {
+      suggestions.value = []
+      loading.value = false
+      return
+    }
 
+    // Keep the existing popup steady during debounce/fetch, but do not allow
+    // stale options to be selected for the newly typed token.
+    loading.value = true
     const controller = new AbortController()
     const timeout = setTimeout(async () => {
-      loading.value = true
       try {
         const { data, error } = await client.GET('/release-keywords', {
           params: { query: { prefix: current.prefix } },
@@ -71,12 +98,17 @@ watch(
         })
         if (controller.signal.aborted) return
         if (error || !data) {
+          suggestions.value = []
           failed.value = true
         } else {
           suggestions.value = data.keywords.filter((keyword) => !current.selected.includes(keyword))
+          if (list.value) list.value.scrollTop = 0
         }
       } catch {
-        if (!controller.signal.aborted) failed.value = true
+        if (!controller.signal.aborted) {
+          suggestions.value = []
+          failed.value = true
+        }
       } finally {
         if (!controller.signal.aborted) loading.value = false
       }
@@ -110,6 +142,7 @@ function onInput(event: Event) {
 }
 
 async function choose(keyword: string) {
+  if (loading.value || !popupPosition.value || !suggestions.value.includes(keyword)) return
   const result = insertReleaseKeyword(props.modelValue, caret.value, keyword)
   dismissed.value = true
   emit('update:modelValue', result.value)
@@ -117,6 +150,16 @@ async function choose(keyword: string) {
   await nextTick()
   input.value?.focus()
   input.value?.setSelectionRange(result.caret, result.caret)
+}
+
+function scrollActiveOption() {
+  const popup = list.value
+  if (!popup || active.value < 0) return
+  const option = popup.children.item(active.value) as HTMLElement | null
+  if (!option) return
+  if (option.offsetTop < popup.scrollTop) popup.scrollTop = option.offsetTop
+  const bottom = option.offsetTop + option.offsetHeight
+  if (bottom > popup.scrollTop + popup.clientHeight) popup.scrollTop = bottom - popup.clientHeight
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -127,7 +170,7 @@ function onKeydown(event: KeyboardEvent) {
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault()
-    if (!suggestions.value.length) {
+    if (loading.value || !suggestions.value.length) {
       dismissed.value = false
       return
     }
@@ -136,10 +179,8 @@ function onKeydown(event: KeyboardEvent) {
     } else {
       active.value = active.value <= 0 ? suggestions.value.length - 1 : active.value - 1
     }
-    void nextTick(() =>
-      document.getElementById(`${listId.value}-${active.value}`)?.scrollIntoView({ block: 'nearest' }),
-    )
-  } else if (event.key === 'Enter' && active.value >= 0 && expanded.value) {
+    void nextTick(scrollActiveOption)
+  } else if (event.key === 'Enter' && active.value >= 0 && expanded.value && popupPosition.value) {
     event.preventDefault()
     const keyword = suggestions.value[active.value]
     if (keyword) void choose(keyword)
@@ -148,7 +189,7 @@ function onKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div ref="control">
+  <div>
     <input
       :id="id"
       ref="input"
@@ -156,9 +197,9 @@ function onKeydown(event: KeyboardEvent) {
       type="text"
       role="combobox"
       aria-autocomplete="list"
-      :aria-expanded="expanded"
+      :aria-expanded="expanded && popupPosition !== null"
       :aria-controls="listId"
-      :aria-activedescendant="expanded && active >= 0 ? `${listId}-${active}` : undefined"
+      :aria-activedescendant="expanded && popupPosition && active >= 0 ? `${listId}-${active}` : undefined"
       autocomplete="off"
       autocapitalize="none"
       :spellcheck="false"
@@ -173,31 +214,39 @@ function onKeydown(event: KeyboardEvent) {
       @select="updateCaret"
       @keydown="onKeydown"
     />
-    <ul
-      v-if="expanded"
-      :id="listId"
-      ref="list"
-      role="listbox"
-      aria-label="Previously saved release keywords"
-      class="mt-1 max-h-36 overflow-y-auto rounded-lg border border-violet-500/30 bg-[#161b2e] py-1"
-      :style="{ maxHeight: listMaxHeight }"
-    >
-      <li
-        v-for="(keyword, index) in suggestions"
-        :id="`${listId}-${index}`"
-        :key="keyword"
-        role="option"
-        :aria-selected="active === index"
-        class="cursor-pointer px-3 py-2 text-sm text-gray-200"
-        :class="active === index ? 'bg-violet-600/30' : 'hover:bg-violet-600/20'"
+    <p class="sr-only" role="status">{{ focused ? status : '' }}</p>
+    <Teleport to="body">
+      <ul
+        v-if="expanded && popupPosition"
+        :id="listId"
+        ref="list"
+        role="listbox"
+        aria-label="Previously saved release keywords"
+        :aria-busy="loading"
+        class="fixed z-[60] overflow-y-auto rounded-lg border border-violet-500/30 bg-[#161b2e] py-1 shadow-xl"
+        :style="popupPosition"
         @mousedown.prevent
-        @click="choose(keyword)"
       >
-        {{ keyword }}
-      </li>
-    </ul>
-    <p v-if="loading || failed" class="mt-1 text-xs text-gray-500" role="status">
-      {{ failed ? 'Suggestions unavailable. You can still enter keywords.' : 'Loading suggestions…' }}
-    </p>
+        <li
+          v-for="(keyword, index) in suggestions"
+          :id="`${listId}-${index}`"
+          :key="keyword"
+          role="option"
+          :aria-selected="active === index"
+          :aria-disabled="loading"
+          class="flex h-9 items-center px-3 text-sm text-gray-200"
+          :class="[
+            active === index ? 'bg-violet-600/30' : 'hover:bg-violet-600/20',
+            loading ? 'cursor-wait' : 'cursor-pointer',
+          ]"
+          @click="choose(keyword)"
+        >
+          <span class="truncate" :title="keyword">{{ keyword }}</span>
+        </li>
+        <li v-if="!suggestions.length" class="flex h-9 items-center px-3 text-xs text-gray-500">
+          <span class="truncate" :title="status">{{ status }}</span>
+        </li>
+      </ul>
+    </Teleport>
   </div>
 </template>

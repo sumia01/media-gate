@@ -39,7 +39,7 @@ func TestReleaseKeywordsAreCanonicalPrivateBoundedAndLiteral(t *testing.T) {
 		{a.ID, "%", []string{"%team"}},
 		{a.ID, "_", []string{"_team"}},
 		{a.ID, `\`, []string{`\team`}},
-		{a.ID, "x", []string{}},
+		{a.ID, "x", []string{"flux"}},
 		{a.ID, " ", []string{}},
 		{b.ID, "ET", []string{}},
 	} {
@@ -73,6 +73,35 @@ func TestReleaseKeywordsAreCanonicalPrivateBoundedAndLiteral(t *testing.T) {
 	}
 	if got, err := s.ListReleaseKeywords(a.ID, "e"); err != nil || len(got) != 0 {
 		t.Fatalf("user deletion retained history: %v, %v", got, err)
+	}
+}
+
+func TestReleaseKeywordsFuzzySearchBeforeLimiting(t *testing.T) {
+	s := newTestStore(t)
+	user := &store.User{Email: "fuzzy@example.test", PasswordHash: "hash"}
+	other := &store.User{Email: "private@example.test", PasswordHash: "hash"}
+	for _, actor := range []*store.User{user, other} {
+		if err := s.CreateUser(actor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names := []string{"ethel", "flux"}
+	for i := 0; i < 30; i++ {
+		names = append(names, fmt.Sprintf("aaa%02d", i))
+	}
+	if err := s.RememberReleaseKeywords(user.ID, names); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ query, want string }{
+		{"thel", "ethel"}, {"ETL", "ethel"}, {"ehtel", "ethel"}, {"flx", "flux"}, {"fluz", "flux"},
+	} {
+		got, err := s.ListReleaseKeywords(user.ID, tc.query)
+		if err != nil || len(got) == 0 || got[0] != tc.want {
+			t.Fatalf("query %q = %v, %v; want %s first", tc.query, got, err, tc.want)
+		}
+		if got, err := s.ListReleaseKeywords(other.ID, tc.query); err != nil || len(got) != 0 {
+			t.Fatalf("fuzzy search leaked private vocabulary: %v, %v", got, err)
+		}
 	}
 }
 

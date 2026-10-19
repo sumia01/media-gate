@@ -165,8 +165,8 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Auto-monitor new seasons when they appear
 - Profile-based filtering of search results before grabbing
 - Per-item, comma-separated release keywords in the media-detail auto-download settings; matching is case-insensitive against the release title
-- Release keywords become lowercase as you type and are trimmed/deduplicated on save. Your previously saved names appear in a keyboard/touch-friendly suggestion list for the current comma-separated token, across media items and browsers
-- Autocomplete keeps the input visible alongside long suggestion lists on short screens, adapts when the viewport is resized, and preserves the current keyword/cursor when arrows are pressed while results are loading
+- Release keywords become lowercase as you type and are trimmed/deduplicated on save. Your previously saved names appear in a keyboard/touch-friendly fuzzy suggestion list for the current comma-separated token, across media items and browsers: `etl`, `thel`, or `ehtel` can find `ethel`
+- Autocomplete uses a floating, scrollable dropdown with at most four visible choices; it never changes the modal's height or scroll position. Results remain steady during loading, and arrows preserve the current keyword/cursor
 - Default-on **Only matching releases** mode waits for a release matching any listed keyword after quality-profile filtering. Turn it off to prefer matching releases but allow the best-ranked fallback; an empty list never restricts selection, and manual downloads remain explicit overrides
 - The force/preferred toggle stays hidden until at least one non-empty keyword is entered; clearing the field does not reset its saved mode
 - Scrollable auto-download settings keep the heading and Save/Next/Cancel buttons visible on short screens, including landscape phones
@@ -178,7 +178,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 
 **Upgrade note:** forced matching defaults on for existing items too, preserving their saved keyword lists. Turn off **Only matching releases** on an item to retain the previous soft-preference behavior. Existing downloads are not cancelled or replaced.
 
-Autocomplete history is private to your account and is collected only when settings are successfully saved, not while typing or cancelling a dialog. Clearing a media item's list does not erase your past choices. Existing lists are collected on their next save; names up to 256 characters are suggested, while longer free-form filters still work without entering history.
+Autocomplete history is private to your account and is collected only when settings are successfully saved, not while typing or cancelling a dialog. Clearing a media item's list does not erase your past choices. Existing lists are collected on their next save; names up to 256 characters are suggested, while longer free-form filters still work without entering history. Fuzzy matching only finds suggestions; actual force/preferred download rules still require the saved case-insensitive title substring.
 
 ### Metadata Refresh
 

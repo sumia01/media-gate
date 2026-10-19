@@ -36,6 +36,9 @@ func TestSavedReleaseKeywordsNormalizeAndRemainPrivate(t *testing.T) {
 			want   []string
 		}{
 			{userID, "eTh", []string{"ethel"}},
+			{userID, "ehtel", []string{"ethel"}},
+			{userID, "thel", []string{"ethel"}},
+			{userID, "flx", []string{"flux"}},
 			{userID, "FL", []string{"flux"}},
 			{other.ID, "ET", []string{}},
 		} {

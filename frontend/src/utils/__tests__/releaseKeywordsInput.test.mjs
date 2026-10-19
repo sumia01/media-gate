@@ -29,13 +29,22 @@ async function settle() {
 
 function mountInput(t, value = '', initialBodyHeight = 600) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  const oldDocument = globalThis.document
+  const oldWindow = globalThis.window
   const oldResizeObserver = globalThis.ResizeObserver
   const scrolls = []
   const observers = []
-  let bodyHeight = initialBodyHeight
-  globalThis.document = {
-    getElementById: (id) => ({ scrollIntoView: () => scrolls.push(id) }),
+  const listeners = new Map()
+  const bodyHeight = initialBodyHeight
+  globalThis.window = {
+    innerWidth: 600,
+    innerHeight: 320,
+    addEventListener(type, callback) {
+      if (!listeners.has(type)) listeners.set(type, new Set())
+      listeners.get(type).add(callback)
+    },
+    removeEventListener(type, callback) {
+      listeners.get(type)?.delete(callback)
+    },
   }
   globalThis.ResizeObserver = class {
     disconnected = false
@@ -62,7 +71,7 @@ function mountInput(t, value = '', initialBodyHeight = 600) {
   const props = Vue.reactive({
     id: 'release-keywords',
     modelValue: value,
-    scrollContainer: { getBoundingClientRect: () => ({ height: bodyHeight }) },
+    scrollContainer: { getBoundingClientRect: () => ({ top: 0, bottom: bodyHeight, height: bodyHeight }) },
   })
   let state
   const app = renderer.createApp({
@@ -77,16 +86,21 @@ function mountInput(t, value = '', initialBodyHeight = 600) {
     },
   })
   app.mount({})
-  state.control.value = { scrollIntoView: () => scrolls.push('control') }
   state.input.value = {
-    getBoundingClientRect: () => ({ height: 38, bottom: 38 }),
+    getBoundingClientRect: () => ({ top: 50, height: 38, bottom: 88, left: 20, width: 300 }),
+    scrollIntoView: () => scrolls.push('input'),
     focus() {},
     setSelectionRange() {},
   }
-  state.list.value = { getBoundingClientRect: () => ({ top: 42 }) }
+  state.list.value = {
+    children: { item: (index) => ({ offsetTop: 4 + index * 36, offsetHeight: 36 }) },
+    scrollTop: 0,
+    clientHeight: 152,
+    scrollIntoView: () => scrolls.push('list'),
+  }
   t.after(() => {
     app.unmount()
-    globalThis.document = oldDocument
+    globalThis.window = oldWindow
     globalThis.ResizeObserver = oldResizeObserver
   })
   return {
@@ -95,9 +109,10 @@ function mountInput(t, value = '', initialBodyHeight = 600) {
     requests,
     scrolls,
     observers,
+    listeners,
     unmount: () => app.unmount(),
     async resize(height) {
-      bodyHeight = height
+      window.innerHeight = height
       for (const observer of observers) {
         if (!observer.disconnected) observer.callback()
       }
@@ -149,7 +164,7 @@ test('keyboard selection inserts a suggestion without submitting and replaces a 
   await view.fetch()
   view.requests[0].resolve({ data: { keywords: ['ethel'] } })
   await settle()
-  assert.ok(view.scrolls.includes('control'), 'opening suggestions reveals the input and fitted list together')
+  assert.deepEqual(view.scrolls, [], 'opening suggestions must not scroll the modal or input')
   let prevented = 0
   view.state.onKeydown({
     key: 'ArrowDown',
@@ -204,7 +219,7 @@ test('arrows preserve the active token before debounce and while suggestions are
   assert.deepEqual(view.state.suggestions.value, ['ethel'])
 })
 
-test('many suggestions fit beside the input and resize without hiding it or leaking observers', async (t) => {
+test('many suggestions float outside the scroll body and resize without scrolling or leaking listeners', async (t) => {
   const view = mountInput(t, 'e', 132)
   view.state.focused.value = true
   await view.fetch()
@@ -212,16 +227,57 @@ test('many suggestions fit beside the input and resize without hiding it or leak
     data: { keywords: ['ebp', 'encounters', 'enigma', 'epsilon', 'escape', 'ethel', 'evo', 'eztv'] },
   })
   await settle()
-  assert.equal(view.state.listMaxHeight.value, 'min(9rem, 90px)', '132px body must reserve 38px input + 4px gap')
-  assert.ok(view.scrolls.includes('control'))
-  assert.equal(view.scrolls.includes('release-keywords-suggestions'), false, 'never scroll an oversized list alone')
-  await view.resize(182)
-  assert.equal(view.state.listMaxHeight.value, 'min(9rem, 140px)')
+  assert.equal(view.state.popupPosition.value.maxHeight, '154px', 'four rows need not fit inside the 132px modal body')
+  assert.equal(view.state.popupPosition.value.top, '92px')
+  assert.deepEqual(view.scrolls, [], 'neither the input nor an ancestor should be scrolled')
+  await view.resize(180)
+  assert.equal(view.state.popupPosition.value.maxHeight, '80px')
   await view.resize(600)
-  assert.equal(view.state.listMaxHeight.value, 'min(9rem, 558px)')
+  assert.equal(view.state.popupPosition.value.maxHeight, '154px')
+  for (let i = 0; i < 8; i++) view.state.onKeydown({ key: 'ArrowDown', preventDefault() {} })
+  await settle()
+  assert.ok(view.state.list.value.scrollTop > 0, 'keyboard navigation scrolls only the popup')
+  assert.deepEqual(view.scrolls, [])
   view.unmount()
   assert.ok(view.observers.length > 0)
   assert.ok(view.observers.every((observer) => observer.disconnected))
+  assert.ok([...view.listeners.values()].every((callbacks) => callbacks.size === 0))
+})
+
+test('pending queries keep the popup steady but cannot select stale options', async (t) => {
+  const view = mountInput(t, 'e')
+  view.state.focused.value = true
+  await view.fetch()
+  view.requests[0].resolve({ data: { keywords: ['ethel'] } })
+  await settle()
+  view.state.list.value.scrollTop = 100
+  view.type('fl')
+  assert.equal(view.state.expanded.value, true)
+  assert.equal(view.state.loading.value, true)
+  assert.deepEqual(view.state.suggestions.value, ['ethel'], 'old rows remain visible during debounce/fetch')
+  await view.state.choose('ethel')
+  assert.equal(view.props.modelValue, 'fl', 'a stale row must not be selectable')
+  await view.fetch()
+  view.requests[1].resolve({ data: { keywords: ['flux'] } })
+  await settle()
+  assert.deepEqual(view.state.suggestions.value, ['flux'])
+  assert.equal(view.state.loading.value, false)
+  assert.equal(view.state.list.value.scrollTop, 0, 'new ranked results start at the best match')
+})
+
+test('the popup and loading/status content cannot change the input normal-flow height', () => {
+  const root = descriptor.template.ast.children.find((node) => node.type === 1)
+  const children = root.children.filter((node) => node.type === 1)
+  assert.ok(
+    children.some((node) => node.tag === 'Teleport'),
+    'popup is teleported out of the modal',
+  )
+  assert.equal(
+    children.some((node) => node.tag === 'ul'),
+    false,
+  )
+  const status = children.find((node) => node.tag === 'p')
+  assert.ok(status.props.some((prop) => prop.name === 'class' && prop.value?.content.includes('sr-only')))
 })
 
 test('already selected names are omitted, pointer selection works, and Escape dismisses', async (t) => {

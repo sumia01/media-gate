@@ -312,6 +312,14 @@ func TestReleaseKeywordCaseMatrix(t *testing.T) {
 	}
 }
 
+func TestFuzzySuggestionsDoNotRelaxReleaseEligibility(t *testing.T) {
+	results := []TorrentResult{{Title: "Show.1080p-ETHEL"}}
+	if MatchesPreferredRelease(results[0].Title, "ehtel") {
+		t.Fatal("suggestion typo tolerance must not authorize a download")
+	}
+	assertTitles(t, FilterByRelease(results, "ehtel"), nil)
+}
+
 func assertTitles(t *testing.T, got []TorrentResult, want []string) {
 	t.Helper()
 	gotTitles := titles(got)

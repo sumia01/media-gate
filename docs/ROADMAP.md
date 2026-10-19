@@ -680,7 +680,7 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Backend filter/selection/freshness/API/history/migration regression tests, frontend settings/series-flow/layout coverage, and fake-backed monitor plus built-binary smoke verification
 
 ## Phase 10.6: Personal Release Keyword Suggestions ✅
-→ See ADR-149
+→ See ADR-149; suggestion matching and popup layout are extended by ADR-150 / Phase 10.7
 
 - [x] Hide force/preferred controls for empty, whitespace-only, or comma-only input without resetting the saved force mode
 - [x] Lowercase input immediately and canonicalize saved keyword lists by trimming and case-insensitive deduplication
@@ -692,8 +692,19 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Remember names only in successful settings transactions; failed saves and cancelled dialogs do not add history, and request failure never blocks manual input
 - [x] Canonicalization, user-isolation, literal-prefix, transaction-rollback, migration/restart, caret, request-cancellation, resize, and observer-cleanup regression coverage; verify real delayed-request keyboard behavior and multi-result dropdowns in the disposable browser harness
 
+## Phase 10.7: Stable Floating Fuzzy Release Suggestions ✅
+→ See ADR-150
+
+- [x] Teleport a fixed, viewport-aware dropdown outside modal layout, with up to four fixed-height rows and scrolling for additional matches
+- [x] Keep existing options visible but non-selectable during debounce/fetch, render status outside normal layout, and reserve the hidden mode section's space to prevent first-character jumps
+- [x] Remove automatic modal/input scrolling; only keyboard navigation inside the popup changes its own scroll position
+- [x] Rank private saved names by exact/prefix/substring, ordered subsequence, and a single typo or adjacent transposition; scan before limiting so useful fuzzy matches are not lost
+- [x] Keep fuzzy behavior strictly in autocomplete; automatic download eligibility and manual match annotations retain their case-insensitive substring rules
+- [x] Uncached backend and frontend regression suites, both linters, type-checking, and the generated-API/embedded-frontend production build
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
+- [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7
 - [x] Multi-result release suggestions scrolled the input out of short landscape viewports — fit the popup to the actual scroll body and reveal the input/list together, including after resize; see Phase 10.6
 - [x] Release autocomplete arrows moved the native caret to another comma token while debounce/network work was pending — consume native arrow movement before checking for available options; see Phase 10.6
 - [x] Auto-download settings pushed Save/Next/Cancel below short landscape viewports — scroll only the settings body and prevent heading/title/footer shrink; see Phase 10.5
