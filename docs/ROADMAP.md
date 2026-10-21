@@ -720,6 +720,16 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Verify clean-copy build/tests/lint/smoke locally, controlled failure/SIGINT cleanup locally, and the normal hosted PR flow
 - [x] Document triggers, coverage, safety boundaries, and readiness requirements; keep frontend test/lint gates, branch protection, sanitized artifact export, release gating, and exact hosted cancellation testing outside this batch
 
+## Phase 10.10: Worker Loop Lifecycle Characterization ✅
+→ See ADR-078, ADR-109, and ADR-115 verification notes
+
+- [x] Add tests for existing blocking stop/subscription cleanup, stop during startup delay, non-blocking/coalescing manual triggers, and non-overlapping process invocations
+- [x] Cover interval defaults/configuration, matching versus unrelated settings notifications, and consistent status/callbacks during concurrent reads
+- [x] Use standard-library `testing/synctest` for deterministic channel synchronization and virtual time without production hooks or new dependencies
+- [x] Bound blocking-stop failure cleanup and verify missing shutdown/completion signals and an early stop return through isolated source-overlay faults without changing production files
+- [x] Verify focused tests, repeated focused race checks (including scheduler-parallelism variants and shuffled order), the full uncached backend suite (1,310 tests across 46 packages), backend lint, and documentation
+- [x] Keep production behavior and queue lifecycle unchanged; queue draining/backpressure/snapshot decisions and whole-application shutdown verification remain separate work
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7

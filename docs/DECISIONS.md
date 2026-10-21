@@ -1086,6 +1086,8 @@ Intentionally skipped: fetch-by-ID + 404 pattern (Go generics can't express type
 
 **Rationale**: Each abstraction was introduced only where 3+ identical copies existed or where the duplication masked a bug (qBit client was never invalidated on settings change despite a comment claiming it was). New packages are minimal — no frameworks, just functions and small structs. The `SettingsGetter` and `SettingsSubscriber` interfaces avoid circular imports without adding complexity.
 
+**Verification update (2026-10-21)**: The shared loop now has package-local [characterization tests](../backend/internal/worker/loop_test.go) for its existing lifecycle, settings interval, trigger, and status behavior. See the verification notes in ADR-109 and ADR-115; no production infrastructure or scheduling behavior changed.
+
 ---
 
 ## ADR-079: Domain boundary enforcement — thin handlers, fat services
@@ -1634,6 +1636,8 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 
 **Rationale**: SSE-driven reactivity avoids polling and provides instant UI updates. The `EventPublisher` func type (not a direct eventbus import) prevents circular dependencies between the `worker` and `eventbus` packages. The registry pattern centralizes worker management and makes it trivial to add new workers in the future. `RunNow()` uses a buffered channel so triggers are non-blocking and coalesce (multiple rapid clicks don't queue multiple runs).
 
+**Verification update (2026-10-21)**: [Worker-loop characterization tests](../backend/internal/worker/loop_test.go) cover non-blocking/coalescing manual triggers, serialized process invocations, and running/completion status plus start/finish callback payloads while multiple goroutines read status. These are loop-level checks, not new registry, API, SSE-delivery, or browser coverage; existing behavior is unchanged.
+
 ---
 
 ## ADR-110: Monitor query fallback for non-IMDB indexers
@@ -1762,6 +1766,14 @@ Only 4 workers are exposed — the download and importer workers run every 5-10s
 10. **Blocking worker Stop** (`worker/loop.go`): `Stop()` now waits for the current `Process()` call to finish via a `doneCh` channel. Prevents use-after-close races during shutdown. `SettingsSubscriber` interface extended with `Unsubscribe()`.
 
 **Rationale**: Each optimization targets a verified hot path with a mechanical, logic-preserving transformation. The batch approach (one commit per change) provides clean bisectability if regressions appear. sync.Pool usage is limited to provably short-lived, high-frequency allocations (template rendering, Levenshtein distance) where the pool overhead is justified. The blocking Stop + Unsubscribe pair close a real shutdown race rather than being speculative — workers that outlive their settings channel would panic on send.
+
+**Verification update (2026-10-21)**: [Worker-loop characterization tests](../backend/internal/worker/loop_test.go) hold an in-flight process and then subscription cleanup behind separate channel gates, verifying that `Stop()` returns only after both finish. They also stop during startup delay without invoking the process, and verify interval defaults/configuration, matching-key updates, unrelated-key isolation, and the updated ticker. Tests use the existing Go toolchain's standard-library `testing/synctest` for quiescence and virtual time, without new dependencies or production hooks. Run `go test -count=1 ./internal/worker` and `go test -race -count=1 ./internal/worker` in `backend/`.
+
+Coverage is limited to the supported single-Start/single-Stop lifecycle. It makes no new guarantees about repeated lifecycle calls, stopping before start, pending-trigger selection during shutdown, or competing timer/select order. `jobqueue.Queue` draining, rejection/backpressure, mutable job snapshots, and application-wide shutdown composition remain separate work; these tests do not resolve or verify them.
+
+The blocking-stop test's failure cleanup launches `Stop()` only once asynchronously, then waits on its completion channel with a five-second virtual-time deadline. This avoids re-entering a blocking `sync.OnceFunc` if shutdown fails. Isolated source overlays removing completion signaling, removing shutdown signaling, or returning from `Stop()` early each failed promptly without reaching a three-second global test timeout; repository production files were unchanged.
+
+Focused tests, five separate focused race runs on the final test implementation (including `GOMAXPROCS=1/2/8` and shuffled test order), the full uncached backend suite (1,310 tests across 46 packages), and backend lint passed locally. The full backend suite and root `scripts/lint-all.sh` were rerun before publication; both backend and frontend lint passed. Every test invocation used `-count=1`. Production code is unchanged. Local verification did not repeat build, harness, frontend-test, or browser checks for this tests/documentation-only batch; hosted CI runs separately on publication.
 
 ---
 

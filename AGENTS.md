@@ -27,6 +27,7 @@ For a clean checkout, run these **in order**: `make tools` at the root, `npm ci`
 | Root | `scripts/lint-all.sh` | Run backend and frontend lint; inspect both outputs |
 | `backend/` | `go test -count=1 ./...` | Full backend suite; **always use `-count=1`, including focused runs** |
 | `backend/` | `go test -count=1 ./internal/crypto/...` | Example focused package test |
+| `backend/` | `go test -race -count=1 ./internal/worker` | Worker-loop lifecycle/status concurrency checks; see ADR-115 for coverage and exclusions |
 | `backend/` | `golangci-lint run ./...` | Backend lint |
 | `frontend/` | `npm test` | Frontend regression tests |
 | `frontend/` | `npm audit` | Known dependency advisories, including development/build tooling |
@@ -39,6 +40,7 @@ Command sources: [Makefile](Makefile), [frontend/package.json](frontend/package.
 ## Verification
 
 - Add or update regression tests for changed behavior. Start with focused tests, then run affected backend/frontend suites and lint. Run `make build` for API or embedded-asset integration changes. Never rely on cached Go test results.
+- Use explicit synchronization and bounded failure cleanup in concurrency tests. Keep blocking shutdown waits outside `sync.Once` callbacks so failed assertions cannot stall teardown on the Once mutex.
 - For frontend dependency updates, keep `package.json` and `package-lock.json` together, prefer compatible patched releases, and preserve cross-platform optional dependency entries. Verify clean `npm ci`, full `npm audit` (including development dependencies), frontend tests/type-check/lint, and `make build`.
 - Use the disposable harness for UI/API interaction, auth, SSE, migrations, workers, imports, integration protocols, or multi-service changes. It complements focused regression tests; its smoke flow does not cover every feature or replace browser checks.
 - For visible UI changes, check the affected flow at desktop, tablet (including sidebar-visible layouts), and mobile sizes. For modals and suggestion lists, also verify inputs and action controls remain visible at short viewport heights. Preserve the existing Vue/Tailwind design language.

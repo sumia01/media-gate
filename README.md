@@ -332,6 +332,11 @@ Run backend tests without cached results and use Node.js 24 for the frontend reg
 scripts/lint-all.sh   # run from the repository root; check both linter outputs
 ```
 
+For worker-loop lifecycle/concurrency changes, also run
+`(cd backend && go test -race -count=1 ./internal/worker)`. These characterization
+tests use Go's standard-library fake clock and synchronization (`testing/synctest`);
+they do not verify job-queue draining or application-wide shutdown.
+
 Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 `npm ci` in `frontend/` to install the reviewed versions. Audit the full tree,
 including build tooling. The production binary still embeds the frontend and
