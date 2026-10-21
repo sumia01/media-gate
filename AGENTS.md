@@ -27,7 +27,7 @@ For a clean checkout, run these **in order**: `make tools` at the root, `npm ci`
 | Root | `scripts/lint-all.sh` | Run backend and frontend lint; inspect both outputs |
 | `backend/` | `go test -count=1 ./...` | Full backend suite; **always use `-count=1`, including focused runs** |
 | `backend/` | `go test -count=1 ./internal/crypto/...` | Example focused package test |
-| `backend/` | `go test -race -count=1 ./internal/worker` | Worker-loop lifecycle/status concurrency checks; see ADR-115 for coverage and exclusions |
+| `backend/` | `go test -race -count=1 ./internal/worker ./internal/jobqueue` | Worker/queue lifecycle, snapshot, and concurrency checks; see ADR-115/152 for coverage and exclusions |
 | `backend/` | `golangci-lint run ./...` | Backend lint |
 | `frontend/` | `npm test` | Frontend regression tests |
 | `frontend/` | `npm audit` | Known dependency advisories, including development/build tooling |
@@ -105,6 +105,7 @@ Before changing a domain below, read its current code/tests and the relevant sec
 
 | Area | Preserve / Read |
 | --- | --- |
+| Queue lifecycle | ADR-011/017/152. Close admission before HTTP drain; finish only the claimed active job before bus/database teardown. Never block a capacity send under the queue mutex, start a job after the shutdown claim, or expose mutable job/progress/timestamp pointers. Full/stopping submissions are 503; duplicate jobs remain 409. Surface admission failures in the UI; a status-refresh failure must not misreport an accepted job as rejected. Waiting work is discarded, not durable or fabricated as completed. |
 | Downloads, imports, notifications | ADR-134, ADR-138, ADR-142. History uses a growing newest-first prefix, filtering before limiting, not mutable offsets. Preserve `DownloadedAt` through retries; do not backfill unknown legacy times. Notify only persisted terminal failures, not retries/cancellation. Episode-ID backfill skips `importing` and retries on later refreshes. |
 | Download paths and episode targeting | `qbit_download_path` is the local mount; `qbit_save_path` is the optional remote override. ADR-118/119/144: NULL `episode_id` does not prove a season pack; unnumbered specials are ambiguous. Preserve episode-id > episode-key > season > item status resolution. Explicit import fallback is single-video only; resync retains known episode keys unless parsing supplies conflicting information. |
 | Monitoring and metadata | ADR-120, ADR-133, ADR-137, ADR-144. Episode override > season > false, keyed by item/season/episode numbers, not metadata episode IDs. Compare freshness using server `InputUpdatedAt`, not completion/receipt time. `SetMonitorSearchStartedAt` must not bump `UpdatedAt` or overwrite settings. Check current `matching`/`metarefresh` tests for refresh/backfill behavior. |

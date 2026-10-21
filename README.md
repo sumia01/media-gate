@@ -59,6 +59,7 @@ I was running Sonarr, Radarr, Overseerr, Prowlarr, and Bazarr side by side in my
 - Combine title search with a genre popup drawn from that library's metadata; selecting multiple genres matches any of them, with live result counts and clear controls
 - Subdued library filters sit between the title and path/actions on desktop and below the title on mobile; filters reset when switching libraries
 - Re-sync individual items or entire libraries as async jobs with progress tracking
+- Library sync/match jobs run one at a time, with at most 100 waiting jobs; a full or shutting-down queue rejects new requests with HTTP 503 rather than blocking (duplicate requests remain HTTP 409). Rejections appear in the library page's error banner so you can retry
 - Path traversal protection enforced at all filesystem access points
 
 ### Metadata Matching
@@ -293,6 +294,14 @@ for the logging contract and redaction limits.
 
 The UI includes a dedicated **Workers panel** with real-time SSE-driven status for each worker (last run, next run, current state) and manual trigger buttons to run any worker on demand.
 
+Library sync/match jobs use a separate in-memory queue. Graceful shutdown closes
+its admission immediately, discards waiting jobs, and lets only the active job
+finish before the event bus and database close. Waiting jobs are not resumed on
+restart; submit them again if needed. Finishing a sync during shutdown does not
+start a follow-up metadata match. This does not add a shutdown deadline or cancel
+active work; a forced process termination can still interrupt it. See
+[ADR-152](docs/DECISIONS.md#adr-152-active-job-only-queue-shutdown-and-owned-status-snapshots).
+
 ## Tech stack
 
 | Layer | Tech |
@@ -333,9 +342,11 @@ scripts/lint-all.sh   # run from the repository root; check both linter outputs
 ```
 
 For worker-loop lifecycle/concurrency changes, also run
-`(cd backend && go test -race -count=1 ./internal/worker)`. These characterization
-tests use Go's standard-library fake clock and synchronization (`testing/synctest`);
-they do not verify job-queue draining or application-wide shutdown.
+`(cd backend && go test -race -count=1 ./internal/worker ./internal/jobqueue)`.
+Worker/queue tests use Go's standard-library fake clock and synchronization
+(`testing/synctest`), plus real SQLite shutdown/persistence coverage. Use the
+disposable harness for application-wide shutdown composition; see
+[queue shutdown verification](docs/HARNESS.md#queue-shutdown-verification).
 
 Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 `npm ci` in `frontend/` to install the reviewed versions. Audit the full tree,

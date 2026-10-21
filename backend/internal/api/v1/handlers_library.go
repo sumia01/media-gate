@@ -214,6 +214,9 @@ func (h *Handlers) TriggerSync(_ context.Context, req TriggerSyncRequestObject) 
 
 	job, err := h.queue.Enqueue(jobqueue.JobTypeSyncLibrary, lib.ID, lib.Name)
 	if err != nil {
+		if errors.Is(err, jobqueue.ErrFull) || errors.Is(err, jobqueue.ErrStopped) {
+			return TriggerSync503JSONResponse{Code: http.StatusServiceUnavailable, Message: err.Error()}, nil
+		}
 		return TriggerSync409JSONResponse{
 			Code:    http.StatusConflict,
 			Message: err.Error(),
@@ -242,6 +245,9 @@ func (h *Handlers) TriggerMatch(_ context.Context, req TriggerMatchRequestObject
 
 	job, err := h.queue.Enqueue(jobqueue.JobTypeMatchLibrary, lib.ID, lib.Name, opts)
 	if err != nil {
+		if errors.Is(err, jobqueue.ErrFull) || errors.Is(err, jobqueue.ErrStopped) {
+			return TriggerMatch503JSONResponse{Code: http.StatusServiceUnavailable, Message: err.Error()}, nil
+		}
 		return TriggerMatch409JSONResponse{
 			Code:    http.StatusConflict,
 			Message: err.Error(),

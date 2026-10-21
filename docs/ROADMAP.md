@@ -730,7 +730,21 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Verify focused tests, repeated focused race checks (including scheduler-parallelism variants and shuffled order), the full uncached backend suite (1,310 tests across 46 packages), backend lint, and documentation
 - [x] Keep production behavior and queue lifecycle unchanged; queue draining/backpressure/snapshot decisions and whole-application shutdown verification remain separate work
 
+## Phase 10.11: Safe Library Queue Lifecycle ✅
+→ See ADR-152
+
+- [x] Close admission at server shutdown, discard waiting jobs, and wait only for active work/history/events before closing shared resources
+- [x] Reject full/stopping queues without blocking on capacity or leaking jobs/ID reservations; keep serial work and duplicate prevention
+- [x] Return independent job/progress/timestamp snapshots from enqueue and listing
+- [x] Document/regenerate sync/match HTTP 503 rejection contracts while preserving success, missing-library, and duplicate responses
+- [x] Surface Sync/Match admission errors in the existing library-page banner, preserve accepted jobs across status-refresh failures, and guard retries/navigation against stale errors
+- [x] Add focused lifecycle/admission/snapshot/concurrency tests, API response tables, and real SQLite shutdown/history coverage
+- [x] Complete repeated race checks, full backend/frontend regressions (1,331/96), both linters, generated/embedded build, six regression-fault checks, and fake-backed smoke
+- [x] Verify queue-error propagation, network fallback and accepted retry in browser at desktop/tablet/mobile/short landscape sizes, plus 20 actual-composable/view regression tests
+- [x] Verify active-job shutdown with one identity-checked SIGTERM: finish all 1,000 synthetic items and active history, but no waiting/follow-up jobs; retain the separate failed session-teardown evidence and document its signaling limitation below
+
 ## Known Bugs ⬜
+- [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7
 - [x] Multi-result release suggestions scrolled the input out of short landscape viewports — fit the popup to the actual scroll body and reveal the input/list together, including after resize; see Phase 10.6

@@ -82,6 +82,43 @@ The initial library sync queues normal metadata matching. Without an explicit
 TMDB/TVDB key, that background match job reports that no API key is configured;
 the seeded disk item and deterministic harness flow remain available.
 
+## Queue Shutdown Verification
+
+Library sync/match queue admission closes at the start of graceful shutdown,
+before HTTP drain. New submissions are rejected, waiting jobs are discarded, and
+only the active job finishes before event-bus/database teardown. A successful
+sync cannot enqueue its automatic match during shutdown. Full/stopping queue
+submissions use HTTP 503; duplicate type/library jobs keep HTTP 409. Pending work
+is in memory and is not resumed after restart; see
+[ADR-152](DECISIONS.md#adr-152-active-job-only-queue-shutdown-and-owned-status-snapshots).
+
+Run `go test -race -count=1 ./internal/worker ./internal/jobqueue` in `backend/`
+for controlled process/history gates, concurrent readers/admission, and real
+SQLite persistence followed by bus/database closure. The ordinary smoke verifies
+normal queue composition but does not by itself prove active-job shutdown.
+
+For a separate application shutdown check, use a fresh task-specific harness,
+add synthetic files only under its library root, and queue a sync plus waiting
+jobs while the sync is visibly running. Send exactly one identity-checked
+SIGTERM to the actual backend child (not the supervisor/session), using the
+instance's `bin/harness-signal --leader <backend-pid> --start-time <start-ticks>
+--signal TERM --target-only`. Verify the PID's executable, parent/session, and
+start time against that instance before signaling. Wait for backend shutdown,
+then run `make harness-down HARNESS_ID=<name>` for remaining services. Retain its
+database/logs and verify the active job completed after shutdown began, its
+terminal record exists, and waiting jobs never ran or gained terminal history.
+The workload must last through shutdown initiation; an already-finished job is
+not evidence of in-flight draining. Never use production data or live metadata
+keys for this check.
+
+**Current teardown limitation:** Session-wide `harness-down` can deliver SIGTERM
+directly and again through supervisor forwarding. The app deliberately restores
+default handling after its first signal, so a second can force-quit active work.
+The resulting teardown success is not proof of graceful draining. Keep this
+harness signaling fix separate from the queue policy; ordinary smoke remains
+useful, and the single-target procedure above avoids duplicate delivery for the
+in-flight check.
+
 ## Fake Controls
 
 New torrents start in qBittorrent's downloading state. They can be advanced or

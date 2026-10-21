@@ -1,6 +1,7 @@
 package jobqueue
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -21,6 +22,11 @@ const (
 	JobTypeMatchLibrary JobType = "match_library"
 )
 
+var (
+	ErrFull    = errors.New("job queue is full; try again later")
+	ErrStopped = errors.New("job queue is shutting down")
+)
+
 type JobStatus string
 
 const (
@@ -37,17 +43,17 @@ type JobProgress struct {
 }
 
 type Job struct {
-	ID           string
-	Type         JobType
-	LibraryID    uint
-	LibraryName  string
-	Status       JobStatus
-	Progress     *JobProgress
-	Error        string
-	FullRematch  bool
-	CreatedAt    time.Time
-	StartedAt    *time.Time
-	CompletedAt  *time.Time
+	ID          string
+	Type        JobType
+	LibraryID   uint
+	LibraryName string
+	Status      JobStatus
+	Progress    *JobProgress
+	Error       string
+	FullRematch bool
+	CreatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
 }
 
 type Queue struct {
@@ -58,7 +64,10 @@ type Queue struct {
 	matchSvc *matching.Service
 	store    store.Store
 	bus      *eventbus.Bus
-	done     chan struct{}
+	stopCh   chan struct{}
+	doneCh   chan struct{}
+	started  bool
+	stopping bool
 	seq      int
 }
 
@@ -70,7 +79,8 @@ func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSi
 		matchSvc: matchSvc,
 		store:    s,
 		bus:      bus,
-		done:     make(chan struct{}),
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
 	}
 
 	maxID, err := s.MaxJobRecordID()
@@ -84,11 +94,47 @@ func New(syncSvc *sync.Service, matchSvc *matching.Service, s store.Store, bufSi
 }
 
 func (q *Queue) Start() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.started || q.stopping {
+		return
+	}
+	q.started = true
 	go q.worker()
 }
 
+// BeginShutdown rejects new submissions and discards waiting jobs without
+// interrupting the active job. It does not wait for that job to finish.
+func (q *Queue) BeginShutdown() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.stopping {
+		return
+	}
+	q.stopping = true
+	close(q.stopCh)
+	if !q.started {
+		close(q.doneCh)
+	}
+	for id, job := range q.jobs {
+		if job.Status == JobStatusPending {
+			delete(q.jobs, id)
+		}
+	}
+	for {
+		select {
+		case <-q.pending:
+		default:
+			return
+		}
+	}
+}
+
+// Stop closes admission and waits for the active job, including its history
+// write and final events. Safe to call repeatedly; the queue cannot restart.
 func (q *Queue) Stop() {
-	close(q.done)
+	q.BeginShutdown()
+	<-q.doneCh
 }
 
 type EnqueueOpts struct {
@@ -98,6 +144,9 @@ type EnqueueOpts struct {
 func (q *Queue) Enqueue(typ JobType, libID uint, libName string, opts ...EnqueueOpts) (*Job, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.stopping {
+		return nil, ErrStopped
+	}
 
 	// Check for existing pending/running job of the same type for this library
 	for _, j := range q.jobs {
@@ -106,9 +155,8 @@ func (q *Queue) Enqueue(typ JobType, libID uint, libName string, opts ...Enqueue
 		}
 	}
 
-	q.seq++
 	job := &Job{
-		ID:          fmt.Sprintf("job_%d", q.seq),
+		ID:          fmt.Sprintf("job_%d", q.seq+1),
 		Type:        typ,
 		LibraryID:   libID,
 		LibraryName: libName,
@@ -119,12 +167,17 @@ func (q *Queue) Enqueue(typ JobType, libID uint, libName string, opts ...Enqueue
 		job.FullRematch = opts[0].FullRematch
 	}
 
-	q.jobs[job.ID] = job
-	q.pending <- job
-
-	return job, nil
+	select {
+	case q.pending <- job:
+		q.seq++
+		q.jobs[job.ID] = job
+		return snapshotJob(job), nil
+	default:
+		return nil, ErrFull
+	}
 }
 
+// ListJobs returns caller-owned snapshots, including nested progress/timestamps.
 func (q *Queue) ListJobs() []*Job {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -133,7 +186,7 @@ func (q *Queue) ListJobs() []*Job {
 	// Active jobs first
 	for _, j := range q.jobs {
 		if j.Status == JobStatusPending || j.Status == JobStatusRunning {
-			result = append(result, j)
+			result = append(result, snapshotJob(j))
 		}
 	}
 	// Then completed/failed from DB
@@ -149,9 +202,10 @@ func (q *Queue) ListJobs() []*Job {
 }
 
 func (q *Queue) worker() {
+	defer close(q.doneCh)
 	for {
 		select {
-		case <-q.done:
+		case <-q.stopCh:
 			return
 		case job := <-q.pending:
 			q.execute(job)
@@ -161,6 +215,12 @@ func (q *Queue) worker() {
 
 func (q *Queue) execute(job *Job) {
 	q.mu.Lock()
+	// Receiving a queued job is not a claim: shutdown and the transition to
+	// running must share the same lock so no new work starts after admission closes.
+	if q.stopping {
+		q.mu.Unlock()
+		return
+	}
 	now := time.Now()
 	job.Status = JobStatusRunning
 	job.StartedAt = &now
@@ -286,7 +346,24 @@ func recordToJob(r *store.JobRecord) *Job {
 	if r.ResultMessage != "" {
 		j.Progress = &JobProgress{Message: r.ResultMessage}
 	}
-	return j
+	return snapshotJob(j)
+}
+
+func snapshotJob(job *Job) *Job {
+	snapshot := *job
+	if job.Progress != nil {
+		progress := *job.Progress
+		snapshot.Progress = &progress
+	}
+	if job.StartedAt != nil {
+		started := *job.StartedAt
+		snapshot.StartedAt = &started
+	}
+	if job.CompletedAt != nil {
+		completed := *job.CompletedAt
+		snapshot.CompletedAt = &completed
+	}
+	return &snapshot
 }
 
 func jobIDToUint(id string) uint {

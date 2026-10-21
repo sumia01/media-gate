@@ -126,9 +126,23 @@ async function fetchMedia(id: number, opts: { background?: boolean } = {}) {
   total.value = data?.total ?? 0
 }
 
+let jobRequestSeq = 0
+
 async function handleSync() {
   if (!library.value) return
-  await triggerSync(library.value.id)
+  const libraryId = library.value.id
+  const seq = ++jobRequestSeq
+  error.value = ''
+  try {
+    const { error: rejection, response } = await triggerSync(libraryId)
+    if (seq !== jobRequestSeq || Number(route.params.id) !== libraryId) return
+    if (!response.ok) {
+      error.value = rejection?.message || 'Could not start library sync. Please try again.'
+    }
+  } catch {
+    if (seq !== jobRequestSeq || Number(route.params.id) !== libraryId) return
+    error.value = 'Could not start library sync. Please try again.'
+  }
 }
 
 async function onProfileChange(event: Event) {
@@ -155,7 +169,19 @@ async function handleMatch() {
 async function handleMatchChoice(fullRematch: boolean) {
   showMatchModal.value = false
   if (!library.value) return
-  await triggerMatch(library.value.id, fullRematch)
+  const libraryId = library.value.id
+  const seq = ++jobRequestSeq
+  error.value = ''
+  try {
+    const { error: rejection, response } = await triggerMatch(libraryId, fullRematch)
+    if (seq !== jobRequestSeq || Number(route.params.id) !== libraryId) return
+    if (!response.ok) {
+      error.value = rejection?.message || 'Could not start metadata matching. Please try again.'
+    }
+  } catch {
+    if (seq !== jobRequestSeq || Number(route.params.id) !== libraryId) return
+    error.value = 'Could not start metadata matching. Please try again.'
+  }
 }
 
 async function loadAll() {
@@ -238,6 +264,7 @@ onMounted(() => {
   on('media.item_matched', handleItemMatched)
 })
 onUnmounted(() => {
+  jobRequestSeq++
   for (const type of libraryEvents) {
     off(type, handleLibraryEvent)
   }
@@ -253,6 +280,7 @@ onUnmounted(() => {
 watch(
   () => route.params.id,
   () => {
+    jobRequestSeq++
     matchingItemId.value = null
     clearFilters()
     loadAll()

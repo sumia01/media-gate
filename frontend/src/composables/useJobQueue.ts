@@ -12,33 +12,39 @@ const jobDoneListeners = new Set<JobDoneCallback>()
 const hasActiveJob = computed(() => jobs.value.some((j) => j.status === 'pending' || j.status === 'running'))
 
 async function fetchJobs() {
-  const { data } = await client.GET('/jobs')
-  if (data) {
-    jobs.value = data.jobs
+  try {
+    const { data } = await client.GET('/jobs')
+    if (data) {
+      jobs.value = data.jobs
+    }
+  } catch {
+    // Keep the last snapshot. A status-refresh failure must not turn an
+    // already accepted job submission into an apparent admission failure.
+    return
   }
 }
 
 async function triggerSync(libraryId: number) {
-  const { data } = await client.POST('/libraries/{id}/sync', {
+  const result = await client.POST('/libraries/{id}/sync', {
     params: { path: { id: libraryId } },
   })
-  if (data) {
+  if (result.data) {
     await fetchJobs()
   }
-  return data
+  return result
 }
 
 async function triggerMatch(libraryId: number, fullRematch = false) {
-  const { data } = await client.POST('/libraries/{id}/match', {
+  const result = await client.POST('/libraries/{id}/match', {
     params: {
       path: { id: libraryId },
       query: fullRematch ? { fullRematch: true } : undefined,
     },
   })
-  if (data) {
+  if (result.data) {
     await fetchJobs()
   }
-  return data
+  return result
 }
 
 function onJobDone(cb: JobDoneCallback) {

@@ -73,6 +73,7 @@ designed for a homelab or lightweight server.
 - Encrypt sensitive settings at rest and protect filesystem operations with cleaned, separator-aware path containment checks.
 - Publish typed server-sent events for live UI updates across jobs, matching, downloads/imports, monitoring, subtitles, activity, and updates.
 - Expose background worker status and manual run controls for monitor, metadata refresh, indexer-definition refresh, and self-update checks.
+- Bound the separate library sync/match queue to 100 waiting jobs with temporary full/shutdown HTTP 503 rejections (duplicates remain 409), shown in the library page's error banner rather than silently dropped. Graceful shutdown discards waiting jobs and finishes only the active job before closing shared resources. Job responses are independent snapshots; waiting jobs are not resumed after restart.
 - Provide a SQLite database export and an optional Linux self-update flow based on GitHub Releases.
 - Support optional OpenTelemetry trace/log export, structured logging, health/version/disk-usage reporting, and a disposable fake-integration test harness.
 - Run non-publishing [backend CI checks](HARNESS.md#backend-pull-request-checks) on main pushes, pull requests, and manual dispatch for generated/embedded builds, uncached backend tests, pinned lint, and fake-backed search-to-import smoke; frontend tests/lint and release/required-check enforcement remain separate.

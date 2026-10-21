@@ -386,10 +386,15 @@ func main() {
 	// drain the in-flight importer/jobs, stop the plumbing, and only then close
 	// the database and flush telemetry — after nothing else can touch them.
 
-	// 1. Stop accepting new HTTP connections and drain in-flight requests.
-	//    Bounded well under systemd's default TimeoutStopSec (90s). Cancel the
-	//    base context first so long-lived handlers (SSE streams) return at once;
-	//    without this, Shutdown would block on them for the full timeout.
+	// 1. Close queue admission immediately: waiting jobs are discarded, while
+	//    the active job may finish. Drain in-flight HTTP requests next; any late
+	//    job submission is rejected even if other shutdown steps take time.
+	queue.BeginShutdown()
+
+	// Stop accepting new HTTP connections and drain in-flight requests.
+	// Bounded well under systemd's default TimeoutStopSec (90s). Cancel the
+	// base context first so long-lived handlers (SSE streams) return at once;
+	// without this, Shutdown would block on them for the full timeout.
 	cancelBase()
 	httpCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	if err := srv.Shutdown(httpCtx); err != nil {
@@ -411,7 +416,8 @@ func main() {
 	//    in-flight file copy to finish so we never leave a half-copied file.
 	importerSvc.Stop()
 
-	// 4. Stop the job queue (library sync/match jobs).
+	// 4. Wait for the active library sync/match job, its history, and final events.
+	//    No waiting job or sync-to-match follow-up can start during shutdown.
 	queue.Stop()
 
 	// 5. Stop the event bus dispatch goroutine.

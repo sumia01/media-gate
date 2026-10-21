@@ -445,6 +445,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Job queue is full or shutting down; retry later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /libraries/{id}/match:
     parameters:
@@ -479,6 +485,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Library already has an active match job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Job queue is full or shutting down; retry later
           content:
             application/json:
               schema:
