@@ -117,10 +117,45 @@ make harness-ci
 ```
 
 The command creates a unique instance, runs the deterministic smoke flow, and
-destroys it on success. On failure it stops all processes but retains the
-instance directory so logs and filesystem output can be uploaded as CI
-artifacts. Set `HARNESS_BINARY=/path/to/media-gate` when the pipeline already
-built the binary.
+destroys it on success. On failure it attempts teardown and retains the instance
+directory for diagnosis. Do not upload raw instances, manifests, databases, or
+environment files; any exported diagnostics must be an explicitly reviewed,
+redacted log-only selection. Set `HARNESS_BINARY=/path/to/media-gate` when the
+pipeline already built the binary.
+
+### Backend pull-request checks
+
+[Backend checks](../.github/workflows/backend-checks.yml) is a non-publishing
+Linux workflow triggered by pull requests and manual dispatch. Updating an open
+PR triggers another check; an ordinary push without a PR does not. Manual
+dispatch requires the workflow file to exist on the default branch.
+
+The job selects Go from `backend/go.mod` and Node.js 24, then runs:
+
+1. Root `make tools`, frontend `npm ci`, and root `make build`, in that order.
+   Generation and real embedded assets are required before whole-backend tests.
+2. `go test -count=1 ./...` and `golangci-lint run --timeout=5m ./...` in
+   `backend/`. The job separately installs golangci-lint v1.64.8 from source with
+   the selected Go toolchain, retaining the existing default lint rules.
+3. Root `make harness-ci` with a unique `HARNESS_ID` and an absolute
+   `HARNESS_BINARY` pointing at the already-built application. Both fake
+   integrations are used; live provider keys are empty.
+
+The workflow grants read-only repository permissions, does not persist checkout
+credentials, bounds job/step execution, and always attempts a final
+`make harness-down` for its instance. Successful instances are removed; failure
+files remain on the runner for diagnosis, but no harness artifacts are uploaded.
+Hosted runner storage is ephemeral, so those files are not durable CI artifacts.
+
+This gate includes frontend type-check/build, not frontend tests/lint. It does
+not configure required checks or branch protection, gate the separate tagged
+release workflow, or replace targeted race, browser, or feature-specific checks.
+A successful smoke does not prove cleanup during forced runner termination or
+shutdown with in-flight work. Air's existing `@latest` install remains unpinned;
+future Go/linter compatibility must be revalidated. See
+[ADR-151](DECISIONS.md#adr-151-separate-non-publishing-backend-pull-request-verification).
+
+### Release-gate guidance
 
 A release pipeline should keep deterministic and live checks separate:
 

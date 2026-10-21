@@ -7,6 +7,7 @@ Self-hosted media management app: Go backend and Vue 3/TypeScript frontend, ship
 - This file applies repository-wide. Read any nested `AGENTS.md` before editing its subtree.
 - Inspect the relevant implementation and tests first. Make the smallest correct change; preserve unrelated work and avoid speculative abstractions or compatibility layers.
 - Treat source, tests, migrations, and build configuration as evidence of current behavior. Older ADRs, roadmap entries, and recalled memories may be superseded; flag conflicts rather than restoring obsolete behavior.
+- Before declaring a change merge-ready, review and update affected tracked documentation: README, roadmap, ADRs for architectural decisions, feature summary, and operational/developer guides. Update this file for affected commands, guardrails, and references only. Green CI or an ignored implementation plan does not replace documentation completion.
 - Do not commit, push, tag, deploy, or modify production without an explicit request. Report changes, checks actually run, and remaining gaps when finishing.
 
 ## Setup And Commands
@@ -41,6 +42,7 @@ Command sources: [Makefile](Makefile), [frontend/package.json](frontend/package.
 - Use the disposable harness for UI/API interaction, auth, SSE, migrations, workers, imports, integration protocols, or multi-service changes. It complements focused regression tests; its smoke flow does not cover every feature or replace browser checks.
 - For visible UI changes, check the affected flow at desktop, tablet (including sidebar-visible layouts), and mobile sizes. For modals and suggestion lists, also verify inputs and action controls remain visible at short viewport heights. Preserve the existing Vue/Tailwind design language.
 - For documentation-only changes, verify commands/references and run `git diff --check`; runtime suites are unnecessary unless behavior changed. Report blocked or skipped checks, not assumed passes. Inspect [.github/workflows](.github/workflows) before assuming CI enforces a check.
+- PR/manual automation is defined by [Backend checks](.github/workflows/backend-checks.yml); see [harness CI coverage](docs/HARNESS.md#backend-pull-request-checks) and ADR-151 for its boundaries. Verify the current PR head rather than treating a previous commit's green run as verification of later changes.
 
 ### Disposable Harness
 
