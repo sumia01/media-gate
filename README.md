@@ -337,6 +337,20 @@ Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 including build tooling. The production binary still embeds the frontend and
 does not require a Node.js runtime.
 
+### Pull-request verification
+
+[Backend checks](.github/workflows/backend-checks.yml) runs on pull requests and
+manual dispatch using the Go version in `backend/go.mod` and Node.js 24. It
+generates contracts, builds the embedded application, runs uncached backend
+tests and pinned backend lint, then exercises search-to-import with both the
+fake tracker and fake qBittorrent. It does not publish or deploy anything.
+
+The frontend is type-checked and built, but frontend tests/lint, required-check
+enforcement, and release gating are not added by this workflow. The tag-triggered
+release workflow remains separate. See [harness CI coverage](docs/HARNESS.md#backend-pull-request-checks)
+and [ADR-151](docs/DECISIONS.md#adr-151-separate-non-publishing-backend-pull-request-verification)
+for setup, safety boundaries, and limitations.
+
 ### Production build
 
 ```bash

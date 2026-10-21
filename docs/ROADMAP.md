@@ -710,6 +710,15 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Verify backend/frontend regression suites, both linters, type-checking, full production build, fake-only local and built-binary harness smoke flows, and desktop/tablet/mobile browser interactions
 - [x] Document full-tree dependency auditing; no application behavior, API, configuration, or database changes
 
+## Phase 10.9: Backend Pull-Request Regression Checks ✅
+→ See ADR-151 and [harness CI coverage](HARNESS.md#backend-pull-request-checks)
+
+- [x] Add a separate, non-publishing Linux PR/manual workflow with Go from `backend/go.mod` and Node.js 24
+- [x] Prepare generated contracts and embedded assets through the existing build sequence before running uncached backend tests and separately pinned backend lint
+- [x] Reuse the built binary and existing fake tracker/qBittorrent smoke flow with unique instances, bounded execution, read-only permissions, and always-run teardown
+- [x] Verify clean-copy build/tests/lint/smoke locally, controlled failure/SIGINT cleanup locally, and the normal hosted PR flow
+- [x] Document triggers, coverage, safety boundaries, and readiness requirements; keep frontend test/lint gates, branch protection, sanitized artifact export, release gating, and exact hosted cancellation testing outside this batch
+
 ## Known Bugs ⬜
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7
