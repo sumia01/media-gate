@@ -1,0 +1,83 @@
+name: Backend checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      MEDIAGATE_ENV_FILE: ""
+      HARNESS_ID: backend-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      HARNESS_TMDB_APIKEY: ""
+      HARNESS_TVDB_APIKEY: ""
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install build tools and pinned backend linter
+        timeout-minutes: 10
+        env:
+          GOBIN: ${{ runner.temp }}/media-gate-tools
+        run: |
+          echo "$GOBIN" >> "$GITHUB_PATH"
+          make tools
+          # Preserve the existing lint version and compile it with the selected Go.
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          "$GOBIN/golangci-lint" version
+
+      - name: Install frontend generation dependencies
+        working-directory: frontend
+        timeout-minutes: 5
+        run: npm ci
+
+      - name: Generate contracts and build the embedded application
+        timeout-minutes: 10
+        run: make build
+
+      - name: Run uncached backend tests
+        working-directory: backend
+        timeout-minutes: 10
+        run: go test -count=1 ./...
+
+      - name: Run backend lint
+        working-directory: backend
+        timeout-minutes: 7
+        run: golangci-lint run --timeout=5m ./...
+
+      - name: Run built-binary smoke with fake integrations
+        id: smoke
+        timeout-minutes: 5
+        run: make harness-ci HARNESS_ID="$HARNESS_ID" HARNESS_BINARY="$GITHUB_WORKSPACE/media-gate"
+
+      - name: Stop any remaining harness processes
+        if: ${{ always() }}
+        timeout-minutes: 2
+        run: |
+          if [[ -f harness/harness.sh ]]; then
+            make harness-down HARNESS_ID="$HARNESS_ID"
+          fi
+
+      # Do not upload raw harness instances: manifests and databases contain
+      # disposable credentials. Failed instances retain local diagnostic files.
