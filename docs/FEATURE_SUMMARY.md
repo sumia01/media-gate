@@ -75,7 +75,7 @@ designed for a homelab or lightweight server.
 - Expose background worker status and manual run controls for monitor, metadata refresh, indexer-definition refresh, and self-update checks.
 - Provide a SQLite database export and an optional Linux self-update flow based on GitHub Releases.
 - Support optional OpenTelemetry trace/log export, structured logging, health/version/disk-usage reporting, and a disposable fake-integration test harness.
-- Run non-publishing [backend PR/manual checks](HARNESS.md#backend-pull-request-checks) for generated/embedded builds, uncached backend tests, pinned lint, and fake-backed search-to-import smoke; frontend tests/lint and release/required-check enforcement remain separate.
+- Run non-publishing [backend CI checks](HARNESS.md#backend-pull-request-checks) on main pushes, pull requests, and manual dispatch for generated/embedded builds, uncached backend tests, pinned lint, and fake-backed search-to-import smoke; frontend tests/lint and release/required-check enforcement remain separate.
 
 ## Integrated Services
 

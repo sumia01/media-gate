@@ -337,13 +337,14 @@ Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 including build tooling. The production binary still embeds the frontend and
 does not require a Node.js runtime.
 
-### Pull-request verification
+### Continuous integration
 
-[Backend checks](.github/workflows/backend-checks.yml) runs on pull requests and
-manual dispatch using the Go version in `backend/go.mod` and Node.js 24. It
-generates contracts, builds the embedded application, runs uncached backend
-tests and pinned backend lint, then exercises search-to-import with both the
-fake tracker and fake qBittorrent. It does not publish or deploy anything.
+[Backend checks](.github/workflows/backend-checks.yml) runs on pushes to `main`,
+pull requests, and manual dispatch using the Go version in `backend/go.mod` and
+Node.js 24. It generates contracts, builds the embedded application, runs
+uncached backend tests and pinned backend lint, then exercises search-to-import
+with both the fake tracker and fake qBittorrent. It does not publish or deploy
+anything.
 
 The frontend is type-checked and built, but frontend tests/lint, required-check
 enforcement, and release gating are not added by this workflow. The tag-triggered

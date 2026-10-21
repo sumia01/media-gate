@@ -126,9 +126,11 @@ pipeline already built the binary.
 ### Backend pull-request checks
 
 [Backend checks](../.github/workflows/backend-checks.yml) is a non-publishing
-Linux workflow triggered by pull requests and manual dispatch. Updating an open
-PR triggers another check; an ordinary push without a PR does not. Manual
-dispatch requires the workflow file to exist on the default branch.
+Linux workflow triggered by pushes to `main`, pull requests, and manual dispatch.
+Direct-main pushes are checked without a PR; other branch pushes and tag pushes
+do not trigger this workflow by themselves. Updating an open PR still triggers
+another check. Manual dispatch requires the workflow file to exist on the default
+branch.
 
 The job selects Go from `backend/go.mod` and Node.js 24, then runs:
 
