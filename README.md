@@ -355,12 +355,15 @@ with HTTP conversion/error mapping in the handlers. Run focused regressions with
 also verify the authenticated flow using the
 [media-settings harness checklist](docs/HARNESS.md#media-settings-mutation-verification).
 
-Matching stays in one package and service, organized into responsibility-based
-files; see the [matching package map](docs/ARCHITECTURE.md#matching-package-organization).
+Matching stays in one package and service, with pure provider-response mappings
+and transaction-scoped request-attribution helpers; see the
+[matching package map](docs/ARCHITECTURE.md#matching-package-organization).
 Run `(cd backend && go test -count=1 ./internal/matching ./internal/metarefresh ./internal/sync ./internal/monitor ./internal/api/v1)`
 for matching, request attribution, refresh, and their consumers; use the same
 package list with `-race` for concurrency checks. Provider fixtures are local:
-the fake-backed harness smoke does not verify live TMDB/TVDB behavior.
+direct mapping/wire tests cover provider conversion, and SQLite request tests
+cover both new/repeat callers and rollback. The fake-backed harness smoke does
+not verify live TMDB/TVDB behavior or replace these targeted checks.
 
 Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 `npm ci` in `frontend/` to install the reviewed versions. Audit the full tree,

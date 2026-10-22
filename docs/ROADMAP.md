@@ -760,7 +760,18 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Preserve all declarations, public signatures, transaction/cloning boundaries, provider cache/mutex ownership, and poster/event ordering; retain existing regression tests unchanged
 - [x] Verify 1,398 uncached backend tests, 464 focused normal/race cases, backend lint, generated/embedded build, fake-backed smoke and documentation references; all 110 package declarations remain byte-identical to the pre-split source
 - [x] Repeat the full uncached backend suite and both linters before publication; keep this refactor separate from new features and deeper service-boundary changes
-- Deeper collaborator extraction is not part of this mechanical batch and needs separate scope agreement
+- Deeper responsibility extraction was kept separate from this mechanical batch; see the separately agreed Phase 10.14
+
+## Phase 10.14: Matching Responsibility Boundaries ✅
+→ See ADR-079's responsibility-boundary follow-up and the [matching package map](ARCHITECTURE.md#matching-package-organization); completes bounded B04 implementation
+
+- [x] Extract pure TMDB movie/TV and TVDB series metadata, episode and search-candidate mappings; keep fetching, errors, confidence scoring, caches and clocks in the existing service
+- [x] Characterize seeded-field retention versus clearing, input immutability, credits/certifications, season counts, natural keys and empty shapes; verify fetch/preview/search composition with local HTTP fixtures
+- [x] Share transaction-bound request intent/final-monitor-snapshot/activity recording with named input, while leaving transaction/lock ownership, before-state timing, mutations and post-commit order explicit in the service
+- [x] Keep existing pure scope rules and regression tests; add SQLite new/repeat/optional-requester, correlated profile activity and rollback/no-publication coverage
+- [x] Verify 1,439 uncached backend tests, 505 focused normal/race cases, both linters, generated/embedded build, fake-backed smoke and four expected-failing source overlays
+- [x] Confirm all 41 new characterization cases also pass against pre-extraction service bodies; repeat the full uncached suite and both linters before publication
+- [x] Preserve API/schema/frontend behavior and the existing services, Store contract, client/cache/lock ownership and cancellation policy; no speculative framework or B05 dependency-interface work
 
 ## Known Bugs ⬜
 - [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately

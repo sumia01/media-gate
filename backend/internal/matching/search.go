@@ -3,7 +3,6 @@ package matching
 import (
 	"fmt"
 
-	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -95,18 +94,7 @@ func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Cand
 			return nil, err
 		}
 		for _, r := range results {
-			c := Candidate{
-				Source:     "tmdb",
-				ExternalID: r.ID,
-				Title:      r.Title,
-				Overview:   r.Overview,
-			}
-			if r.PosterPath != "" {
-				c.PosterURL = tmdbPosterBase + r.PosterPath
-			}
-			if y := dateutil.ParseYear(r.ReleaseDate); y != nil {
-				c.Year = y
-			}
+			c := tmdbMovieCandidate(r)
 			c.Confidence = Score(query, year, c.Title, c.Year)
 			candidates = append(candidates, c)
 		}
@@ -116,18 +104,7 @@ func (s *Service) searchTMDB(apiKey, query, mediaType string, year *int) ([]Cand
 			return nil, err
 		}
 		for _, r := range results {
-			c := Candidate{
-				Source:     "tmdb",
-				ExternalID: r.ID,
-				Title:      r.Name,
-				Overview:   r.Overview,
-			}
-			if r.PosterPath != "" {
-				c.PosterURL = tmdbPosterBase + r.PosterPath
-			}
-			if y := dateutil.ParseYear(r.FirstAirDate); y != nil {
-				c.Year = y
-			}
+			c := tmdbTVCandidate(r)
 			c.Confidence = Score(query, year, c.Title, c.Year)
 			candidates = append(candidates, c)
 		}
@@ -145,16 +122,7 @@ func (s *Service) searchTVDB(apiKey, query string, year *int) ([]Candidate, erro
 
 	var candidates []Candidate
 	for _, r := range results {
-		c := Candidate{
-			Source:     "tvdb",
-			ExternalID: r.ID(),
-			Title:      r.Name,
-			Overview:   r.Overview,
-			PosterURL:  r.ImageURL,
-		}
-		if y := dateutil.ParseYear(r.FirstAirDate); y != nil {
-			c.Year = y
-		}
+		c := tvdbSeriesCandidate(r)
 		c.Confidence = Score(query, year, c.Title, c.Year)
 		candidates = append(candidates, c)
 	}

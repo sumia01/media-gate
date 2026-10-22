@@ -92,36 +92,14 @@ func (s *Service) fetchEpisodesFromSource(source, apiKey string, externalID, sea
 		if err != nil {
 			return nil, err
 		}
-		episodes := make([]episodeData, len(details.Episodes))
-		for i, ep := range details.Episodes {
-			episodes[i] = episodeData{
-				seasonNumber:  ep.SeasonNumber,
-				episodeNumber: ep.EpisodeNumber,
-				title:         ep.Name,
-				overview:      ep.Overview,
-				airDate:       ep.AirDate,
-				runtime:       ep.Runtime,
-			}
-		}
-		return episodes, nil
+		return tmdbEpisodeData(details.Episodes), nil
 	case "tvdb":
 		client := s.cachedTVDB(apiKey)
 		entries, err := client.GetSeriesEpisodes(externalID, season)
 		if err != nil {
 			return nil, err
 		}
-		episodes := make([]episodeData, len(entries))
-		for i, ep := range entries {
-			episodes[i] = episodeData{
-				seasonNumber:  ep.SeasonNumber,
-				episodeNumber: ep.Number,
-				title:         ep.Name,
-				overview:      ep.Overview,
-				airDate:       ep.Aired,
-				runtime:       ep.Runtime,
-			}
-		}
-		return episodes, nil
+		return tvdbEpisodeData(entries), nil
 	default:
 		return nil, fmt.Errorf("unknown source: %s", source)
 	}

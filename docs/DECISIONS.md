@@ -1120,7 +1120,7 @@ interface or architectural boundary; deeper responsibility extraction remains
 separate work. Later ADR-140/142/144 still govern attribution, atomic activity,
 stale candidates and stable episode identity.
 
-**Verification update (2026-10-22)**: Before publication, the full uncached
+**First-batch verification update (2026-10-22)**: Before publication, the full uncached
 backend suite passes 1,398 tests across 46 packages and `scripts/lint-all.sh`
 passes both backend and frontend lint. Source comparison confirms all 110
 matching-package declarations and import mappings are unchanged. Earlier
@@ -1128,6 +1128,35 @@ implementation/review checks also passed 464 focused race cases, the
 generated/embedded production build and deterministic smoke with both fake
 integrations. These are local results, not a claim of hosted CI or live-provider
 coverage; the existing regression tests remain unchanged.
+
+**Responsibility-boundary follow-up (2026-10-22)**: In separately agreed B04
+batches, provider-response mappings are now deterministic private functions,
+separate from HTTP fetching, client caching, scoring and clock ownership.
+Metadata is mapped by value so existing identity/timestamps and conditionally
+unassigned fields survive. New/repeat requests share a transaction-scoped
+`recordRequestAttribution` operation with named input for actor, scopes,
+before-state/new-item baseline and assigned profile. It records intent, final
+monitoring effects and correlated activity using only the supplied transaction
+store. The service still owns `WithTx`, locks, mutation/before-snapshot order,
+duplicate/race handling and post-commit effects; existing repeat-request history
+and nil-requester behavior are unchanged. Pure scope functions remain in place.
+These are internal function boundaries, not new services or a transaction,
+provider, cache or interface framework.
+
+Direct mapping/wire fixtures and real SQLite caller/failure tests add 41 cases.
+The composed local checks pass 1,439 uncached backend tests, 505 focused race
+cases, both linters, the generated/embedded build and fake-backed smoke. Four
+isolated source-overlay regressions fail as intended for zero-runtime retention,
+missing activity hints, a wrong new-item marker and swallowed activity errors,
+without changing repository source. The fake smoke does not exercise live
+metadata providers or establish request-transaction correctness by itself.
+
+**Completion verification (2026-10-22)**: Read-only review also ran all 41 new
+characterization cases against the pre-extraction service bodies through a
+throwaway Go source overlay; they pass without repository edits. Before
+publication, a fresh `go test -count=1 ./...` passes 1,439 tests across 46 packages
+and root `scripts/lint-all.sh` passes both linters. These are local gates; hosted
+CI must verify the exact published commit independently.
 
 **Rationale**: Self-hosted media manager where all integration targets (qBit, FlareSolverr, TMDB, TVDB) are admin-configured — no untrusted input reaches URL fetch paths, making SSRF protection more harmful than helpful (blocks legitimate local services). The service layer pattern aligns with the existing architecture (library.Service, auth.Service) and makes business logic independently testable. Setter injection (`SetBus`, `SetStatusRecalculator`) breaks circular imports without adding complexity.
 

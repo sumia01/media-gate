@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sumia01/media-gate/internal/dateutil"
 	"github.com/sumia01/media-gate/internal/integration/tmdb"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -116,47 +115,13 @@ func (s *Service) fetchTMDBDetails(apiKey, mediaType string, externalID int, met
 		if err != nil {
 			return fmt.Errorf("fetching TMDB movie: %w", err)
 		}
-		meta.Title = details.Title
-		meta.Overview = details.Overview
-		meta.PosterPath = details.PosterPath
-		meta.Status = details.Status
-		meta.ImdbID = details.ImdbID
-		if details.Runtime > 0 {
-			rt := details.Runtime
-			meta.Runtime = &rt
-		}
-		if y := dateutil.ParseYear(details.ReleaseDate); y != nil {
-			meta.Year = y
-		}
-		meta.ReleaseDate = details.ReleaseDate
-		meta.Genres = genresToJSON(details.Genres)
-		meta.Credits = tmdbCreditsToJSON(details.Credits)
-		meta.TrailerURL = tmdb.BestTrailerURL(details.Videos)
-		meta.ContentRatings = contentRatingsToJSON(tmdb.MovieCertifications(details.ReleaseDates))
+		*meta = tmdbMovieMetadata(*meta, details)
 	} else {
 		details, err := client.GetTV(externalID)
 		if err != nil {
 			return fmt.Errorf("fetching TMDB TV: %w", err)
 		}
-		meta.Title = details.Name
-		meta.Overview = details.Overview
-		meta.PosterPath = details.PosterPath
-		meta.Status = details.Status
-		if details.ExternalIds != nil {
-			meta.ImdbID = details.ExternalIds.ImdbID
-		}
-		if details.NumberOfSeasons > 0 {
-			ns := details.NumberOfSeasons
-			meta.Seasons = &ns
-		}
-		if y := dateutil.ParseYear(details.FirstAirDate); y != nil {
-			meta.Year = y
-		}
-		meta.ReleaseDate = details.FirstAirDate
-		meta.Genres = genresToJSON(details.Genres)
-		meta.Credits = tmdbCreditsToJSON(details.Credits)
-		meta.TrailerURL = tmdb.BestTrailerURL(details.Videos)
-		meta.ContentRatings = contentRatingsToJSON(tmdb.TVCertifications(details.ContentRatings))
+		*meta = tmdbTVMetadata(*meta, details)
 	}
 	return nil
 }
@@ -167,23 +132,7 @@ func (s *Service) fetchTVDBDetails(apiKey string, externalID int, meta *store.Me
 	if err != nil {
 		return fmt.Errorf("fetching TVDB series: %w", err)
 	}
-	meta.Title = details.Name
-	meta.Overview = details.Overview
-	meta.PosterPath = details.Image
-	meta.Status = details.Status.Name
-	meta.ImdbID = details.ImdbID()
-	if len(details.Seasons) > 0 {
-		ns := details.MaxSeasonNumber()
-		if ns > 0 {
-			meta.Seasons = &ns
-		}
-	}
-	if y := dateutil.ParseYear(details.FirstAired); y != nil {
-		meta.Year = y
-	}
-	meta.ReleaseDate = details.FirstAired
-	meta.Credits = tvdbCharactersToJSON(details.Characters)
-	meta.ContentRatings = tvdbContentRatingsToJSON(details.ContentRatings)
+	*meta = tvdbSeriesMetadata(*meta, details)
 	return nil
 }
 

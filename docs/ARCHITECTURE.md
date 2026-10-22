@@ -118,25 +118,43 @@ All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for
 ## Matching Package Organization
 
 `backend/internal/matching/` retains one `Service`, its existing dependencies,
-and its public API. Responsibility-based files make the workflows easier to
-locate without introducing new collaborators:
+and its public API. Responsibility-based files and small private operations
+separate conversion/attribution from I/O and transaction orchestration:
 
 | Files | Responsibility |
 | --- | --- |
 | [service.go](../backend/internal/matching/service.go), [clients.go](../backend/internal/matching/clients.go) | Service construction, transaction-bound cloning, settings-based provider clients and caching |
 | [match.go](../backend/internal/matching/match.go), [match_activity.go](../backend/internal/matching/match_activity.go) | Automatic/manual matching, unmatching, stale-version checks, persistence and bounded activity details |
-| [requests.go](../backend/internal/matching/requests.go), [request_scopes.go](../backend/internal/matching/request_scopes.go) | New/repeat requests, additive monitoring, requester attribution/activity and scope normalization |
+| [requests.go](../backend/internal/matching/requests.go), [request_scopes.go](../backend/internal/matching/request_scopes.go), [request_attribution.go](../backend/internal/matching/request_attribution.go) | New/repeat request orchestration and additive monitoring; pure scope normalization; transaction-bound intent/activity recording |
 | [search.go](../backend/internal/matching/search.go), [confidence.go](../backend/internal/matching/confidence.go) | Provider search, library membership annotation and confidence scoring |
-| [metadata.go](../backend/internal/matching/metadata.go), [episodes.go](../backend/internal/matching/episodes.go) | Provider detail/episode conversion, external previews, and identity-preserving episode replacement |
+| [metadata.go](../backend/internal/matching/metadata.go), [episodes.go](../backend/internal/matching/episodes.go) | Provider detail/episode fetching, external previews, and identity-preserving episode replacement |
+| [provider_mapping.go](../backend/internal/matching/provider_mapping.go) | Pure TMDB/TVDB metadata, episode and search-candidate conversion, without clients, settings, clocks or persistence |
 | [refresh.go](../backend/internal/matching/refresh.go) | Metadata refresh candidates, semantic diffs and future-season policy |
 | [poster.go](../backend/internal/matching/poster.go) | Poster coordination, current-candidate checks and atomic installation |
 | [credits.go](../backend/internal/matching/credits.go), [contentratings.go](../backend/internal/matching/contentratings.go) | Provider-person identities and normalized regional certifications |
 
-This is file organization, not a new service boundary. Provider I/O remains
+These are internal responsibilities, not new service boundaries. Provider I/O remains
 outside write transactions; mutations/activity stay atomic, and existing
 post-commit status, poster and event ordering is unchanged. `WithStore`,
 `topStore`, client caches and mutex ownership retain their existing semantics.
 See ADR-048, ADR-079, ADR-140, ADR-142 and ADR-144 in [the decision log](DECISIONS.md).
+
+Metadata mappings take a value and return a value, preserving identity,
+timestamps and fields the provider does not assign. Conditional retention versus
+clearing, certification/credit conversion, natural episode keys and empty-result
+shapes are characterized in [mapping tests](../backend/internal/matching/provider_mapping_test.go).
+[Wire-fixture tests](../backend/internal/matching/provider_fetch_test.go) cover
+fetch/preview/search composition, cached authentication and typed errors.
+
+`recordRequestAttribution` receives the caller's transaction-bound store after
+media/monitor writes. Its named input carries the actor/scopes, existing-item
+before-state or new-item baseline flag, and any assigned profile. It writes
+idempotent intent, snapshots final monitoring and appends correlated activity;
+it neither opens a transaction nor publishes events. Repeat requests still append
+request activity while deduplicating intent; a missing requester records neither.
+The service retains before-snapshot timing, mutation order, locks, duplicate/race
+handling and post-commit effects. [SQLite caller tests](../backend/internal/matching/request_attribution_test.go)
+cover both paths and rollback without recalculation/publication.
 
 ## Backend Service Layer
 
