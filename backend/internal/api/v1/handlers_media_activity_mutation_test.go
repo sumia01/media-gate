@@ -95,6 +95,7 @@ func TestDirectMediaMutationsRequireAndValidateActorForNoOps(t *testing.T) {
 	h, st, item, ctx := monitorToggleFixture(t)
 	checks := 0
 	h.store = &actorValidationStore{Store: st, checks: &checks}
+	h.mediaSvc = mediaservice.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 	empty := ""
 	if _, err := h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{
 		Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{PreferredRelease: &empty},
@@ -353,6 +354,7 @@ func TestActivityAppendFailureRollsBackDirectMediaMutations(t *testing.T) {
 			beforeSeasons, _ := st.ListSeasonMonitorsByMediaItem(item.ID)
 			beforeEpisodes, _ := st.ListEpisodeMonitorsByMediaItem(item.ID)
 			h.store = &monitorTransactionStore{Store: st, fail: "activity"}
+			h.mediaSvc = mediaservice.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 			bus := eventbus.New(2)
 			events := make(chan eventbus.Event, 1)
 			bus.Subscribe(eventbus.MediaActivityAdded, func(event eventbus.Event) { events <- event })

@@ -2,6 +2,7 @@ package apiv1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sumia01/media-gate/internal/auth"
+	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -54,6 +56,7 @@ func monitorToggleFixture(t *testing.T) (*Handlers, store.Store, *store.MediaIte
 		t.Fatal(err)
 	}
 	h := &Handlers{store: st, syncSvc: mediasync.NewService(st), settings: settings.NewService(st, dir, nil, "test-key", http.DefaultClient)}
+	h.mediaSvc = media.NewService(st, h.syncSvc, nil, nil, dir)
 	return h, st, item, auth.ContextWithUserID(context.Background(), user.ID)
 }
 
@@ -191,6 +194,7 @@ func TestMonitorToggleRollsBackWithoutParentTimestamp(t *testing.T) {
 				beforeSeasons, _ := st.ListSeasonMonitorsByMediaItem(item.ID)
 				beforeEpisodes, _ := st.ListEpisodeMonitorsByMediaItem(item.ID)
 				h.store = &monitorTransactionStore{Store: st, fail: fault}
+				h.mediaSvc = media.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 				var err error
 				if kind == "season" {
 					_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
@@ -225,6 +229,7 @@ func TestMonitorToggleUsesFreshParentInsideTransaction(t *testing.T) {
 					t.Fatal(err)
 				}
 			}}
+			h.mediaSvc = media.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 			var err error
 			if kind == "season" {
 				_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: false}})
@@ -253,6 +258,7 @@ func TestAttributionFailureRollsBackMonitoring(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.store = &monitorTransactionStore{Store: st, fail: "attribution"}
+	h.mediaSvc = media.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 	ctx := auth.ContextWithUserID(context.Background(), user.ID)
 	_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{
 		Id: int64(item.ID), SeasonNumber: 2, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true},
@@ -275,15 +281,47 @@ func TestMonitorToggleMissingItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := season.(UpdateSeasonMonitor404JSONResponse); !ok {
+	if got, ok := season.(UpdateSeasonMonitor404JSONResponse); !ok || got.Code != http.StatusNotFound || got.Message != "media item not found" {
 		t.Fatalf("season response = %+v", season)
 	}
 	episode, err := h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{Id: 999, SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := episode.(UpdateEpisodeMonitor404JSONResponse); !ok {
+	if got, ok := episode.(UpdateEpisodeMonitor404JSONResponse); !ok || got.Code != http.StatusNotFound || got.Message != "media item not found" {
 		t.Fatalf("episode response = %+v", episode)
+	}
+}
+
+func TestMonitorTogglePreservesActorAndDeletionErrors(t *testing.T) {
+	for _, kind := range []string{"season", "episode"} {
+		for _, invalid := range []string{"deleted actor", "deletion pending"} {
+			t.Run(kind+"/"+invalid, func(t *testing.T) {
+				h, st, item, ctx := monitorToggleFixture(t)
+				want := store.ErrActivityActorNotFound
+				if invalid == "deleted actor" {
+					actor, _ := auth.UserIDFromContext(ctx)
+					if err := st.DeleteUser(actor); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					item.DeletionPending = true
+					if err := st.UpdateMediaItem(item); err != nil {
+						t.Fatal(err)
+					}
+					want = store.ErrMediaDeletionPending
+				}
+				var err error
+				if kind == "season" {
+					_, err = h.UpdateSeasonMonitor(ctx, UpdateSeasonMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, Body: &UpdateSeasonMonitorJSONRequestBody{Monitored: true}})
+				} else {
+					_, err = h.UpdateEpisodeMonitor(ctx, UpdateEpisodeMonitorRequestObject{Id: int64(item.ID), SeasonNumber: 1, EpisodeNumber: 1, Body: &UpdateEpisodeMonitorJSONRequestBody{Monitored: true}})
+				}
+				if !errors.Is(err, want) {
+					t.Fatalf("error = %v, want %v", err, want)
+				}
+			})
+		}
 	}
 }
 
@@ -333,5 +371,68 @@ func TestMonitorEnablePersistsRequesterAndFutureIntent(t *testing.T) {
 		if !want[request.Scope] || request.Requester.Name != "Agnes" {
 			t.Errorf("unexpected request attribution: %+v", request)
 		}
+	}
+}
+
+func TestUpdateMediaItemPreservesErrorMapping(t *testing.T) {
+	for _, kind := range []string{"missing item", "missing profile", "deletion pending"} {
+		t.Run(kind, func(t *testing.T) {
+			h, st, item, ctx := monitorToggleFixture(t)
+			req := UpdateMediaItemRequestObject{Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{}}
+			wantMessage := "media item not found"
+			switch kind {
+			case "missing item":
+				req.Id += 100
+			case "missing profile":
+				id := int64(999)
+				req.Body.MediaProfileId = &id
+				wantMessage = "media profile not found"
+			case "deletion pending":
+				item.DeletionPending = true
+				if err := st.UpdateMediaItem(item); err != nil {
+					t.Fatal(err)
+				}
+			}
+			response, err := h.UpdateMediaItem(ctx, req)
+			if kind == "deletion pending" {
+				if !errors.Is(err, store.ErrMediaDeletionPending) || response != nil {
+					t.Fatalf("response=%+v err=%v", response, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := response.(UpdateMediaItem404JSONResponse); !ok || got.Code != http.StatusNotFound || got.Message != wantMessage {
+				t.Fatalf("response=%+v, want 404 %q", response, wantMessage)
+			}
+		})
+	}
+}
+
+func TestUpdateMediaItemConvertsEmptyMonitorListsWithoutOmittingThem(t *testing.T) {
+	for _, body := range []string{`{}`, `{"seasonMonitors":[]}`, `{"episodeMonitors":[]}`} {
+		t.Run(body, func(t *testing.T) {
+			h, st, item, ctx := monitorToggleFixture(t)
+			item.Status = "missing"
+			if err := st.UpdateMediaItem(item); err != nil {
+				t.Fatal(err)
+			}
+			var input UpdateMediaItemJSONRequestBody
+			if err := json.Unmarshal([]byte(body), &input); err != nil {
+				t.Fatal(err)
+			}
+			response, err := h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{Id: int64(item.ID), Body: &input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := MediaItemStatus("available")
+			if body == `{}` {
+				want = "missing"
+			}
+			if got := response.(UpdateMediaItem200JSONResponse); got.Status != want {
+				t.Fatalf("status=%s want=%s", got.Status, want)
+			}
+		})
 	}
 }

@@ -743,6 +743,16 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Verify queue-error propagation, network fallback and accepted retry in browser at desktop/tablet/mobile/short landscape sizes, plus 20 actual-composable/view regression tests
 - [x] Verify active-job shutdown with one identity-checked SIGTERM: finish all 1,000 synthetic items and active history, but no waiting/follow-up jobs; retain the separate failed session-teardown evidence and document its signaling limitation below
 
+## Phase 10.12: Media Mutation Service Extraction ✅
+→ See ADR-153; staged backend maintainability work, with no API/schema/UI changes
+
+- [x] Move `UpdateMediaItem` settings/bulk-monitoring orchestration into the existing media service with API-independent input
+- [x] Preserve actor/profile/deletion checks, fresh transaction reads, keyword history, final-state attribution/activity, timestamps, and post-commit recalculation/publication
+- [x] Retain HTTP contract regressions and add direct SQLite-backed service tests for rollback, no-ops, optional input semantics, and best-effort post-commit failures
+- [x] Verify the first batch with 1,361 uncached backend tests, 265 affected media/API/sync race tests, backend lint, the generated/embedded build, and fake-backed smoke plus authenticated PATCH/privacy/bulk-monitoring/SSE checks
+- [x] Extract standalone season and episode monitoring workflows in the separately approved second batch; preserve override scope, fresh parent touches, no-op history, and post-commit effects
+- [x] Verify the second batch with 1,398 uncached backend tests, 456 affected race tests including monitor-freshness integration, backend lint, generated/embedded build, fake-backed smoke and authenticated standalone monitor API/SSE checks; rerun first-batch PATCH checks on the same build
+
 ## Known Bugs ⬜
 - [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147

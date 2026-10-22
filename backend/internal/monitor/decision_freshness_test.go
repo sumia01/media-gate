@@ -13,6 +13,7 @@ import (
 	apiv1 "github.com/sumia01/media-gate/internal/api/v1"
 	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/store"
 	mediasync "github.com/sumia01/media-gate/internal/sync"
 )
@@ -65,8 +66,10 @@ func (s *decisionInputListStore) GetMediaItem(id uint) (*store.MediaItem, error)
 }
 
 func decisionHandlers(svc *Service, st store.Store) *apiv1.Handlers {
-	return apiv1.NewHandlers(nil, st, nil, svc.settings, nil, mediasync.NewService(st), nil,
-		"", "", nil, false, nil, nil, nil, nil, nil, nil, "test")
+	syncSvc := mediasync.NewService(st)
+	mediaSvc := media.NewService(st, syncSvc, nil, nil, "")
+	return apiv1.NewHandlers(nil, st, nil, svc.settings, nil, syncSvc, nil,
+		"", "", nil, false, mediaSvc, nil, nil, nil, nil, nil, "test")
 }
 
 func decisionAPIState(t *testing.T, svc *Service, st store.Store, id uint) (apiv1.MediaItem, apiv1.MonitorDecision) {

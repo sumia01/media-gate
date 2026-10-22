@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/sumia01/media-gate/internal/auth"
+	"github.com/sumia01/media-gate/internal/media"
 	"github.com/sumia01/media-gate/internal/store"
 )
 
@@ -70,6 +71,7 @@ func TestSavedReleaseKeywordsNormalizeAndRemainPrivate(t *testing.T) {
 func TestReleaseKeywordHistoryRollsBackWithSettingsActivity(t *testing.T) {
 	h, st, item, ctx := monitorToggleFixture(t)
 	h.store = &monitorTransactionStore{Store: st, fail: "activity"}
+	h.mediaSvc = media.NewService(h.store, h.syncSvc, nil, nil, t.TempDir())
 	value := "ETHEL"
 	if _, err := h.UpdateMediaItem(ctx, UpdateMediaItemRequestObject{
 		Id: int64(item.ID), Body: &UpdateMediaItemJSONRequestBody{PreferredRelease: &value},

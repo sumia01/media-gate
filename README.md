@@ -348,6 +348,13 @@ Worker/queue tests use Go's standard-library fake clock and synchronization
 disposable harness for application-wide shutdown composition; see
 [queue shutdown verification](docs/HARNESS.md#queue-shutdown-verification).
 
+Media settings and standalone season/episode monitor workflows live in
+`media.Service.UpdateMediaItem`, `UpdateSeasonMonitor`, and `UpdateEpisodeMonitor`,
+with HTTP conversion/error mapping in the handlers. Run focused regressions with
+`(cd backend && go test -count=1 ./internal/media ./internal/api/v1 ./internal/sync ./internal/monitor)`;
+also verify the authenticated flow using the
+[media-settings harness checklist](docs/HARNESS.md#media-settings-mutation-verification).
+
 Frontend dependency updates are recorded in `frontend/package-lock.json`; use
 `npm ci` in `frontend/` to install the reviewed versions. Audit the full tree,
 including build tooling. The production binary still embeds the frontend and

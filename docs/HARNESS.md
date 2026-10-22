@@ -119,6 +119,43 @@ harness signaling fix separate from the queue policy; ordinary smoke remains
 useful, and the single-target procedure above avoids duplicate delivery for the
 in-flight check.
 
+## Media Settings Mutation Verification
+
+For changes to `PATCH /media/{id}` or the standalone season/episode monitor PUT
+endpoints, start a fresh task-specific instance and use only its manifest URLs,
+disposable users, and library paths. No live metadata
+keys are needed. The ordinary smoke remains a separate search-to-import check;
+it does not exercise settings transactions by itself.
+
+- Sign in as the seeded admin and create a quality profile plus an ordinary user
+  through the API. Verify that the ordinary user can still edit media settings;
+  absent authentication must remain unauthorized.
+- Save a profile, mixed-case/duplicate release keywords, explicit
+  `forceRelease: false`, and monitoring changes. Refetch the item, requester list, and activity:
+  values must persist, keywords must be canonical, and monitoring/settings rows
+  from the same save must share an operation ID.
+- Repeat the same settings and verify no duplicate activity/request attribution.
+  Try a missing item/profile and check the existing distinct 404 messages and
+  unchanged saved state.
+- Use a series fixture under the disposable library root for mixed season and
+  episode updates. Verify season-reset-before-episode-override ordering, parent
+  disable clearing overrides, and omitted versus explicit empty monitor lists.
+- Exercise `PUT /media/{id}/season-monitors/{seasonNumber}` and
+  `PUT /media/{id}/episodes/{seasonNumber}/{episodeNumber}/monitor` as an ordinary
+  user. A same-value season save still removes its episode overrides; an episode
+  save must preserve siblings. Verify create/update responses, no-op history,
+  fresh parent timestamps after refetch, missing-item 404s, and absent-auth 401s.
+  Child settings while parent monitoring is off must not attribute new requests.
+- Check private keyword suggestions from both accounts and request/activity SSE
+  hints after successful saves. SQLite fault-injection tests, not smoke success,
+  establish rollback on keyword, child/parent writes, override clearing,
+  attribution, activity, or transaction failure.
+
+Run `go test -count=1 ./internal/media ./internal/api/v1 ./internal/sync ./internal/monitor`
+in `backend/` for the focused service/HTTP and monitor-freshness regressions. Stop the instance with
+`make harness-down HARNESS_ID=<name>` and retain diagnostics when needed. See
+[ADR-153](DECISIONS.md#adr-153-own-media-settings-mutations-in-the-media-service).
+
 ## Fake Controls
 
 New torrents start in qBittorrent's downloading state. They can be advanced or
