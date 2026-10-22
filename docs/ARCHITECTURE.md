@@ -115,6 +115,29 @@ media-gate/
 
 All child foreign keys use GORM `constraint:OnDelete:CASCADE` (or `SET NULL` for nullable FKs like `Download.EpisodeID`), so deleting a Library cascades through MediaItems → MediaFiles, Episodes, SeasonMonitors, Downloads, MediaMetadata. SQLite FK enforcement is enabled via `PRAGMA foreign_keys = ON` at connection time.
 
+## Matching Package Organization
+
+`backend/internal/matching/` retains one `Service`, its existing dependencies,
+and its public API. Responsibility-based files make the workflows easier to
+locate without introducing new collaborators:
+
+| Files | Responsibility |
+| --- | --- |
+| [service.go](../backend/internal/matching/service.go), [clients.go](../backend/internal/matching/clients.go) | Service construction, transaction-bound cloning, settings-based provider clients and caching |
+| [match.go](../backend/internal/matching/match.go), [match_activity.go](../backend/internal/matching/match_activity.go) | Automatic/manual matching, unmatching, stale-version checks, persistence and bounded activity details |
+| [requests.go](../backend/internal/matching/requests.go), [request_scopes.go](../backend/internal/matching/request_scopes.go) | New/repeat requests, additive monitoring, requester attribution/activity and scope normalization |
+| [search.go](../backend/internal/matching/search.go), [confidence.go](../backend/internal/matching/confidence.go) | Provider search, library membership annotation and confidence scoring |
+| [metadata.go](../backend/internal/matching/metadata.go), [episodes.go](../backend/internal/matching/episodes.go) | Provider detail/episode conversion, external previews, and identity-preserving episode replacement |
+| [refresh.go](../backend/internal/matching/refresh.go) | Metadata refresh candidates, semantic diffs and future-season policy |
+| [poster.go](../backend/internal/matching/poster.go) | Poster coordination, current-candidate checks and atomic installation |
+| [credits.go](../backend/internal/matching/credits.go), [contentratings.go](../backend/internal/matching/contentratings.go) | Provider-person identities and normalized regional certifications |
+
+This is file organization, not a new service boundary. Provider I/O remains
+outside write transactions; mutations/activity stay atomic, and existing
+post-commit status, poster and event ordering is unchanged. `WithStore`,
+`topStore`, client caches and mutex ownership retain their existing semantics.
+See ADR-048, ADR-079, ADR-140, ADR-142 and ADR-144 in [the decision log](DECISIONS.md).
+
 ## Backend Service Layer
 
 ```

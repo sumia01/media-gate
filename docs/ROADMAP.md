@@ -753,6 +753,15 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Extract standalone season and episode monitoring workflows in the separately approved second batch; preserve override scope, fresh parent touches, no-op history, and post-commit effects
 - [x] Verify the second batch with 1,398 uncached backend tests, 456 affected race tests including monitor-freshness integration, backend lint, generated/embedded build, fake-backed smoke and authenticated standalone monitor API/SSE checks; rerun first-batch PATCH checks on the same build
 
+## Phase 10.13: Matching Package File Organization ✅
+→ See the [matching package map](ARCHITECTURE.md#matching-package-organization) and ADR-079's organization update; first B04 batch only
+
+- [x] Split the existing matching service into responsibility-based files within the same package, reusing the existing poster and episode files
+- [x] Preserve all declarations, public signatures, transaction/cloning boundaries, provider cache/mutex ownership, and poster/event ordering; retain existing regression tests unchanged
+- [x] Verify 1,398 uncached backend tests, 464 focused normal/race cases, backend lint, generated/embedded build, fake-backed smoke and documentation references; all 110 package declarations remain byte-identical to the pre-split source
+- [x] Repeat the full uncached backend suite and both linters before publication; keep this refactor separate from new features and deeper service-boundary changes
+- Deeper collaborator extraction is not part of this mechanical batch and needs separate scope agreement
+
 ## Known Bugs ⬜
 - [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147

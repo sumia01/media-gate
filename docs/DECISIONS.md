@@ -1109,6 +1109,26 @@ Intentionally skipped: fetch-by-ID + 404 pattern (Go generics can't express type
 
 Result: handlers are 5-15 line HTTP adapters (validate → call service → map to API type). Net: -308 lines, 371 added → simpler handlers, testable services.
 
+**Organization update (2026-10-22)**: Matching's existing service is organized
+into responsibility-based files for matching/activity, requests/scopes, search,
+provider metadata/episodes, refresh, posters, client caching, credits and content
+ratings. See the [package map](ARCHITECTURE.md#matching-package-organization).
+This mechanical split preserves declarations and behavior, including the
+transaction-bound `WithStore` clone, explicit top-level store use, cache/mutex
+ownership and post-commit effects. It introduces no new service, dependency
+interface or architectural boundary; deeper responsibility extraction remains
+separate work. Later ADR-140/142/144 still govern attribution, atomic activity,
+stale candidates and stable episode identity.
+
+**Verification update (2026-10-22)**: Before publication, the full uncached
+backend suite passes 1,398 tests across 46 packages and `scripts/lint-all.sh`
+passes both backend and frontend lint. Source comparison confirms all 110
+matching-package declarations and import mappings are unchanged. Earlier
+implementation/review checks also passed 464 focused race cases, the
+generated/embedded production build and deterministic smoke with both fake
+integrations. These are local results, not a claim of hosted CI or live-provider
+coverage; the existing regression tests remain unchanged.
+
 **Rationale**: Self-hosted media manager where all integration targets (qBit, FlareSolverr, TMDB, TVDB) are admin-configured — no untrusted input reaches URL fetch paths, making SSRF protection more harmful than helpful (blocks legitimate local services). The service layer pattern aligns with the existing architecture (library.Service, auth.Service) and makes business logic independently testable. Setter injection (`SetBus`, `SetStatusRecalculator`) breaks circular imports without adding complexity.
 
 ## ADR-080: Mobile responsive UI — first pass

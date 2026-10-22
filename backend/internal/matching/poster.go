@@ -2,6 +2,7 @@ package matching
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,7 +10,111 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sumia01/media-gate/internal/store"
 )
+
+// DownloadPoster fetches the poster image for a media item by loading its
+// stored metadata first. This is intentionally separate from applyMatch so it
+// can run outside a DB transaction.
+func (s *Service) DownloadPoster(itemID uint) {
+	s.posterMu.Lock()
+	defer s.posterMu.Unlock()
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil || item.DeletionPending {
+		return
+	}
+	meta, err := s.store.GetMediaMetadataByMediaItem(itemID)
+	if err != nil || meta == nil {
+		return
+	}
+	s.downloadPosterFor(itemID, meta)
+	if current, err := s.store.GetMediaItem(itemID); err != nil || current.DeletionPending {
+		_ = os.Remove(filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID)))
+	}
+}
+
+// downloadPosterFor fetches and atomically installs the poster described by
+// already-persisted metadata.
+func (s *Service) downloadPosterFor(itemID uint, meta *store.MediaMetadata) {
+	posterURL := s.posterURL(meta.Source, meta)
+	if posterURL == "" {
+		return
+	}
+
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := downloadPoster(s.httpClient, posterURL, dest); err != nil {
+		slog.Warn("poster download failed", "item_id", itemID, "error", err)
+		return
+	}
+}
+
+// downloadPosterForCommitted stages provider I/O away from the database and
+// installs the image only if the committed metadata candidate is still current.
+func (s *Service) downloadPosterForCommitted(itemID uint, expected *store.MediaMetadata, operationID string) {
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	posterURL := s.posterURL(expected.Source, expected)
+	if posterURL == "" {
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	staged := filepath.Join(s.posterDir, fmt.Sprintf(".poster-%d-%s.jpg", itemID, operationID))
+	defer func() { _ = os.Remove(staged) }()
+	if err := downloadPoster(s.httpClient, posterURL, staged); err != nil {
+		slog.Warn("poster download failed", "item_id", itemID, "error", err)
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := os.Rename(staged, dest); err != nil {
+		slog.Warn("poster install failed", "item_id", itemID, "error", err)
+		s.removePosterForCommitted(itemID, expected)
+		return
+	}
+	if !s.posterCandidateCurrent(itemID, expected) {
+		if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("stale poster cleanup failed", "item_id", itemID, "error", err)
+		}
+	}
+}
+
+func (s *Service) removePosterForCommitted(itemID uint, expected *store.MediaMetadata) {
+	if !s.posterCandidateCurrent(itemID, expected) {
+		return
+	}
+	dest := filepath.Join(s.posterDir, fmt.Sprintf("%d.jpg", itemID))
+	if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Warn("old poster cleanup failed", "item_id", itemID, "error", err)
+	}
+}
+
+func (s *Service) posterCandidateCurrent(itemID uint, expected *store.MediaMetadata) bool {
+	item, err := s.store.GetMediaItem(itemID)
+	if err != nil || item.DeletionPending {
+		return false
+	}
+	current, err := s.store.GetMediaMetadataByMediaItem(itemID)
+	return err == nil && sameMatchMetadataVersion(expected, current)
+}
+
+func (s *Service) posterURL(source string, meta *store.MediaMetadata) string {
+	if meta.PosterPath == "" {
+		return ""
+	}
+	if source == "tmdb" {
+		if strings.HasPrefix(meta.PosterPath, "/") {
+			return tmdbPosterBase + meta.PosterPath
+		}
+		return ""
+	}
+	// TVDB: PosterPath is already a full URL
+	return meta.PosterPath
+}
 
 // maxPosterBytes caps a poster download. A body larger than this is rejected
 // outright rather than silently truncated — a half-written JPEG renders as a
