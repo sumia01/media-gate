@@ -51,7 +51,7 @@ func TestMediaServerSettings(t *testing.T) {
 
 func TestJellyfinConnectionUsesSavedOrDraftCredentials(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Emby-Token") != "saved-key" {
+		if r.Header.Get("Authorization") != `MediaBrowser Token="saved-key"` {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

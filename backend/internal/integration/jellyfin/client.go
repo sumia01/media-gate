@@ -79,7 +79,8 @@ func (c *Client) request(method, path string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("invalid Jellyfin request URL")
 	}
-	req.Header.Set("X-Emby-Token", c.apiKey)
+	// Jellyfin can disable legacy headers such as X-Emby-Token.
+	req.Header.Set("Authorization", fmt.Sprintf("MediaBrowser Token=%q", c.apiKey))
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

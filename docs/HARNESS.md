@@ -170,6 +170,9 @@ make harness-up HARNESS_ID=media-server-check HARNESS_MODE=ci HARNESS_BINARY="$P
 - Configure each server through its Libraries tab. Jellyfin's fake must implement
   authenticated `GET /Library/VirtualFolders` and `POST /Items/{id}/Refresh`;
   Plex uses `/library/sections` and `/library/sections/{id}/refresh`.
+- Jellyfin's fake must require `Authorization: MediaBrowser Token="…"` and return
+  401 for missing/wrong credentials or legacy-only `X-Emby-Token` requests. This
+  covers servers configured with `EnableLegacyAuthorization=false`.
 - Test unsaved and saved credentials, masking after save, mapping suggestions,
   saving and removing mappings, and successful/failed manual refresh feedback.
 - Verify each top-level toggle persists independently through reloads. Disabled

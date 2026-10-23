@@ -289,7 +289,7 @@ func TestJellyfinImportAndPlexMappingIsolation(t *testing.T) {
 	const id = "00112233-4455-6677-8899-aabbccddeeff"
 	called := make(chan string, 2)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.Header.Get("X-Emby-Token") != "key" {
+		if r.Method != http.MethodPost || r.Header.Get("Authorization") != `MediaBrowser Token="key"` {
 			t.Error("wrong Jellyfin protocol")
 		}
 		called <- r.URL.Path

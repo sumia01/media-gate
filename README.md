@@ -228,6 +228,12 @@ For Jellyfin, create an API key under **Dashboard → API Keys**, save the serve
 library refresh. Movie and TV libraries are supported. Suggested mappings must be
 saved before automatic refresh starts; **Not mapped** removes a saved mapping.
 
+Jellyfin requests use `Authorization: MediaBrowser Token="…"`, including when
+Jellyfin's legacy authorization is disabled. A reverse proxy must forward this
+header. MediaGate v0.50.0 used the legacy `X-Emby-Token` header, which can return
+401 even with a valid key when legacy authorization is disabled; update MediaGate
+to **v0.50.1 or later**. Existing Jellyfin API keys and server settings can be kept.
+
 Existing Plex installations default to enabled; Jellyfin defaults to disabled.
 Disabling refresh preserves credentials and mappings, suppresses pending scans and
 retries, and disables manual refresh. A request already sent to the server cannot

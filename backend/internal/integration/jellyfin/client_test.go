@@ -10,11 +10,17 @@ import (
 
 const movieID = "00112233445566778899aabbccddeeff"
 
-func TestLibraryProtocol(t *testing.T) {
+func TestLibraryProtocolWithoutLegacyAuthorization(t *testing.T) {
 	var scans int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Emby-Token") != "test-api-key" || strings.Contains(r.URL.RawQuery, "test-api-key") {
-			t.Errorf("missing header authentication or credential in query")
+		// Match a server with EnableLegacyAuthorization=false: the deprecated
+		// header alone must not authenticate either discovery or refresh.
+		if r.Header.Get("Authorization") != `MediaBrowser Token="test-api-key"` {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get("X-Emby-Token") != "" || strings.Contains(r.URL.RawQuery, "test-api-key") {
+			t.Error("credential duplicated into a legacy header or query")
 		}
 		switch r.URL.Path {
 		case "/jellyfin/Library/VirtualFolders":
@@ -44,6 +50,9 @@ func TestLibraryProtocol(t *testing.T) {
 	}
 	if err := c.TestConnection(); err != nil {
 		t.Fatal(err)
+	}
+	if err := NewClient(srv.URL+"/jellyfin", "wrong-key", srv.Client()).TestConnection(); err == nil {
+		t.Fatal("invalid API key passed connection test")
 	}
 	if err := c.RefreshLibrary(movieID); err != nil {
 		t.Fatal(err)

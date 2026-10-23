@@ -24,8 +24,9 @@ func TestMediaServerHTTPSettingsMappingsAndAuthorization(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/Library/VirtualFolders":
-			if r.Header.Get("X-Emby-Token") != "jellyfin-test-key" {
-				t.Error("saved key not decrypted")
+			if r.Header.Get("Authorization") != `MediaBrowser Token="jellyfin-test-key"` {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
 			}
 			fmt.Fprintf(w, `[{"ItemId":%q,"Name":"Movies","CollectionType":"movies","Locations":["/movies"]}]`, jellyID)
 		case "/Items/" + jellyID + "/Refresh":

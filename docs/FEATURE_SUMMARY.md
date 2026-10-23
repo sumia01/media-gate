@@ -91,7 +91,7 @@ designed for a homelab or lightweight server.
 | OpenSubtitles.com | Subtitle search and download |
 | Discord | Import and terminal-failure webhooks |
 | Plex | Library-section mapping and refresh triggers |
-| Jellyfin | Movie/TV library mapping, API-key connection testing, and library refresh triggers |
+| Jellyfin | Movie/TV library mapping, API-key authentication with legacy authorization disabled, connection testing, and library refresh triggers |
 | GitHub Releases | Optional self-update checks and binary replacement |
 
 ## Current Constraints And Known Gaps

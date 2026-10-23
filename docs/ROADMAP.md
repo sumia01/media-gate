@@ -487,6 +487,7 @@
 - [x] Frontend: Libraries page split into tabs (Libraries / Media Server)
 - [x] `LibrariesMediaServer.vue` — connection settings, test, auto-matched library↔section dropdowns, manual refresh per library
 - [x] Jellyfin support (v0.50.0) — API-key client/provider, movie/TV library discovery, mapping suggestions, saved mappings, connection testing, and per-library refresh (ADR-154)
+- [x] Jellyfin authentication correction (v0.50.1) — use `Authorization: MediaBrowser Token="…"` so valid API keys work with legacy authorization disabled; protocol fixtures reject legacy-only authentication
 - [x] Libraries tabs renamed/expanded to **Plex server settings** / **Jellyfin server**, each with an immediately saved refresh toggle; credentials/mappings survive disabling
 - [x] Independent enable policies for automatic/manual refresh (Plex defaults on; Jellyfin off), with pending debounce/retry checks and explicit unmapping
 - [x] Review corrections: preserve authenticated profile/indexer selection without exposing configuration, make the global subtitle toggle admin-only with failure feedback, and abort/version mapping loads across connection saves, disconnects, and unmounts
