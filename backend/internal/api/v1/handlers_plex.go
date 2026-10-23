@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sumia01/media-gate/internal/integration/plex"
+	"github.com/sumia01/media-gate/internal/integration/mediaserver"
 	"github.com/sumia01/media-gate/internal/settings"
 )
 
@@ -50,7 +50,7 @@ func (h *Handlers) ListPlexMappings(_ context.Context, _ ListPlexMappingsRequest
 	}
 
 	// Try to get Plex sections for auto-match info.
-	var sections []plex.Section
+	var sections []mediaserver.Section
 	if client, err := h.plexProvider.Client(); err == nil {
 		sections, _ = client.ListSections()
 	}
@@ -67,16 +67,16 @@ func (h *Handlers) ListPlexMappings(_ context.Context, _ ListPlexMappingsRequest
 		// Check for saved mapping.
 		key := fmt.Sprintf("plex:mapping:%d", lib.ID)
 		savedID, err := h.settings.Get(key)
-		if err == nil && savedID != "" {
+		if err == nil {
 			mapping.PlexSectionId = savedID
 			mapping.AutoMatched = false
 			// Find section title.
-			if s := plex.FindSection(sections, savedID); s != nil {
+			if s := mediaserver.FindSection(sections, savedID); s != nil {
 				mapping.PlexSectionTitle = s.Title
 			}
 		} else if len(sections) > 0 {
 			// Auto-match.
-			if match := plex.AutoMatch(lib.Path, lib.MediaType, sections); match != nil {
+			if match := mediaserver.AutoMatch(lib.Path, lib.MediaType, sections); match != nil {
 				mapping.PlexSectionId = match.SectionID
 				mapping.PlexSectionTitle = match.SectionTitle
 				mapping.AutoMatched = true
@@ -104,7 +104,7 @@ func (h *Handlers) UpdatePlexMappings(_ context.Context, request UpdatePlexMappi
 		return nil, fmt.Errorf("listing libraries: %w", err)
 	}
 
-	var sections []plex.Section
+	var sections []mediaserver.Section
 	if client, err := h.plexProvider.Client(); err == nil {
 		sections, _ = client.ListSections()
 	}
@@ -123,7 +123,7 @@ func (h *Handlers) UpdatePlexMappings(_ context.Context, request UpdatePlexMappi
 		if err == nil && savedID != "" {
 			mapping.PlexSectionId = savedID
 			mapping.AutoMatched = false
-			if s := plex.FindSection(sections, savedID); s != nil {
+			if s := mediaserver.FindSection(sections, savedID); s != nil {
 				mapping.PlexSectionTitle = s.Title
 			}
 		}
@@ -136,6 +136,9 @@ func (h *Handlers) UpdatePlexMappings(_ context.Context, request UpdatePlexMappi
 
 // RefreshPlexSection triggers a Plex library scan on a specific section.
 func (h *Handlers) RefreshPlexSection(_ context.Context, request RefreshPlexSectionRequestObject) (RefreshPlexSectionResponseObject, error) {
+	if !h.settings.MediaServerRefreshEnabled(settings.KeyPlexRefreshEnabled) {
+		return RefreshPlexSection409Response{}, nil
+	}
 	client, err := h.plexProvider.Client()
 	if err != nil {
 		return RefreshPlexSection502Response{}, nil
@@ -147,4 +150,3 @@ func (h *Handlers) RefreshPlexSection(_ context.Context, request RefreshPlexSect
 
 	return RefreshPlexSection204Response{}, nil
 }
-

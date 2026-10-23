@@ -1618,6 +1618,7 @@ paths:
     get:
       operationId: listMediaProfiles
       summary: List all media profiles
+      description: Read-only quality-profile selection data for all authenticated users. Profile management remains administrator-only.
       responses:
         "200":
           description: Media profiles list
@@ -1840,6 +1841,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /indexers/options:
+    get:
+      operationId: listIndexerOptions
+      summary: List enabled indexer IDs and names for search selection
+      description: Available to all authenticated users. Does not expose indexer configuration or credentials.
+      responses:
+        "200":
+          description: Enabled indexer options
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [indexers]
+                properties:
+                  indexers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IndexerOption"
 
   /indexers/{id}:
     parameters:
@@ -2552,8 +2572,119 @@ paths:
       responses:
         "204":
           description: Refresh triggered successfully
+        "409":
+          description: Plex library refresh is disabled
         "502":
           description: Plex server unreachable or misconfigured
+
+  /settings/test-jellyfin:
+    post:
+      operationId: testJellyfinConnection
+      summary: Test Jellyfin server connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JellyfinTestRequest"
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  /jellyfin/libraries:
+    get:
+      operationId: listJellyfinLibraries
+      summary: List Jellyfin movie and TV libraries
+      responses:
+        "200":
+          description: Jellyfin libraries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [libraries]
+                properties:
+                  libraries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JellyfinLibrary"
+        "502":
+          description: Jellyfin server unreachable or misconfigured
+
+  /jellyfin/mappings:
+    get:
+      operationId: listJellyfinMappings
+      summary: List library-to-Jellyfin mappings with auto-match suggestions
+      responses:
+        "200":
+          description: Library mappings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mappings]
+                properties:
+                  mappings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JellyfinMapping"
+    put:
+      operationId: updateJellyfinMappings
+      summary: Save library-to-Jellyfin mappings (empty IDs disable a mapping)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mappings]
+              properties:
+                mappings:
+                  type: array
+                  items:
+                    type: object
+                    required: [libraryId, jellyfinLibraryId]
+                    properties:
+                      libraryId:
+                        type: integer
+                        minimum: 1
+                      jellyfinLibraryId:
+                        type: string
+      responses:
+        "200":
+          description: Mappings saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mappings]
+                properties:
+                  mappings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JellyfinMapping"
+
+  /jellyfin/refresh/{libraryId}:
+    post:
+      operationId: refreshJellyfinLibrary
+      summary: Trigger a scan of one Jellyfin library
+      parameters:
+        - name: libraryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Refresh queued
+        "409":
+          description: Jellyfin library refresh is disabled
+        "502":
+          description: Jellyfin server unreachable or misconfigured
 
 components:
   schemas:
@@ -3817,6 +3948,18 @@ components:
         plexToken:
           type: string
           description: Plex authentication token
+        plexRefreshEnabled:
+          type: boolean
+          description: Enable automatic and manual Plex library refresh. Defaults to true when unset to preserve existing installations.
+        jellyfinUrl:
+          type: string
+          description: Jellyfin server URL, including any configured base path
+        jellyfinApiKey:
+          type: string
+          description: Jellyfin API key (masked in responses)
+        jellyfinRefreshEnabled:
+          type: boolean
+          description: Enable automatic and manual Jellyfin library refresh. Defaults to false when unset.
 
     ConnectionTestRequest:
       type: object
@@ -3897,6 +4040,16 @@ components:
         label:
           type: string
         default:
+          type: string
+
+    IndexerOption:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
           type: string
 
     Indexer:
@@ -4573,6 +4726,49 @@ components:
           type: string
         token:
           type: string
+
+    JellyfinTestRequest:
+      type: object
+      properties:
+        url:
+          type: string
+        apiKey:
+          type: string
+
+    JellyfinLibrary:
+      type: object
+      required: [id, title, type, locations]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [movie, show]
+        locations:
+          type: array
+          items:
+            type: string
+
+    JellyfinMapping:
+      type: object
+      required: [libraryId, libraryName, libraryPath, libraryType, jellyfinLibraryId, jellyfinLibraryTitle, autoMatched]
+      properties:
+        libraryId:
+          type: integer
+        libraryName:
+          type: string
+        libraryPath:
+          type: string
+        libraryType:
+          type: string
+        jellyfinLibraryId:
+          type: string
+        jellyfinLibraryTitle:
+          type: string
+        autoMatched:
+          type: boolean
 
     PlexSection:
       type: object

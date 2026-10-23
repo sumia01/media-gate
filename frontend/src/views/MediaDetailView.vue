@@ -15,6 +15,7 @@ import MonitorSettingsModal, { type MonitorSettingsPayload } from '@/components/
 import SeasonMonitorModal from '@/components/media/SeasonMonitorModal.vue'
 import SubtitleList from '@/components/media/SubtitleList.vue'
 import SubtitleSearchModal from '@/components/media/SubtitleSearchModal.vue'
+import { useAuth } from '@/composables/useAuth'
 import { useEventStream } from '@/composables/useEventStream'
 import type {
   CreditPerson,
@@ -31,6 +32,7 @@ import { mediaRequesterNames } from '@/utils/mediaRequests'
 const route = useRoute()
 const router = useRouter()
 const { on, off } = useEventStream()
+const { isAdmin } = useAuth()
 
 const item = ref<MediaItem | null>(null)
 const library = ref<Library | null>(null)
@@ -74,7 +76,9 @@ const activityPanel = ref<{ markDirty: () => void } | null>(null)
 const isWatched = ref(false)
 const watchedId = ref<number | null>(null)
 const watchedLoading = ref(false)
-const subtitleAutoSearch = ref(false)
+const subtitleAutoSearch = ref<boolean | null>(null)
+const subtitleSettingsBusy = ref(false)
+const subtitleSettingsError = ref('')
 const metadata = computed(() => item.value?.metadata ?? null)
 let itemRequest = 0
 
@@ -170,14 +174,34 @@ async function fetchProfiles() {
 }
 
 async function fetchSubtitleAutoSearch() {
-  const { data } = await client.GET('/settings')
-  subtitleAutoSearch.value = data?.settings?.subtitleAutoSearch ?? false
+  if (!isAdmin.value || subtitleSettingsBusy.value) return
+  subtitleSettingsBusy.value = true
+  subtitleSettingsError.value = ''
+  try {
+    const { data, response } = await client.GET('/settings')
+    if (!response.ok || !data) throw new Error('settings')
+    subtitleAutoSearch.value = data.settings.subtitleAutoSearch ?? false
+  } catch {
+    subtitleSettingsError.value = 'Failed to load auto-subtitle settings.'
+  } finally {
+    subtitleSettingsBusy.value = false
+  }
 }
 
 async function toggleSubtitleAutoSearch() {
+  if (!isAdmin.value || subtitleAutoSearch.value === null || subtitleSettingsBusy.value) return
   const newVal = !subtitleAutoSearch.value
-  await client.PUT('/settings', { body: { subtitleAutoSearch: newVal } })
-  subtitleAutoSearch.value = newVal
+  subtitleSettingsBusy.value = true
+  subtitleSettingsError.value = ''
+  try {
+    const { data, response } = await client.PUT('/settings', { body: { subtitleAutoSearch: newVal } })
+    if (!response.ok || !data) throw new Error('settings')
+    subtitleAutoSearch.value = data.settings.subtitleAutoSearch ?? newVal
+  } catch {
+    subtitleSettingsError.value = 'Failed to save auto-subtitle settings. Please retry.'
+  } finally {
+    subtitleSettingsBusy.value = false
+  }
 }
 
 async function checkWatched() {
@@ -1035,7 +1059,12 @@ watch(() => route.params.id, loadAll)
 
         <!-- Auto-subtitles toggle -->
         <button
-          class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer"
+          v-if="isAdmin"
+          type="button"
+          role="switch"
+          :aria-checked="subtitleAutoSearch ?? false"
+          :disabled="subtitleSettingsBusy || subtitleAutoSearch === null"
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer disabled:opacity-50"
           :class="subtitleAutoSearch
             ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
             : 'text-gray-500 border border-violet-900/20 hover:text-violet-300 hover:bg-violet-600/10'"
@@ -1050,7 +1079,9 @@ watch(() => route.params.id, loadAll)
               :class="subtitleAutoSearch ? 'translate-x-3' : ''"
             />
           </span>
-          <span>Auto-subtitles</span>
+          <span v-if="subtitleAutoSearch !== null">Auto-subtitles</span>
+          <span v-else-if="subtitleSettingsBusy">Loading auto-subtitles...</span>
+          <span v-else>Auto-subtitles unavailable</span>
         </button>
 
         <!-- Quality profile -->
@@ -1066,6 +1097,11 @@ watch(() => route.params.id, loadAll)
             <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </div>
+      </div>
+
+      <div v-if="isAdmin && subtitleSettingsError" class="mt-2 text-xs text-red-400" role="alert">
+        {{ subtitleSettingsError }}
+        <button v-if="subtitleAutoSearch === null" class="ml-2 text-violet-300 underline disabled:opacity-50" :disabled="subtitleSettingsBusy" @click="fetchSubtitleAutoSearch">Retry</button>
       </div>
 
       <!-- Episodes section (series only) -->

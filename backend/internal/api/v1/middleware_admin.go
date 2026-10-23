@@ -3,6 +3,7 @@ package apiv1
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/sumia01/media-gate/internal/auth"
 )
@@ -11,15 +12,15 @@ import (
 // Any operation NOT listed here is accessible to all authenticated users.
 var adminOnlyOps = map[string]struct{}{
 	// Settings
-	"listSettings":              {},
-	"updateSettings":            {},
-	"testTmdbConnection":        {},
-	"testTvdbConnection":        {},
-	"testQbittorrentConnection": {},
-	"testFlaresolverrConnection": {},
-	"testDiscordConnection":     {},
+	"listSettings":                {},
+	"updateSettings":              {},
+	"testTmdbConnection":          {},
+	"testTvdbConnection":          {},
+	"testQbittorrentConnection":   {},
+	"testFlaresolverrConnection":  {},
+	"testDiscordConnection":       {},
 	"testOpenSubtitlesConnection": {},
-	"testPlexConnection":        {},
+	"testPlexConnection":          {},
 
 	// Library management (CRUD, scan, sync — but NOT listLibraries/getLibrary/listMediaItems)
 	"createLibrary": {},
@@ -38,7 +39,7 @@ var adminOnlyOps = map[string]struct{}{
 	"deleteMediaItem": {},
 	"deleteDownload":  {},
 
-	// Indexer management (NOT searchIndexers — users need torrent search)
+	// Indexer management (NOT searchIndexers/listIndexerOptions — users need search)
 	"listIndexerDefinitions": {},
 	"getIndexerDefinition":   {},
 	"listIndexers":           {},
@@ -48,8 +49,7 @@ var adminOnlyOps = map[string]struct{}{
 	"deleteIndexer":          {},
 	"testIndexerConnection":  {},
 
-	// Media profiles
-	"listMediaProfiles":      {},
+	// Profile management; listMediaProfiles is read-only selection data for all users.
 	"createMediaProfile":     {},
 	"getMediaProfile":        {},
 	"updateMediaProfile":     {},
@@ -66,11 +66,16 @@ var adminOnlyOps = map[string]struct{}{
 	"checkForUpdate":  {},
 	"applyUpdate":     {},
 
-	// Plex configuration
-	"listPlexSections":   {},
-	"listPlexMappings":   {},
-	"updatePlexMappings": {},
-	"refreshPlexSection": {},
+	// Media-server configuration
+	"listPlexSections":       {},
+	"listPlexMappings":       {},
+	"updatePlexMappings":     {},
+	"refreshPlexSection":     {},
+	"testJellyfinConnection": {},
+	"listJellyfinLibraries":  {},
+	"listJellyfinMappings":   {},
+	"updateJellyfinMappings": {},
+	"refreshJellyfinLibrary": {},
 
 	// User management
 	"listUsers":    {},
@@ -82,6 +87,11 @@ var adminOnlyOps = map[string]struct{}{
 // for operations listed in adminOnlyOps.
 func AdminMiddleware(authSvc *auth.Service) StrictMiddlewareFunc {
 	return func(f StrictHandlerFunc, operationID string) StrictHandlerFunc {
+		// The strict router passes Go method names (ListSettings), whereas the
+		// OpenAPI operation IDs below start lowercase (listSettings).
+		if operationID != "" {
+			operationID = strings.ToLower(operationID[:1]) + operationID[1:]
+		}
 		if _, adminOnly := adminOnlyOps[operationID]; !adminOnly {
 			return f // not an admin-only operation — pass through
 		}

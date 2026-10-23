@@ -14,6 +14,7 @@ import (
 	"github.com/sumia01/media-gate/internal/auth"
 	"github.com/sumia01/media-gate/internal/download"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/integration/jellyfin"
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/jobqueue"
 	"github.com/sumia01/media-gate/internal/library"
@@ -40,26 +41,27 @@ func RequestErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 type Handlers struct {
-	lib            *library.Service
-	store          store.Store
-	queue          *jobqueue.Queue
-	settings       *settings.Service
-	matchSvc       *matching.Service
-	syncSvc        *mediasync.Service
-	indexerSvc     *indexer.Service
-	authSvc        *auth.Service
-	mediaSvc       *media.Service
-	downloadSvc    *download.Service
-	subtitleSvc    *subtitle.Service
-	updaterSvc     *updater.Service
-	plexProvider   *plex.Provider
-	workerRegistry *worker.Registry
-	watchedSvc     *watched.Service
-	posterDir      string
-	dbPath         string
-	secureCookies  bool
-	setupMu        sync.Mutex
-	version        string
+	lib              *library.Service
+	store            store.Store
+	queue            *jobqueue.Queue
+	settings         *settings.Service
+	matchSvc         *matching.Service
+	syncSvc          *mediasync.Service
+	indexerSvc       *indexer.Service
+	authSvc          *auth.Service
+	mediaSvc         *media.Service
+	downloadSvc      *download.Service
+	subtitleSvc      *subtitle.Service
+	updaterSvc       *updater.Service
+	plexProvider     *plex.Provider
+	jellyfinProvider *jellyfin.Provider
+	workerRegistry   *worker.Registry
+	watchedSvc       *watched.Service
+	posterDir        string
+	dbPath           string
+	secureCookies    bool
+	setupMu          sync.Mutex
+	version          string
 
 	// tvdbFindCache memoizes TMDB /find resolutions of TVDB series ids for
 	// the similar-media endpoint (see resolveTVDBSeries). Lazily initialized
@@ -68,8 +70,8 @@ type Handlers struct {
 	tvdbFindCache map[int]int
 }
 
-func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, plexProvider *plex.Provider, workerReg *worker.Registry, version string) *Handlers {
-	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, plexProvider: plexProvider, workerRegistry: workerReg, watchedSvc: watched.NewService(s, nil), version: version}
+func NewHandlers(lib *library.Service, s store.Store, q *jobqueue.Queue, set *settings.Service, matchSvc *matching.Service, syncSvc *mediasync.Service, indexerSvc *indexer.Service, posterDir string, dbPath string, authSvc *auth.Service, secureCookies bool, mediaSvc *media.Service, downloadSvc *download.Service, subtitleSvc *subtitle.Service, updaterSvc *updater.Service, plexProvider *plex.Provider, jellyfinProvider *jellyfin.Provider, workerReg *worker.Registry, version string) *Handlers {
+	return &Handlers{lib: lib, store: s, queue: q, settings: set, matchSvc: matchSvc, syncSvc: syncSvc, indexerSvc: indexerSvc, posterDir: posterDir, dbPath: dbPath, authSvc: authSvc, secureCookies: secureCookies, mediaSvc: mediaSvc, downloadSvc: downloadSvc, subtitleSvc: subtitleSvc, updaterSvc: updaterSvc, plexProvider: plexProvider, jellyfinProvider: jellyfinProvider, workerRegistry: workerReg, watchedSvc: watched.NewService(s, nil), version: version}
 }
 
 func (h *Handlers) SetWatchedActivityPublisher(publisher watched.ActivityPublisher) {

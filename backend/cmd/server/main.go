@@ -27,6 +27,7 @@ import (
 	"github.com/sumia01/media-gate/internal/eventbus"
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/indexer"
+	"github.com/sumia01/media-gate/internal/integration/jellyfin"
 	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
@@ -35,10 +36,10 @@ import (
 	"github.com/sumia01/media-gate/internal/logging"
 	"github.com/sumia01/media-gate/internal/matching"
 	"github.com/sumia01/media-gate/internal/media"
+	"github.com/sumia01/media-gate/internal/mediarefresh"
 	"github.com/sumia01/media-gate/internal/metarefresh"
 	"github.com/sumia01/media-gate/internal/monitor"
 	"github.com/sumia01/media-gate/internal/notification"
-	"github.com/sumia01/media-gate/internal/plexrefresh"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/sse"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -157,8 +158,9 @@ func main() {
 	osAdapter := subtitle.NewOpenSubtitlesProvider(osProvider)
 	subtitleSvc := subtitle.NewService(db, settingsSvc, bus, []subtitle.Provider{osAdapter})
 
-	// Plex integration provider.
+	// Media-server integration providers.
 	plexProvider := plex.NewProvider(settingsSvc, settings.KeyPlexURL, settings.KeyPlexToken, httpClient)
+	jellyfinProvider := jellyfin.NewProvider(settingsSvc, settings.KeyJellyfinURL, settings.KeyJellyfinAPIKey, httpClient)
 
 	// Notification service (must subscribe before bus.Start).
 	notification.NewService(db, settingsSvc, bus, httpClient)
@@ -166,12 +168,17 @@ func main() {
 	// Auto-subtitle search on import (must subscribe before bus.Start).
 	bus.Subscribe(eventbus.ImportCompleted, subtitleSvc.HandleImportCompleted)
 
-	// Plex library refresh on content changes (must subscribe before bus.Start).
-	plexRefreshSvc := plexrefresh.NewService(plexProvider, db, slog.Default())
-	bus.Subscribe(eventbus.ImportCompleted, plexRefreshSvc.HandleImportCompleted)
-	bus.Subscribe(eventbus.MediaItemDeleted, plexRefreshSvc.HandleMediaItemDeleted)
-	bus.Subscribe(eventbus.SubtitleDeleted, plexRefreshSvc.HandleSubtitleDeleted)
-	bus.Subscribe(eventbus.DownloadDeleted, plexRefreshSvc.HandleDownloadDeleted)
+	// Each server independently refreshes mapped libraries on content changes.
+	for _, config := range []mediarefresh.Config{
+		{Name: "Plex", MappingPrefix: "plex:mapping:", Enabled: func() bool { return settingsSvc.MediaServerRefreshEnabled(settings.KeyPlexRefreshEnabled) }, Refresh: plexProvider.RefreshSection},
+		{Name: "Jellyfin", MappingPrefix: "jellyfin:mapping:", Enabled: func() bool { return settingsSvc.MediaServerRefreshEnabled(settings.KeyJellyfinRefreshEnabled) }, Refresh: jellyfinProvider.RefreshLibrary},
+	} {
+		refreshSvc := mediarefresh.NewService(db, slog.Default(), config)
+		bus.Subscribe(eventbus.ImportCompleted, refreshSvc.HandleImportCompleted)
+		bus.Subscribe(eventbus.MediaItemDeleted, refreshSvc.HandleMediaItemDeleted)
+		bus.Subscribe(eventbus.SubtitleDeleted, refreshSvc.HandleSubtitleDeleted)
+		bus.Subscribe(eventbus.DownloadDeleted, refreshSvc.HandleDownloadDeleted)
+	}
 
 	bus.Start()
 
@@ -217,7 +224,7 @@ func main() {
 		}
 	}
 
-	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, workerReg, version)
+	handlers := apiv1.NewHandlers(libSvc, db, queue, settingsSvc, matchSvc, syncSvc, indexerSvc, posterDir, cfg.DB.Path, authSvc, cfg.Cookie.Secure, mediaSvc, downloadSvc, subtitleSvc, updaterSvc, plexProvider, jellyfinProvider, workerReg, version)
 	handlers.SetWatchedActivityPublisher(bus)
 
 	// Invalidate cached clients when connection settings change.
@@ -232,6 +239,9 @@ func main() {
 			}
 			if key == settings.KeyPlexURL || key == settings.KeyPlexToken {
 				plexProvider.Invalidate()
+			}
+			if key == settings.KeyJellyfinURL || key == settings.KeyJellyfinAPIKey {
+				jellyfinProvider.Invalidate()
 			}
 			if key == settings.KeyOTelEnabled || key == settings.KeyOTelEndpoint || key == settings.KeyOTelService || key == settings.KeyOTelLogLevel {
 				enabled := settingsSvc.GetWithDefault(settings.KeyOTelEnabled, "false") == "true"

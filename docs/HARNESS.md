@@ -14,7 +14,7 @@ download root.
 
 TMDB and TVDB remain opt-in live, read-only dependencies. Pass their keys
 explicitly as `HARNESS_TMDB_APIKEY` and `HARNESS_TVDB_APIKEY`; they are not
-written to the manifest. Plex, Discord, OpenSubtitles, FlareSolverr, and real
+written to the manifest. Plex, Jellyfin, Discord, OpenSubtitles, FlareSolverr, and real
 trackers are not configured.
 
 Do not configure a real tracker in an instance used for download tests. Media
@@ -155,6 +155,54 @@ Run `go test -count=1 ./internal/media ./internal/api/v1 ./internal/sync ./inter
 in `backend/` for the focused service/HTTP and monitor-freshness regressions. Stop the instance with
 `make harness-down HARNESS_ID=<name>` and retain diagnostics when needed. See
 [ADR-153](DECISIONS.md#adr-153-own-media-settings-mutations-in-the-media-service).
+
+## Media Server Refresh Verification
+
+Use a fresh task-specific instance and local fake Plex/Jellyfin HTTP servers;
+never point routine checks at a homelab server. The standard harness does not
+configure these servers. Keep fake tracker and fake qBittorrent enabled for imports.
+When verifying a built binary, finish `make build` first, then run:
+
+```bash
+make harness-up HARNESS_ID=media-server-check HARNESS_MODE=ci HARNESS_BINARY="$PWD/media-gate"
+```
+
+- Configure each server through its Libraries tab. Jellyfin's fake must implement
+  authenticated `GET /Library/VirtualFolders` and `POST /Items/{id}/Refresh`;
+  Plex uses `/library/sections` and `/library/sections/{id}/refresh`.
+- Test unsaved and saved credentials, masking after save, mapping suggestions,
+  saving and removing mappings, and successful/failed manual refresh feedback.
+- Verify each top-level toggle persists independently through reloads. Disabled
+  automatic refresh must make no scan requests; disabled manual refresh returns
+  HTTP 409. Connection testing and mapping edits remain available.
+- Enable both servers, save mappings, then run `make harness-smoke` on this fresh
+  instance and verify each fake receives a debounced refresh after import. Disable
+  one server and remove imported files through the API; only the enabled server
+  should receive a deletion refresh. Re-enable and verify the mapping is retained.
+- Verify anonymous HTTP 401 and ordinary-user 403 on settings, connection tests,
+  library listings, mappings, and refresh endpoints. The generated strict router
+  passes capitalized Go method names; admin middleware normalizes them before
+  checking the OpenAPI operation-ID allowlist.
+- Also check ordinary-user media workflows: `GET /media-profiles` and
+  `GET /indexers/options` must succeed, with the latter containing only enabled
+  IDs/names. Profile/indexer mutations and full indexer configuration must remain
+  forbidden. On a matched item's detail page, quality profiles and indexer choices
+  must be available and manual searches must retain the item's profile ID.
+- Ordinary users must neither see the global auto-subtitles control nor request
+  `/settings` from media details. As an admin, fail the settings read/save and verify
+  unavailable/retry feedback and preservation of the last successfully saved toggle.
+- Delay a media-server mapping reload, change and save the connection, then release
+  the old response (also test old errors). Only the current server's options/mappings
+  may remain; an old completion must not clear the current loading indicator.
+- Check both tabs at desktop, sidebar-visible tablet, mobile, and short heights;
+  inputs, toggles, mapping selectors, and action buttons must remain reachable.
+
+Focused checks: `go test -count=1 ./internal/integration/jellyfin ./internal/integration/mediaserver ./internal/mediarefresh ./internal/settings ./internal/api/v1`
+and `go test -race -count=1 ./internal/mediarefresh ./internal/integration/jellyfin ./internal/api/v1`
+in `backend/`, plus `npm test` in `frontend/`. Stop the instance with
+`make harness-down HARNESS_ID=media-server-check` and stop any extra fake servers.
+Keep failed-instance artifacts. Do not run builds (which replace generated files
+and frontend dependencies) concurrently with local Air/Vite interaction or lint.
 
 ## Fake Controls
 

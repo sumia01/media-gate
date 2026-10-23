@@ -61,14 +61,15 @@ designed for a homelab or lightweight server.
 - Mark titles watched from local details or external previews and show seen badges across discover and library views.
 - Configure watched state as shared globally or private to each user.
 - Send Discord webhook notifications for successful imports and terminal download/import failures, with connection testing and safe, non-sensitive failure summaries.
-- Refresh mapped Plex library sections automatically after imports and relevant deletions, with per-library debouncing, retries, manual refresh, and editable mappings.
+- Refresh mapped Plex and Jellyfin movie/TV libraries after imports and relevant deletions, with independent enable/disable toggles, per-library debouncing, retries, manual refresh, and editable mappings. Plex defaults on for existing installations; Jellyfin defaults off. Disabling preserves connection details and mappings.
 
 ## Administration And Operations
 
 - First-run browser onboarding creates the initial account and configures the base path, torrent client, indexer, TMDB, and TVDB.
 - Provide multi-user authentication with login, refresh-token rotation, profile/password management, user administration, and administrator/user roles.
-- Restrict management functions, including libraries, indexers, profiles, settings, workers, Plex, updates, and user administration, to administrators.
-- Configure integrations, worker intervals, paths, profile-wide excludes, content-rating countries, watched mode, subtitles, notifications, Plex, and optional OpenTelemetry from the UI.
+- Restrict management functions, including libraries, indexers, profiles, settings, workers, Plex/Jellyfin, updates, and user administration, to administrators.
+- Allow authenticated users to select quality profiles and enabled indexers through read-only data; indexer options expose only IDs/names. Show the global auto-subtitles setting only to administrators, with explicit load/save errors.
+- Configure integrations, worker intervals, paths, profile-wide excludes, content-rating countries, watched mode, subtitles, notifications, Plex/Jellyfin, and optional OpenTelemetry from the UI.
 - Test configured upstream integrations from the settings interface.
 - Encrypt sensitive settings at rest and protect filesystem operations with cleaned, separator-aware path containment checks.
 - Publish typed server-sent events for live UI updates across jobs, matching, downloads/imports, monitoring, subtitles, activity, and updates.
@@ -90,12 +91,13 @@ designed for a homelab or lightweight server.
 | OpenSubtitles.com | Subtitle search and download |
 | Discord | Import and terminal-failure webhooks |
 | Plex | Library-section mapping and refresh triggers |
+| Jellyfin | Movie/TV library mapping, API-key connection testing, and library refresh triggers |
 | GitHub Releases | Optional self-update checks and binary replacement |
 
 ## Current Constraints And Known Gaps
 
 - SQLite is the only shipped storage backend; the store abstraction exists, but a PostgreSQL implementation is not present.
-- Plex is the supported media-server integration. Jellyfin and Emby are not implemented.
+- Plex and Jellyfin are supported for library refresh. Emby and Jellyfin mixed/music libraries are not implemented.
 - Discovery feeds use TMDB identities. A TVDB-matched library item is not automatically normalized to its TMDB identity, so it may not receive an in-library badge or hide-filter match in Discover.
 - Automatic activity entries for some background outcomes, including import completion, terminal failures, and automatic subtitle results, are intentionally deferred. Direct user actions and automatic queued grabs are recorded.
 - The self-update flow is Linux-only and requires a non-development build plus GitHub credentials.

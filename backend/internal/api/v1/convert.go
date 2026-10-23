@@ -428,8 +428,16 @@ func settingsToAPI(items []store.Setting, svc *settings.Service) Settings {
 			s.PlexUrl = &v
 		case settings.KeyPlexToken:
 			s.PlexToken = &v
+		case settings.KeyJellyfinURL:
+			s.JellyfinUrl = &v
+		case settings.KeyJellyfinAPIKey:
+			s.JellyfinApiKey = &v
 		}
 	}
+	plexEnabled := svc.MediaServerRefreshEnabled(settings.KeyPlexRefreshEnabled)
+	jellyfinEnabled := svc.MediaServerRefreshEnabled(settings.KeyJellyfinRefreshEnabled)
+	s.PlexRefreshEnabled = &plexEnabled
+	s.JellyfinRefreshEnabled = &jellyfinEnabled
 	// Report the *effective* country list, not just a stored one. Without this
 	// an unconfigured install would show an empty picker while media pages were
 	// actually rendering the HU/US default — and the first save would then
@@ -585,6 +593,18 @@ func settingsFromAPI(s *Settings) []settings.KeyValue {
 	}
 	if s.PlexToken != nil {
 		kvs = append(kvs, settings.KeyValue{Key: settings.KeyPlexToken, Value: *s.PlexToken})
+	}
+	if s.PlexRefreshEnabled != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyPlexRefreshEnabled, Value: strconv.FormatBool(*s.PlexRefreshEnabled)})
+	}
+	if s.JellyfinUrl != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyJellyfinURL, Value: *s.JellyfinUrl})
+	}
+	if s.JellyfinApiKey != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyJellyfinAPIKey, Value: *s.JellyfinApiKey})
+	}
+	if s.JellyfinRefreshEnabled != nil {
+		kvs = append(kvs, settings.KeyValue{Key: settings.KeyJellyfinRefreshEnabled, Value: strconv.FormatBool(*s.JellyfinRefreshEnabled)})
 	}
 	return kvs
 }
@@ -790,12 +810,12 @@ func torrentResultToAPI(r *indexer.TorrentResult) TorrentResult {
 
 func watchedItemToAPI(item *store.WatchedItem) WatchedItem {
 	api := WatchedItem{
-		Id:        int64(item.ID),
-		Source:    WatchedItemSource(item.Source),
+		Id:         int64(item.ID),
+		Source:     WatchedItemSource(item.Source),
 		ExternalId: item.ExternalID,
-		Title:     item.Title,
-		MediaType: WatchedItemMediaType(item.MediaType),
-		WatchedAt: item.WatchedAt,
+		Title:      item.Title,
+		MediaType:  WatchedItemMediaType(item.MediaType),
+		WatchedAt:  item.WatchedAt,
 	}
 	if item.ImdbID != "" {
 		api.ImdbId = &item.ImdbID

@@ -11,11 +11,12 @@ import type { Library, LibraryCreate, MediaProfile, ScanEntry } from '@/types/ap
 
 const { refreshLibraries: refreshSidebar } = useSidebarLibraries()
 
-const activeTab = ref<'libraries' | 'media-server'>('libraries')
+const activeTab = ref<'libraries' | 'plex' | 'jellyfin'>('libraries')
 
 const tabs = [
   { key: 'libraries' as const, label: 'Libraries' },
-  { key: 'media-server' as const, label: 'Media Server' },
+  { key: 'plex' as const, label: 'Plex server settings' },
+  { key: 'jellyfin' as const, label: 'Jellyfin server' },
 ]
 
 const libraries = ref<Library[]>([])
@@ -145,7 +146,7 @@ onMounted(fetchLibraries)
     </div>
 
     <!-- Tab bar -->
-    <div class="flex gap-1 border-b border-violet-900/30 mb-6">
+    <div class="flex flex-wrap gap-1 border-b border-violet-900/30 mb-6">
       <button
         v-for="tab in tabs"
         :key="tab.key"
@@ -355,7 +356,6 @@ onMounted(fetchLibraries)
       </BaseModal>
     </template>
 
-    <!-- Media Server tab -->
-    <LibrariesMediaServer v-if="activeTab === 'media-server'" />
+    <LibrariesMediaServer v-if="activeTab !== 'libraries'" :key="activeTab" :server="activeTab" />
   </div>
 </template>

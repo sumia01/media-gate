@@ -4,7 +4,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import client from '@/api/client'
 import BaseModal from '@/components/BaseModal.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
-import type { Indexer, Library, TorrentResult } from '@/types/api'
+import type { IndexerOption, Library, TorrentResult } from '@/types/api'
 import { formatSize } from '@/utils/media'
 import { classifyMatch, type MatchLevel, matchLevelOrder, parseTitleSeasonEpisode } from '@/utils/torrent'
 
@@ -30,7 +30,7 @@ const emit = defineEmits<{
 }>()
 
 // --- State ---
-const indexers = ref<Indexer[]>([])
+const indexers = ref<IndexerOption[]>([])
 const selectedIndexerId = ref('')
 const season = ref(props.seasonNumber?.toString() ?? '')
 const episode = ref(props.episodeNumber?.toString() ?? '')
@@ -114,8 +114,8 @@ function onKeydown(e: KeyboardEvent) {
 
 // --- Fetch indexers ---
 async function fetchIndexers() {
-  const { data } = await client.GET('/indexers')
-  indexers.value = (data?.indexers ?? []).filter((i) => i.enabled)
+  const { data } = await client.GET('/indexers/options')
+  indexers.value = data?.indexers ?? []
 }
 
 // --- Fetch libraries (for Add & Download) ---

@@ -17,8 +17,8 @@ import (
 	"github.com/sumia01/media-gate/internal/importer"
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
+	"github.com/sumia01/media-gate/internal/mediarefresh"
 	"github.com/sumia01/media-gate/internal/notification"
-	"github.com/sumia01/media-gate/internal/plexrefresh"
 	"github.com/sumia01/media-gate/internal/settings"
 	"github.com/sumia01/media-gate/internal/store"
 	"github.com/sumia01/media-gate/internal/store/sqlite"
@@ -136,7 +136,12 @@ func TestImportSQLiteFinalizationReachesRealConsumers(t *testing.T) {
 			finished <- "subtitle"
 		}
 	})
-	plexSvc := plexrefresh.NewService(plex.NewProvider(settingsSvc, settings.KeyPlexURL, settings.KeyPlexToken, srv.Client()), s, slog.Default())
+	plexProvider := plex.NewProvider(settingsSvc, settings.KeyPlexURL, settings.KeyPlexToken, srv.Client())
+	plexSvc := mediarefresh.NewService(s, slog.Default(), mediarefresh.Config{
+		Name: "Plex", MappingPrefix: "plex:mapping:",
+		Enabled: func() bool { return settingsSvc.MediaServerRefreshEnabled(settings.KeyPlexRefreshEnabled) },
+		Refresh: plexProvider.RefreshSection,
+	})
 	bus.Subscribe(eventbus.ImportCompleted, plexSvc.HandleImportCompleted)
 	subProvider := &finalizationSubtitleProvider{}
 	subSvc := subtitle.NewService(s, settingsSvc, bus, []subtitle.Provider{subProvider})

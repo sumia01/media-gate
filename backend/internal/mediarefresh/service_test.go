@@ -1,16 +1,20 @@
-package plexrefresh
+package mediarefresh
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sumia01/media-gate/internal/eventbus"
+	"github.com/sumia01/media-gate/internal/integration/jellyfin"
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/store"
 )
@@ -83,7 +87,9 @@ func newHarness(t *testing.T, st *stubStore) (*Service, *recorder) {
 		"plex_url", "plex_token", srv.Client(),
 	)
 
-	svc := NewService(provider, st, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc := NewService(st, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
+		Name: "Plex", MappingPrefix: "plex:mapping:", Enabled: func() bool { return true }, Refresh: provider.RefreshSection,
+	})
 	svc.debounce = testDebounce
 	return svc, rec
 }
@@ -227,5 +233,82 @@ func TestDebounceSeparatesDistinctLibraries(t *testing.T) {
 	got := map[string]bool{calls[0]: true, calls[1]: true}
 	if !got["3"] || !got["4"] {
 		t.Fatalf("expected refreshes of sections 3 and 4, got %v", calls)
+	}
+}
+
+func TestDisabledRefreshSkipsEventsAndPendingWork(t *testing.T) {
+	st := &stubStore{settings: mapping("7", "3")}
+	svc, rec := newHarness(t, st)
+	var enabled atomic.Bool
+	svc.config.Enabled = enabled.Load
+	svc.HandleMediaItemDeleted(eventbus.Event{Payload: eventbus.MediaItemPayload{LibraryID: 7}})
+	svc.mu.Lock()
+	if len(svc.timers) != 0 {
+		t.Error("disabled event scheduled a timer")
+	}
+	svc.mu.Unlock()
+	enabled.Store(true)
+	svc.debounce = time.Hour
+	svc.scheduleRefresh(7)
+	svc.mu.Lock()
+	svc.timers[7].Stop()
+	delete(svc.timers, 7)
+	svc.mu.Unlock()
+	enabled.Store(false)
+	// Execute the pending timer's work after the setting has changed.
+	svc.refreshLibrary(7)
+	if len(rec.calls()) != 0 {
+		t.Fatal("pending refresh ignored disable")
+	}
+	enabled.Store(true)
+	svc.refreshLibrary(7)
+	if len(rec.calls()) != 1 {
+		t.Fatal("re-enabling did not retain mapping")
+	}
+}
+
+func TestDisableSuppressesRetries(t *testing.T) {
+	st := &stubStore{settings: mapping("7", "3")}
+	svc, _ := newHarness(t, st)
+	var enabled atomic.Bool
+	enabled.Store(true)
+	svc.config.Enabled = enabled.Load
+	calls := 0
+	svc.config.Refresh = func(string) error {
+		calls++
+		enabled.Store(false)
+		return errors.New("server offline")
+	}
+	svc.refreshLibrary(7)
+	if calls != 1 {
+		t.Fatalf("retried disabled refresh: %d", calls)
+	}
+}
+
+func TestJellyfinImportAndPlexMappingIsolation(t *testing.T) {
+	const id = "00112233-4455-6677-8899-aabbccddeeff"
+	called := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("X-Emby-Token") != "key" {
+			t.Error("wrong Jellyfin protocol")
+		}
+		called <- r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	st := &stubStore{items: map[uint]*store.MediaItem{42: {ID: 42, LibraryID: 7}}, settings: map[string]*store.Setting{
+		"plex:mapping:7": {Value: "3"}, "jellyfin:mapping:7": {Value: id},
+	}}
+	provider := jellyfin.NewProvider(stubSettings{"url": srv.URL, "key": "key"}, "url", "key", srv.Client())
+	svc := NewService(st, slog.Default(), Config{Name: "Jellyfin", MappingPrefix: "jellyfin:mapping:", Enabled: func() bool { return true }, Refresh: provider.RefreshLibrary})
+	svc.debounce = testDebounce
+	svc.HandleImportCompleted(eventbus.Event{Payload: eventbus.ImportPayload{MediaItemID: 42}})
+	select {
+	case path := <-called:
+		if path != fmt.Sprintf("/Items/%s/Refresh", id) {
+			t.Fatalf("used wrong mapping: %s", path)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("import did not reach Jellyfin")
 	}
 }

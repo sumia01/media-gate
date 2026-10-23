@@ -473,12 +473,12 @@
 - [x] Frontend: "Database" section in Settings General tab with "Download .db" button using `authFetch`
 
 ## Phase 8.6: Plex Library Refresh ✅
-→ See ADR-108, ADR-122
+→ See ADR-108, ADR-122, ADR-154
 - [x] Plex HTTP client (`backend/internal/integration/plex/client.go`) — XML section listing, section refresh trigger, `X-Plex-Token` auth
 - [x] Lazy-cached Plex provider (`backend/internal/integration/plex/provider.go`) — settings-invalidated singleton (same pattern as `qbittorrent.Provider`)
-- [x] Auto-matcher (`backend/internal/integration/plex/matcher.go`) — scores library↔section by type+basename+fullpath, `FindSection` picks best match
+- [x] Auto-matcher (now shared in `backend/internal/integration/mediaserver/matcher.go`) — scores library↔section by type+basename+fullpath
 - [x] `plex_url` (plain) + `plex_token` (sensitive) settings keys with `TestPlex()` connection test
-- [x] Plex refresh service (`backend/internal/plexrefresh/service.go`) — subscribes to `ImportCompleted`, `MediaItemDeleted`, `SubtitleDeleted`, and `DownloadDeleted` events, resolves matching Plex section, triggers refresh with 3x exponential backoff retry
+- [x] Refresh service (now shared in `backend/internal/mediarefresh/service.go`) — subscribes to `ImportCompleted`, `MediaItemDeleted`, `SubtitleDeleted`, and `DownloadDeleted` events, resolves the saved mapping, triggers refresh with 3x exponential backoff retry
 - [x] Refresh on deletions, not just imports — deleting a media item, subtitle, or a download's imported files now triggers a Plex section scan so deleted content disappears without a manual rescan (`DownloadDeleted` event added; published only when files actually left disk)
 - [x] Per-library debounce (3s window) — a burst of file changes for one library (e.g. a download whose release folder also drops several subtitle files) coalesces into a single Plex scan
 - [x] OpenAPI spec: `POST /settings/test-plex`, `GET /plex/sections`, `GET/PUT /plex/mappings`, `POST /plex/refresh/{sectionId}`
@@ -486,7 +486,11 @@
 - [x] Settings stored as `plex:mapping:{libraryID}` → `{plexSectionID}` (no new DB model, consistent with `indexer:*` pattern)
 - [x] Frontend: Libraries page split into tabs (Libraries / Media Server)
 - [x] `LibrariesMediaServer.vue` — connection settings, test, auto-matched library↔section dropdowns, manual refresh per library
-- [ ] Jellyfin/Emby support (architecture ready — generic "Media Server" tab, provider pattern)
+- [x] Jellyfin support (v0.50.0) — API-key client/provider, movie/TV library discovery, mapping suggestions, saved mappings, connection testing, and per-library refresh (ADR-154)
+- [x] Libraries tabs renamed/expanded to **Plex server settings** / **Jellyfin server**, each with an immediately saved refresh toggle; credentials/mappings survive disabling
+- [x] Independent enable policies for automatic/manual refresh (Plex defaults on; Jellyfin off), with pending debounce/retry checks and explicit unmapping
+- [x] Review corrections: preserve authenticated profile/indexer selection without exposing configuration, make the global subtitle toggle admin-only with failure feedback, and abort/version mapping loads across connection saves, disconnects, and unmounts
+- [ ] Emby support
 
 ## Phase 8.7: Background Workers Panel ✅
 → See ADR-109

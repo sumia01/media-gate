@@ -48,6 +48,22 @@ func (h *Handlers) ListIndexers(_ context.Context, _ ListIndexersRequestObject) 
 	return ListIndexers200JSONResponse{Indexers: apiIndexers}, nil
 }
 
+// ListIndexerOptions exposes only the fields needed by the search dropdown.
+// Read from the store without resolving credentials through the configuration service.
+func (h *Handlers) ListIndexerOptions(_ context.Context, _ ListIndexerOptionsRequestObject) (ListIndexerOptionsResponseObject, error) {
+	indexers, err := h.store.ListIndexers()
+	if err != nil {
+		return nil, err
+	}
+	options := make([]IndexerOption, 0, len(indexers))
+	for _, idx := range indexers {
+		if idx.Enabled {
+			options = append(options, IndexerOption{Id: int64(idx.ID), Name: idx.Name})
+		}
+	}
+	return ListIndexerOptions200JSONResponse{Indexers: options}, nil
+}
+
 func (h *Handlers) CreateIndexer(_ context.Context, req CreateIndexerRequestObject) (CreateIndexerResponseObject, error) {
 	settings := make(map[string]string)
 	if req.Body.Settings != nil {

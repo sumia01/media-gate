@@ -117,7 +117,7 @@ func TestWatchedListAndCheckHandlersFailClosedOnModeErrors(t *testing.T) {
 				t.Fatalf("ListWatched error = %v, want %v", err, tc.want)
 			}
 			if _, err := h.CheckWatched(ctx, CheckWatchedRequestObject{Params: CheckWatchedParams{
-				Source: Tmdb, MediaType: CheckWatchedParamsMediaTypeMovie, ExternalId: 42,
+				Source: Tmdb, MediaType: CheckWatchedParamsMediaType("movie"), ExternalId: 42,
 			}}); !errors.Is(err, tc.want) {
 				t.Fatalf("CheckWatched error = %v, want %v", err, tc.want)
 			}
@@ -134,7 +134,7 @@ func TestWatchedHandlersRejectInvalidIdentity(t *testing.T) {
 	ctx := auth.ContextWithUserID(t.Context(), 7)
 
 	if _, err := h.CheckWatched(ctx, CheckWatchedRequestObject{Params: CheckWatchedParams{
-		Source: CheckWatchedParamsSource("imdb"), MediaType: CheckWatchedParamsMediaTypeMovie, ExternalId: 42,
+		Source: CheckWatchedParamsSource("imdb"), MediaType: CheckWatchedParamsMediaType("movie"), ExternalId: 42,
 	}}); !errors.Is(err, watched.ErrInvalidIdentity) {
 		t.Fatalf("invalid check error = %v", err)
 	}

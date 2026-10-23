@@ -69,7 +69,7 @@ func decisionHandlers(svc *Service, st store.Store) *apiv1.Handlers {
 	syncSvc := mediasync.NewService(st)
 	mediaSvc := media.NewService(st, syncSvc, nil, nil, "")
 	return apiv1.NewHandlers(nil, st, nil, svc.settings, nil, syncSvc, nil,
-		"", "", nil, false, mediaSvc, nil, nil, nil, nil, nil, "test")
+		"", "", nil, false, mediaSvc, nil, nil, nil, nil, nil, nil, "test")
 }
 
 func decisionAPIState(t *testing.T, svc *Service, st store.Store, id uint) (apiv1.MediaItem, apiv1.MonitorDecision) {

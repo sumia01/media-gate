@@ -17,6 +17,7 @@ import (
 	"github.com/sumia01/media-gate/internal/crypto"
 	"github.com/sumia01/media-gate/internal/integration/discord"
 	"github.com/sumia01/media-gate/internal/integration/flaresolverr"
+	"github.com/sumia01/media-gate/internal/integration/jellyfin"
 	"github.com/sumia01/media-gate/internal/integration/opensubtitles"
 	"github.com/sumia01/media-gate/internal/integration/plex"
 	"github.com/sumia01/media-gate/internal/integration/qbittorrent"
@@ -77,8 +78,12 @@ const (
 	KeyOTelService  = "otel_service"
 	KeyOTelLogLevel = "otel_log_level"
 
-	KeyPlexURL   = "plex_url"
-	KeyPlexToken = "plex_token"
+	KeyPlexURL                = "plex_url"
+	KeyPlexToken              = "plex_token"
+	KeyPlexRefreshEnabled     = "plex_refresh_enabled"
+	KeyJellyfinURL            = "jellyfin_url"
+	KeyJellyfinAPIKey         = "jellyfin_api_key"
+	KeyJellyfinRefreshEnabled = "jellyfin_refresh_enabled"
 )
 
 var sensitiveKeys = map[string]bool{
@@ -89,6 +94,7 @@ var sensitiveKeys = map[string]bool{
 	KeyOpenSubtitlesApiKey:   true,
 	KeyOpenSubtitlesPassword: true,
 	KeyPlexToken:             true,
+	KeyJellyfinAPIKey:        true,
 }
 
 func isSensitiveKey(key string) bool {
@@ -183,8 +189,8 @@ func (s *Service) List() ([]store.Setting, error) {
 	}
 	filtered := settings[:0]
 	for i := range settings {
-		// Indexer secrets and plex mappings are internal — not shown on the settings page.
-		if strings.HasPrefix(settings[i].Key, "indexer:") || strings.HasPrefix(settings[i].Key, "plex:mapping:") {
+		// Secrets and media-server mappings have their own API representations.
+		if strings.HasPrefix(settings[i].Key, "indexer:") || strings.HasPrefix(settings[i].Key, "plex:mapping:") || strings.HasPrefix(settings[i].Key, "jellyfin:mapping:") {
 			continue
 		}
 		if settings[i].Sensitive && s.cipher != nil {
@@ -223,7 +229,7 @@ func (s *Service) Update(items []KeyValue) error {
 			continue
 		}
 
-		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL || item.Key == KeyPlexURL) && item.Value != "" {
+		if (item.Key == KeyFlareSolverrURL || item.Key == KeyQBitURL || item.Key == KeyDiscordWebhookURL || item.Key == KeyPlexURL || item.Key == KeyJellyfinURL) && item.Value != "" {
 			if err := validateURL(item.Value); err != nil {
 				return fmt.Errorf("invalid URL for %s: %w", item.Key, err)
 			}
@@ -460,6 +466,34 @@ func (s *Service) TestPlex(urlVal, token *string) (bool, string, error) {
 	}
 	client := plex.NewClient(u, t, s.httpClient)
 	if err := client.TestConnection(); err != nil {
+		return false, fmt.Sprintf("Connection failed: %v", err), nil
+	}
+	return true, "Connection successful", nil
+}
+
+// MediaServerRefreshEnabled preserves existing Plex installs and makes Jellyfin
+// opt-in. Read failures other than an absent setting disable refresh.
+func (s *Service) MediaServerRefreshEnabled(key string) bool {
+	value, err := s.Get(key)
+	if errors.Is(err, store.ErrNotFound) {
+		return key == KeyPlexRefreshEnabled
+	}
+	return err == nil && value == "true"
+}
+
+func (s *Service) TestJellyfin(urlVal, apiKey *string) (bool, string, error) {
+	u, err := s.resolveKey(urlVal, KeyJellyfinURL)
+	if err != nil || u == "" {
+		return false, "Jellyfin URL not configured", nil
+	}
+	key, err := s.resolveKey(apiKey, KeyJellyfinAPIKey)
+	if err != nil || key == "" {
+		return false, "Jellyfin API key not configured", nil
+	}
+	if err := validateURL(u); err != nil {
+		return false, "Invalid Jellyfin URL", nil
+	}
+	if err := jellyfin.NewClient(u, key, s.httpClient).TestConnection(); err != nil {
 		return false, fmt.Sprintf("Connection failed: %v", err), nil
 	}
 	return true, "Connection successful", nil

@@ -60,3 +60,12 @@ func (p *Provider) Invalidate() {
 	p.client = nil
 	p.mu.Unlock()
 }
+
+// RefreshSection uses the current connection settings for a library scan.
+func (p *Provider) RefreshSection(id string) error {
+	client, err := p.Client()
+	if err != nil {
+		return err
+	}
+	return client.RefreshSection(id)
+}

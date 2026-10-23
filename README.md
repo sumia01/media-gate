@@ -212,13 +212,27 @@ Autocomplete history is private to your account and is collected only when setti
 - Successful imports use rich embeds with media title, year, type, and poster image; failure messages use a compact title, safe reason, and download ID
 - Connection testing from the UI
 
-### Plex Integration
+### Plex and Jellyfin Integration
 
-- Automatic library refresh after download import
-- Auto-matches MediaGate libraries to Plex sections by type and path
-- Manual section mapping override per library
-- Retry with exponential backoff on transient Plex failures
-- Manual per-library refresh trigger from the UI
+Jellyfin support and independent refresh toggles are available from **v0.50.0**.
+
+- Automatic refresh of mapped libraries after imports and relevant file deletions
+- Separate **Plex server settings** and **Jellyfin server** tabs under Libraries
+- A top-of-page **Enable library refresh** toggle for each server, saved immediately
+- Connection testing, type/path-based mapping suggestions, editable mappings, and manual per-library refresh
+- Per-library debouncing and exponential-backoff retries, independently for each server
+- Encrypted Plex tokens and Jellyfin API keys; both servers can be enabled together
+
+For Jellyfin, create an API key under **Dashboard → API Keys**, save the server URL
+(including its base path, if configured) and key, then **Save Mappings** and enable
+library refresh. Movie and TV libraries are supported. Suggested mappings must be
+saved before automatic refresh starts; **Not mapped** removes a saved mapping.
+
+Existing Plex installations default to enabled; Jellyfin defaults to disabled.
+Disabling refresh preserves credentials and mappings, suppresses pending scans and
+retries, and disables manual refresh. A request already sent to the server cannot
+be recalled. Re-enabling handles future events; use **Refresh** for changes made
+while disabled. See [media-server verification](docs/HARNESS.md#media-server-refresh-verification).
 
 ### Self-Update
 
@@ -236,7 +250,8 @@ Autocomplete history is private to your account and is collected only when setti
 ### Multi-User Auth & Security
 
 - Multi-user support with registration, login, profile management
-- **Admin/user role system** — first user is admin; admin-only access to settings, libraries, indexers, profiles, workers, updates, Plex, and user management
+- **Admin/user role system** — first user is admin; admin-only management of settings, libraries, indexers, profiles, workers, updates, Plex/Jellyfin, and users
+- Ordinary users can read quality-profile selection data and enabled indexer IDs/names for requests and searches; credentials and management operations remain admin-only. The global auto-subtitles toggle is shown only to admins and reports failed saves without changing its displayed state.
 - JWT access tokens (15min) + refresh tokens (24h / 30d with "remember me")
 - HTTP-only cookies, optional secure flag for TLS reverse proxies
 - Password hashing (bcrypt), refresh token hashing (SHA-256)
@@ -276,7 +291,7 @@ for the logging contract and redaction limits.
 | **qBittorrent** | Torrent downloading, progress tracking, cleanup |
 | **Prowlarr/Indexers** | 700+ torrent indexer definitions (Cardigann YAML) |
 | **FlareSolverr** | Cloudflare challenge bypass for protected indexer sites |
-| **Plex** | Automatic library refresh after import (section-level scan trigger) |
+| **Plex / Jellyfin** | Independently enabled library refresh after imports and deletions, with saved library mappings |
 | **Discord** | Webhook notifications for successful imports and terminal download/import failures |
 | **OpenSubtitles.com** | Subtitle search and download |
 | **GitHub Releases** | Self-update checking and binary replacement |

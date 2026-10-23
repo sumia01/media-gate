@@ -1,18 +1,26 @@
-package plex
+package mediaserver
 
 import (
 	"path/filepath"
 	"strings"
 )
 
-// MatchResult holds the outcome of auto-matching a library to a Plex section.
+// Section is a movie or TV library exposed by a media server.
+type Section struct {
+	ID        string
+	Title     string
+	Type      string // "movie" or "show"
+	Locations []string
+}
+
+// MatchResult holds the outcome of auto-matching a library to a server section.
 type MatchResult struct {
 	SectionID    string
 	SectionTitle string
 	Score        int
 }
 
-// AutoMatch attempts to find the best Plex section for a given library.
+// AutoMatch attempts to find the best server section for a given library.
 // It returns the best match (or nil if no match scores above threshold).
 // Scoring: type match = 10, basename match = +5, full path match = +20.
 func AutoMatch(libraryPath, libraryType string, sections []Section) *MatchResult {
@@ -64,12 +72,12 @@ func FindSection(sections []Section, id string) *Section {
 	return nil
 }
 
-// typesCompatible checks if a Media Gate library type matches a Plex section type.
+// typesCompatible checks if a Media Gate library type matches a server section type.
 func typesCompatible(libraryType, sectionType string) bool {
 	switch libraryType {
 	case "movie":
 		return sectionType == "movie"
-	case "tv":
+	case "tv", "series":
 		return sectionType == "show"
 	default:
 		return false

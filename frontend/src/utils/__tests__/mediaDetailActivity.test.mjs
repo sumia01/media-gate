@@ -82,7 +82,7 @@ function component(text, exposeActivity = false) {
   })
 }
 
-async function mountView(t) {
+async function mountView(t, { admin = true, settingsReply } = {}) {
   const exports = {}
   const route = Vue.reactive({ name: 'media-detail', params: { id: '1' } })
   const streamListeners = new Map()
@@ -90,7 +90,7 @@ async function mountView(t) {
   const mutations = []
   const activityDirtyCalls = []
   const itemOverrides = {}
-  const deferredMutations = { POST: [], PATCH: [], DELETE: [] }
+  const deferredMutations = { POST: [], PUT: [], PATCH: [], DELETE: [] }
   const item = (id) => ({
     id,
     libraryId: 10,
@@ -128,16 +128,17 @@ async function mountView(t) {
       if (path === '/media/{id}/files') return { data: { files: [] } }
       if (path === '/media/{id}/episodes')
         return { data: { seasons: [{ seasonNumber: 1, monitored: true, episodes: [] }] } }
-      if (path === '/media-profiles') return { data: { profiles: [] } }
-      if (path === '/settings') return { data: { settings: {} } }
+      if (path === '/media-profiles') return { data: { profiles: [{ id: 1, name: '1080p English' }] } }
+      if (path === '/settings')
+        return settingsReply ?? { data: { settings: { subtitleAutoSearch: true } }, response: { ok: true } }
       if (path === '/watched/check') return { data: { watched: false } }
       return { data: {} }
     },
     POST(path, options = {}) {
       return mutation('POST', path, options, { data: {} })
     },
-    async PUT() {
-      return { data: {} }
+    PUT(path, options = {}) {
+      return mutation('PUT', path, options, { data: { settings: options.body }, response: { ok: true } })
     },
     PATCH(path, options = {}) {
       return mutation('PATCH', path, options, { data: item(options.params.path.id) })
@@ -166,6 +167,7 @@ async function mountView(t) {
       Play: component('play'),
     },
     '@/api/client': { default: api },
+    '@/composables/useAuth': { useAuth: () => ({ isAdmin: Vue.ref(admin) }) },
     '@/components/ContentRatingTile.vue': { default: component('ratings') },
     '@/components/ErrorBanner.vue': { default: component('error') },
     '@/components/media/DownloadList.vue': { default: component('downloads') },
@@ -211,6 +213,9 @@ async function mountView(t) {
     mutations,
     activityDirtyCalls,
     item,
+    setSettingsReply(reply) {
+      settingsReply = reply
+    },
     setItem(updates) {
       Object.assign(itemOverrides, updates)
     },
@@ -224,6 +229,67 @@ async function mountView(t) {
     },
   }
 }
+
+test('ordinary users get profile choices and search profile IDs without requesting global settings', async (t) => {
+  const view = await mountView(t, { admin: false })
+  view.setItem({ mediaProfileId: 1 })
+  view.route.params.id = '2'
+  await settle()
+  assert.equal(
+    view.requests.some((r) => r.path === '/settings'),
+    false,
+  )
+  assert.equal(findAll(view.root, (n) => n.type === 'button' && /Auto-subtitles/.test(textContent(n))).length, 0)
+  const select = findAll(view.root, (n) => n.props.id === 'profile-select')[0]
+  assert.match(textContent(select), /1080p English/)
+  const search = findAll(view.root, (n) => n.type === 'button' && textContent(n).includes('Search Indexers'))[0]
+  await search.props.onClick()
+  await settle()
+  const modal = findAll(view.root, (n) => n.text === 'indexer modal')[0]
+  assert.equal(modal.props.profileId, 1)
+})
+
+test('admin subtitle toggle keeps the saved state through HTTP/network failures and retries', async (t) => {
+  const view = await mountView(t)
+  const toggle = () =>
+    findAll(view.root, (n) => n.props.role === 'switch' && textContent(n).includes('Auto-subtitles'))[0]
+  assert.equal(toggle().props['aria-checked'], true)
+  for (const failure of [{ error: {}, response: { ok: false, status: 403 } }, new TypeError('offline')]) {
+    const complete = view.deferNext('PUT')
+    const saving = toggle().props.onClick()
+    await settle()
+    assert.equal(toggle().props.disabled, true)
+    assert.equal(toggle().props['aria-checked'], true)
+    complete(failure instanceof Error ? Promise.reject(failure) : failure)
+    await saving
+    await settle()
+    assert.equal(toggle().props['aria-checked'], true)
+    assert.equal(toggle().props.disabled, false)
+    assert.match(textContent(view.root), /Failed to save auto-subtitle settings/)
+  }
+  await toggle().props.onClick()
+  await settle()
+  assert.equal(toggle().props['aria-checked'], false)
+  assert.doesNotMatch(textContent(view.root), /Failed to save auto-subtitle settings/)
+  assert.deepEqual(view.mutations.at(-1).options.body, { subtitleAutoSearch: false })
+})
+
+test('a failed initial subtitle settings read stays unavailable until a successful retry', async (t) => {
+  const view = await mountView(t, { settingsReply: { error: {}, response: { ok: false, status: 500 } } })
+  const toggle = findAll(view.root, (n) => n.props.role === 'switch')[0]
+  assert.equal(toggle.props.disabled, true)
+  assert.match(textContent(toggle), /unavailable/)
+  await toggle.props.onClick()
+  assert.equal(view.mutations.length, 0)
+  view.setSettingsReply({ data: { settings: { subtitleAutoSearch: true } }, response: { ok: true } })
+  const retry = findAll(view.root, (n) => n.type === 'button' && textContent(n).trim() === 'Retry')[0]
+  await retry.props.onClick()
+  await settle()
+  const loaded = findAll(view.root, (n) => n.props.role === 'switch')[0]
+  assert.equal(loaded.props.disabled, false)
+  assert.equal(loaded.props['aria-checked'], true)
+  assert.doesNotMatch(textContent(view.root), /Failed to load auto-subtitle settings/)
+})
 
 test('detail tabs are linked, mounted, native-hidden and keep controls/requesters out of Activity', async (t) => {
   const view = await mountView(t)

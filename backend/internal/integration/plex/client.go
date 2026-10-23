@@ -6,15 +6,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-)
 
-// Section represents a Plex library section.
-type Section struct {
-	ID        string
-	Title     string
-	Type      string // "movie" or "show"
-	Locations []string
-}
+	"github.com/sumia01/media-gate/internal/integration/mediaserver"
+)
 
 // Client communicates with a Plex Media Server.
 type Client struct {
@@ -39,7 +33,7 @@ func (c *Client) TestConnection() error {
 }
 
 // ListSections returns all library sections from the Plex server.
-func (c *Client) ListSections() ([]Section, error) {
+func (c *Client) ListSections() ([]mediaserver.Section, error) {
 	body, err := c.doGet("/library/sections")
 	if err != nil {
 		return nil, err
@@ -60,9 +54,9 @@ func (c *Client) ListSections() ([]Section, error) {
 		return nil, fmt.Errorf("parsing sections XML: %w", err)
 	}
 
-	sections := make([]Section, 0, len(container.Dirs))
+	sections := make([]mediaserver.Section, 0, len(container.Dirs))
 	for _, d := range container.Dirs {
-		s := Section{
+		s := mediaserver.Section{
 			ID:    d.Key,
 			Title: d.Title,
 			Type:  normalizeSectionType(d.Type),
