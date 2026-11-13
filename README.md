@@ -199,6 +199,7 @@ Autocomplete history is private to your account and is collected only when setti
 
 ### Watched Tracking
 
+- Recover posters for older watched entries after library deletion, without re-marking titles or editing the database
 - Mark/unmark media as watched with seen badges across the UI
 - Mode: global (shared) or per-user
 - Stores exact provider, media type, and external ID identity so movie/series numeric IDs cannot collide

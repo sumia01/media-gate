@@ -779,6 +779,7 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Preserve API/schema/frontend behavior and the existing services, Store contract, client/cache/lock ownership and cancellation policy; no speculative framework or B05 dependency-interface work
 
 ## Known Bugs ⬜
+- [x] Deleted library items with legacy local poster filenames appeared without artwork in Watched even though external details had a poster — recover missing/failed artwork through the existing exact-identity detail endpoint, bound lookups, cancel on navigation, and retain a placeholder on failure without altering watched records
 - [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately
 - [ ] Indexer URL diagnostics retain host/path information; credentials embedded in path segments are not masked by the current userinfo/query/fragment redactor — see ADR-147
 - [x] Release keyword typing/fetch states repeatedly resized and scrolled the modal — render suggestions in a floating overlay and keep form layout independent of request state; see Phase 10.7

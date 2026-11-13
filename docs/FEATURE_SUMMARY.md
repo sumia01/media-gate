@@ -59,6 +59,7 @@ designed for a homelab or lightweight server.
 - Search, score, download, list, and delete OpenSubtitles subtitles for movies and episodes; support language priorities, release/hash matching, and hearing-impaired/foreign-parts metadata.
 - Optionally search/download subtitles automatically after import.
 - Mark titles watched from local details or external previews and show seen badges across discover and library views.
+- Recover missing watched posters, including legacy local filenames left after library deletion, through exact provider/media-type lookups without modifying watched records.
 - Configure watched state as shared globally or private to each user.
 - Send Discord webhook notifications for successful imports and terminal download/import failures, with connection testing and safe, non-sensitive failure summaries.
 - Refresh mapped Plex and Jellyfin movie/TV libraries after imports and relevant deletions, with independent enable/disable toggles, per-library debouncing, retries, manual refresh, and editable mappings. Plex defaults on for existing installations; Jellyfin defaults off. Disabling preserves connection details and mappings.

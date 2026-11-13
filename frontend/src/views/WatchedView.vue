@@ -4,29 +4,14 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import { useWatchedPosters } from '@/composables/useWatchedPosters'
 import type { WatchedItem } from '@/types/api'
-import { posterUrl } from '@/utils/media'
 
 const router = useRouter()
 const items = ref<WatchedItem[]>([])
 const loading = ref(false)
 const error = ref('')
-
-function itemPosterUrl(item: WatchedItem): string | null {
-  // Library item with cached poster — use the media poster endpoint
-  if (item.mediaItemId) {
-    return posterUrl({ id: item.mediaItemId })
-  }
-  // Fallback to external poster URL
-  return externalPosterUrl(item.posterPath)
-}
-
-function externalPosterUrl(posterPath: string | undefined): string | null {
-  if (!posterPath) return null
-  if (posterPath.startsWith('http')) return posterPath
-  if (posterPath.startsWith('/')) return `https://image.tmdb.org/t/p/w342${posterPath}`
-  return null
-}
+const { itemPosterUrl, loadMissingPosters, onPosterError } = useWatchedPosters()
 
 async function fetchWatched() {
   loading.value = true
@@ -38,6 +23,7 @@ async function fetchWatched() {
     return
   }
   items.value = data?.items ?? []
+  loadMissingPosters(items.value)
 }
 
 async function unmark(item: WatchedItem) {
@@ -82,12 +68,7 @@ onMounted(fetchWatched)
             :src="itemPosterUrl(item)!"
             :alt="item.title"
             class="w-full h-full object-cover"
-            @error="(e) => {
-              const img = e.target as HTMLImageElement
-              const fallback = externalPosterUrl(item.posterPath)
-              if (fallback && img.src !== fallback) { img.src = fallback }
-              else { img.style.display = 'none' }
-            }"
+            @error="onPosterError(item)"
           />
           <span v-else class="text-4xl text-gray-600">
             {{ item.mediaType === 'movie' ? '&#127910;' : '&#128250;' }}

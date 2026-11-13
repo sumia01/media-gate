@@ -82,6 +82,23 @@ The initial library sync queues normal metadata matching. Without an explicit
 TMDB/TVDB key, that background match job reports that no API key is configured;
 the seeded disk item and deterministic harness flow remain available.
 
+## Watched Poster Verification
+
+Use a fresh task-specific instance without live metadata keys. For a deterministic
+browser check, intercept only that local instance's watched-list, external-detail,
+and image responses with synthetic fixtures. Include an unlinked entry with a
+legacy local filename (`52.jpg`), a linked entry whose cached image returns 404,
+a valid external image, and a provider failure. Verify recovered images and the
+failure placeholder at desktop, sidebar-visible tablet, and mobile sizes, with
+unchanged card bounds and no horizontal overflow. Leave the page while a detail
+response is pending and verify cancellation/no late updates. No watched mutations
+or live integrations are required; the ordinary smoke does not cover this flow.
+
+Run `node --test src/composables/__tests__/watchedPosters.test.mjs` in `frontend/`
+for exact-identity sharing, bounded concurrency, image fallback, failure and
+unmount regressions, plus the full frontend tests/type-check/lint/build. Stop the
+instance with `make harness-down HARNESS_ID=<name>`.
+
 ## Queue Shutdown Verification
 
 Library sync/match queue admission closes at the start of graceful shutdown,
