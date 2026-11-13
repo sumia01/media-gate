@@ -86,7 +86,8 @@ the seeded disk item and deterministic harness flow remain available.
 
 Use a fresh task-specific instance without live metadata keys. For a deterministic
 browser check, intercept only that local instance's watched-list, external-detail,
-and image responses with synthetic fixtures. Include an unlinked entry with a
+and image responses with synthetic fixtures (`items` plus `hasMore: false` for a
+single list page). Include an unlinked entry with a
 legacy local filename (`52.jpg`), a linked entry whose cached image returns 404,
 a valid external image, and a provider failure. Verify recovered images and the
 failure placeholder at desktop, sidebar-visible tablet, and mobile sizes, with
@@ -98,6 +99,42 @@ Run `node --test src/composables/__tests__/watchedPosters.test.mjs` in `frontend
 for exact-identity sharing, bounded concurrency, image fallback, failure and
 unmount regressions, plus the full frontend tests/type-check/lint/build. Stop the
 instance with `make harness-down HARNESS_ID=<name>`.
+
+## Watched Lazy-Load Verification
+
+Start a fresh task-specific instance without live provider keys. Create more than
+60 synthetic watched entries through its authenticated API; use only local fake
+image URLs and intercept artwork/external-detail responses if necessary. Verify:
+
+- The first grid read requests `/watched?limit=30`, not the full badge list. Only
+  30 cards appear until the sentinel is approached; later reads use the returned
+  `before` cursor and append without replacing existing cards or changing scroll.
+- Scrolling loads subsequent pages, a tall underfilled viewport continues after
+  the observer rearms, and the final page stops further reads. The Load more button
+  works without relying on the observer. Poster repair never queries unloaded rows.
+- Intercept an initial or append read with a 502/network failure. Show Retry,
+  preserve already-loaded cards, do not retry in an observer loop, and reuse the
+  same cursor on explicit retry.
+- Remove a loaded title, including the previous page's cursor anchor, then load
+  the next page: no unseen title is skipped. Failed removal retains the card and
+  shows an error. Leave with a page request pending and verify abort/no late cards.
+- Check desktop, sidebar-visible tablet, portrait mobile and short landscape
+  layouts for reachable status/actions and no horizontal overflow. Use a second
+  disposable user plus shared/per-user mode to check visibility before pagination;
+  unpaged `/watched` must still supply all visible entries to badges.
+
+Focused commands:
+
+```bash
+# In backend/
+go test -count=1 ./internal/watched ./internal/store/sqlite ./internal/api/v1
+# In frontend/
+node --test src/utils/__tests__/watchedPaging.test.mjs src/composables/__tests__/discover.test.mjs src/composables/__tests__/watchedPosters.test.mjs
+```
+
+Run the ordinary fake tracker/qBittorrent smoke separately; it does not cover
+Watched paging. Stop the instance and retain artifacts with
+`make harness-down HARNESS_ID=<name>`.
 
 ## Queue Shutdown Verification
 

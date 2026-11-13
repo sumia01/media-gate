@@ -2213,6 +2213,20 @@ paths:
     get:
       operationId: listWatched
       summary: List watched items
+      description: Without limit, returns the complete visible list for watched badges. With limit, returns a newest-first cursor page.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: before
+          in: query
+          description: Opaque exclusive cursor from the previous page; requires limit.
+          schema:
+            type: string
+            maxLength: 256
       responses:
         "200":
           description: Watched items list
@@ -2227,6 +2241,18 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/WatchedItem"
+                  hasMore:
+                    type: boolean
+                    description: Present when limit is supplied.
+                  nextCursor:
+                    type: string
+                    description: Present when a paged response has more items.
+        "400":
+          description: Invalid limit or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       operationId: createWatched
       summary: Mark media as watched

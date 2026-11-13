@@ -286,3 +286,12 @@ type WatchedItem struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
+
+const MaxWatchedPageSize = 100
+
+// WatchedItemCursor is an exclusive position in newest-first watched order.
+// It remains usable if the last item on the previous page is deleted.
+type WatchedItemCursor struct {
+	WatchedAt time.Time
+	ID        uint
+}

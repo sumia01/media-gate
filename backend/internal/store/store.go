@@ -185,6 +185,7 @@ type Store interface {
 	DeleteWatchedItem(id uint) error
 	ListWatchedItems() ([]WatchedItem, error)
 	ListWatchedItemsByUser(userID uint) ([]WatchedItem, error)
+	ListWatchedItemsPage(userID *uint, before *WatchedItemCursor, limit int) ([]WatchedItem, bool, error)
 	GetWatchedBySourceExternal(userID *uint, source, mediaType string, externalID int) (*WatchedItem, error)
 	ClearWatchedMediaItemID(mediaItemID uint) error
 

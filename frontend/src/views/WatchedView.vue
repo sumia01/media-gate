@@ -1,34 +1,69 @@
 <script setup lang="ts">
 import { Eye, X } from 'lucide-vue-next'
-import { onMounted, ref } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import DiscoverResultsStatus from '@/components/media/DiscoverResultsStatus.vue'
+import { discoverKey } from '@/composables/useDiscoverFilter'
+import { usePagedDiscover } from '@/composables/usePagedDiscover'
 import { useWatchedPosters } from '@/composables/useWatchedPosters'
 import type { WatchedItem } from '@/types/api'
 
 const router = useRouter()
-const items = ref<WatchedItem[]>([])
-const loading = ref(false)
 const error = ref('')
+const removed = ref(new Set<string>())
+const deleting = ref(new Set<number>())
+const deleteController = new AbortController()
 const { itemPosterUrl, loadMissingPosters, onPosterError } = useWatchedPosters()
+let nextCursor: string | undefined
 
-async function fetchWatched() {
-  loading.value = true
-  error.value = ''
-  const { data, error: err } = await client.GET('/watched')
-  loading.value = false
-  if (err) {
-    error.value = 'Failed to load watched list'
-    return
-  }
-  items.value = data?.items ?? []
-  loadMissingPosters(items.value)
-}
+const { items, loading, initialLoading, loadFailed, hasMore, sentinel, fetchPage } = usePagedDiscover<WatchedItem>(
+  async (page, signal) => {
+    const before = page === 1 ? undefined : nextCursor
+    const { data } = await client.GET('/watched', {
+      params: { query: { limit: 30, before } },
+      signal,
+    })
+    if (signal.aborted) return
+    if (
+      !data ||
+      typeof data.hasMore !== 'boolean' ||
+      (data.hasMore && (!data.nextCursor || data.nextCursor === before))
+    ) {
+      throw new Error('Invalid watched page')
+    }
+    nextCursor = data.nextCursor
+    return { items: data.items, page, totalPages: data.hasMore ? page + 1 : page }
+  },
+  (item) => String(item.id),
+  {
+    include: (item) => !removed.value.has(discoverKey(item)),
+    filterKey: () => removed.value.size,
+    maxPages: Number.POSITIVE_INFINITY,
+  },
+)
+
+watch(items, loadMissingPosters)
+onUnmounted(() => deleteController.abort())
 
 async function unmark(item: WatchedItem) {
-  await client.DELETE('/watched/{id}', { params: { path: { id: item.id } } })
-  items.value = items.value.filter((i) => i.id !== item.id)
+  if (deleting.value.has(item.id)) return
+  deleting.value.add(item.id)
+  error.value = ''
+  try {
+    const { error: err } = await client.DELETE('/watched/{id}', {
+      params: { path: { id: item.id } },
+      signal: deleteController.signal,
+    })
+    if (deleteController.signal.aborted) return
+    if (err) throw new Error('Failed to remove watched item')
+    removed.value.add(discoverKey(item))
+  } catch {
+    if (!deleteController.signal.aborted) error.value = 'Failed to remove watched item. Please try again.'
+  } finally {
+    deleting.value.delete(item.id)
+  }
 }
 
 function navigate(item: WatchedItem) {
@@ -38,8 +73,6 @@ function navigate(item: WatchedItem) {
     query: { mediaType: item.mediaType },
   })
 }
-
-onMounted(fetchWatched)
 </script>
 
 <template>
@@ -48,11 +81,7 @@ onMounted(fetchWatched)
 
     <ErrorBanner :message="error" />
 
-    <div v-if="loading" class="text-gray-500 text-sm">Loading...</div>
-
-    <div v-else-if="items.length === 0" class="text-gray-500 text-sm">
-      No watched items yet. Mark media as watched from the media detail or preview pages.
-    </div>
+    <div v-if="initialLoading" role="status" class="text-gray-500 text-sm">Loading...</div>
 
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       <div
@@ -68,6 +97,7 @@ onMounted(fetchWatched)
             :src="itemPosterUrl(item)!"
             :alt="item.title"
             class="w-full h-full object-cover"
+            loading="lazy"
             @error="onPosterError(item)"
           />
           <span v-else class="text-4xl text-gray-600">
@@ -95,6 +125,7 @@ onMounted(fetchWatched)
         <button
           class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
           title="Remove from watched"
+          :disabled="deleting.has(item.id)"
           @click.stop="unmark(item)"
         >
           <X class="w-4 h-4" />
@@ -106,6 +137,21 @@ onMounted(fetchWatched)
           Watched
         </div>
       </div>
+    </div>
+
+    <div ref="sentinel">
+      <DiscoverResultsStatus
+        :ready="true"
+        :loading="loading"
+        :initial-loading="initialLoading"
+        :load-failed="loadFailed"
+        :has-more="hasMore"
+        :item-count="items.length"
+        :hidden-count="0"
+        empty-title="No watched items yet"
+        empty-message="Mark media as watched from the media detail or preview pages."
+        @load-more="fetchPage"
+      />
     </div>
   </div>
 </template>

@@ -199,6 +199,7 @@ Autocomplete history is private to your account and is collected only when setti
 
 ### Watched Tracking
 
+- Browse watched titles with infinite scroll in 30-item pages, using the same loading/retry controls as Discover
 - Recover posters for older watched entries after library deletion, without re-marking titles or editing the database
 - Mark/unmark media as watched with seen badges across the UI
 - Mode: global (shared) or per-user

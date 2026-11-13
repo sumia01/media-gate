@@ -778,6 +778,16 @@ See ADR-141 through ADR-143. Optional automatic lifecycle producers remain defer
 - [x] Confirm all 41 new characterization cases also pass against pre-extraction service bodies; repeat the full uncached suite and both linters before publication
 - [x] Preserve API/schema/frontend behavior and the existing services, Store contract, client/cache/lock ownership and cancellation policy; no speculative framework or B05 dependency-interface work
 
+## Phase 10.15: Lazy Watched Browsing ✅
+→ See ADR-155
+
+- [x] Reuse Discover's paging observer, append/deduplication lifecycle and loading/retry/end states for Watched
+- [x] Fetch newest-first 30-item cursor pages; retain complete unpaged reads for existing watched badges
+- [x] Keep shared/per-user visibility filtering before the limit, and use timestamp/ID cursors that survive deleting the previous page's anchor
+- [x] Limit poster recovery to loaded pages, lazy-load poster images, preserve the grid during appends, and retain cards on failed unmark requests
+- [x] Cover cursor ties, deleted anchors, legacy undated items, malformed requests, privacy, retries, unmount/late responses and the local-list exemption from TMDB's 500-page cap
+- [x] Verify 1,457 uncached backend tests, 131 frontend tests, 251 focused race tests, both linters, generated/embedded build and disposable desktop/tablet/mobile browser flows plus fake-backed smoke
+
 ## Known Bugs ⬜
 - [x] Deleted library items with legacy local poster filenames appeared without artwork in Watched even though external details had a poster — recover missing/failed artwork through the existing exact-identity detail endpoint, bound lookups, cancel on navigation, and retain a placeholder on failure without altering watched records
 - [ ] Harness session-wide teardown can signal the backend twice (directly and through supervisor forwarding), force-quitting active work; use the single-target procedure in [queue shutdown verification](HARNESS.md#queue-shutdown-verification) until the harness signaling is fixed separately

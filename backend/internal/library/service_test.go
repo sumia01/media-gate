@@ -48,11 +48,11 @@ func (s *stubStore) GetMediaItemByExternalID(uint, string, int) (*store.MediaIte
 }
 func (s *stubStore) ListMonitoredMediaItems() ([]store.MediaItem, error) { return nil, nil }
 func (s *stubStore) ListRecentMediaItems(int) ([]store.MediaItem, error) { return nil, nil }
-func (s *stubStore) RememberReleaseKeywords(uint, []string) error { return nil }
+func (s *stubStore) RememberReleaseKeywords(uint, []string) error        { return nil }
 func (s *stubStore) ListReleaseKeywords(uint, string) ([]string, error) {
 	return nil, nil
 }
-func (s *stubStore) CreateMediaRequest(*store.MediaRequest) error        { return nil }
+func (s *stubStore) CreateMediaRequest(*store.MediaRequest) error { return nil }
 func (s *stubStore) ListMediaRequestsByMediaItem(uint) ([]store.MediaRequestAttribution, error) {
 	return nil, nil
 }
@@ -156,6 +156,9 @@ func (s *stubStore) GetWatchedItem(uint) (*store.WatchedItem, error)          { 
 func (s *stubStore) DeleteWatchedItem(uint) error                             { return nil }
 func (s *stubStore) ListWatchedItems() ([]store.WatchedItem, error)           { return nil, nil }
 func (s *stubStore) ListWatchedItemsByUser(uint) ([]store.WatchedItem, error) { return nil, nil }
+func (s *stubStore) ListWatchedItemsPage(*uint, *store.WatchedItemCursor, int) ([]store.WatchedItem, bool, error) {
+	return nil, false, nil
+}
 func (s *stubStore) GetWatchedBySourceExternal(*uint, string, string, int) (*store.WatchedItem, error) {
 	return nil, store.ErrNotFound
 }

@@ -312,3 +312,16 @@ test('empty provider results terminate, and TMDB page limits are capped', async 
   assert.equal(empty.loadFailed.value, false)
   assert.equal(capped.totalPages.value, 500)
 })
+
+test('local lists can reuse infinite scrolling without the TMDB page cap', async (t) => {
+  const { state } = mount(t, () =>
+    usePagedDiscover(async (page) => pageData(page, [movie(page)], page + 1), discoverKey, {
+      maxPages: Number.POSITIVE_INFINITY,
+    }),
+  )
+  await settle()
+  for (let page = 2; page <= 501; page += 1) await state.fetchPage()
+  assert.equal(state.page.value, 501)
+  assert.equal(state.hasMore.value, true)
+  assert.equal(state.items.value.length, 501)
+})

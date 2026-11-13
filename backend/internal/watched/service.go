@@ -55,6 +55,21 @@ func (s *Service) List(actorUserID uint) ([]store.WatchedItem, error) {
 	return s.store.ListWatchedItems()
 }
 
+func (s *Service) ListPage(actorUserID uint, before *store.WatchedItemCursor, limit int) ([]store.WatchedItem, bool, error) {
+	mode, err := watchedListMode(s.store)
+	if err != nil {
+		return nil, false, err
+	}
+	var lookupUser *uint
+	if mode == modePerUser {
+		if actorUserID == 0 {
+			return nil, false, store.ErrActivityActorNotFound
+		}
+		lookupUser = &actorUserID
+	}
+	return s.store.ListWatchedItemsPage(lookupUser, before, limit)
+}
+
 func (s *Service) Check(actorUserID uint, source, mediaType string, externalID int) (*store.WatchedItem, error) {
 	if err := validateIdentity(source, mediaType, externalID); err != nil {
 		return nil, err

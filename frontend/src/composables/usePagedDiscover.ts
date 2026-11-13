@@ -14,6 +14,7 @@ export function usePagedDiscover<T>(
     ready?: () => boolean
     filterKey?: () => unknown
     infiniteScroll?: boolean
+    maxPages?: number
   } = {},
 ) {
   // Retain the unfiltered pages so toggling never repeats provider requests.
@@ -62,8 +63,9 @@ export function usePagedDiscover<T>(
         }
         allItems.value = [...allItems.value, ...fresh]
         page.value = nextPage
-        // TMDB exposes at most 500 pages, even when total_pages is larger.
-        totalPages.value = data.items.length ? Math.min(data.totalPages, 500) : nextPage
+        // TMDB exposes at most 500 pages. Local lists can opt out of that
+        // provider-specific cap while sharing the same loading lifecycle.
+        totalPages.value = data.items.length ? Math.min(data.totalPages, options.maxPages ?? 500) : nextPage
         if (!hasMore.value || !ready.value || fresh.some((item) => options.include?.(item) ?? true)) break
         if (attempts === 4) autoPaused.value = true
       }

@@ -11,8 +11,9 @@ withDefaults(
     itemCount: number
     hiddenCount: number
     emptyTitle?: string
+    emptyMessage?: string
   }>(),
-  { emptyTitle: 'No titles found' },
+  { emptyTitle: 'No titles found', emptyMessage: 'Try again later, or check your TMDB API key in settings.' },
 )
 defineEmits<{ loadMore: [] }>()
 </script>
@@ -34,7 +35,7 @@ defineEmits<{ loadMore: [] }>()
         <template v-if="hasMore">Load more titles or turn off Hide in library to see these results.</template>
         <template v-else>Turn off Hide in library to see these results.</template>
       </p>
-      <p v-else class="mt-1 text-xs text-gray-500">Try again later, or check your TMDB API key in settings.</p>
+      <p v-else class="mt-1 text-xs text-gray-500">{{ emptyMessage }}</p>
     </div>
     <p v-else-if="!hasMore" class="text-sm text-gray-500">No more titles</p>
     <button

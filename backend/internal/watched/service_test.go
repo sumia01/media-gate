@@ -448,6 +448,9 @@ func TestWatchedModeReadsFailClosed(t *testing.T) {
 			if _, err := service.List(f.users[0].ID); !errors.Is(err, tc.want) {
 				t.Fatalf("List error = %v, want %v", err, tc.want)
 			}
+			if _, _, err := service.ListPage(f.users[0].ID, nil, 30); !errors.Is(err, tc.want) {
+				t.Fatalf("ListPage error = %v, want %v", err, tc.want)
+			}
 			if _, err := service.Check(f.users[0].ID, "tmdb", "movie", 100); !errors.Is(err, tc.want) {
 				t.Fatalf("Check error = %v, want %v", err, tc.want)
 			}
@@ -458,6 +461,40 @@ func TestWatchedModeReadsFailClosed(t *testing.T) {
 	}
 	if items, err := f.store.ListWatchedItems(); err != nil || len(items) != 0 {
 		t.Fatalf("failed mode reads exposed or changed watched state: %+v, %v", items, err)
+	}
+}
+
+func TestWatchedPageUsesCurrentSharedOrPrivateScope(t *testing.T) {
+	f := newFixture(t)
+	setMode(t, f.store, modePerUser)
+	for i, user := range f.users {
+		for j := range 3 {
+			if _, err := f.service.Create(user.ID, watchedCandidate("tmdb", "movie", 200+i*10+j)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	items, more, err := f.service.ListPage(f.users[0].ID, nil, 2)
+	if err != nil || !more || len(items) != 2 {
+		t.Fatalf("private first page = %+v, %v, %v", items, more, err)
+	}
+	for _, item := range items {
+		if item.UserID != f.users[0].ID {
+			t.Fatalf("other user's watched item leaked: %+v", item)
+		}
+	}
+	last := items[len(items)-1]
+	items, more, err = f.service.ListPage(f.users[0].ID, &store.WatchedItemCursor{WatchedAt: last.WatchedAt, ID: last.ID}, 2)
+	if err != nil || more || len(items) != 1 || items[0].UserID != f.users[0].ID {
+		t.Fatalf("private final page = %+v, %v, %v", items, more, err)
+	}
+	if _, _, err := f.service.ListPage(0, nil, 2); !errors.Is(err, store.ErrActivityActorNotFound) {
+		t.Fatalf("anonymous private page error = %v", err)
+	}
+	setMode(t, f.store, modeGlobal)
+	items, more, err = f.service.ListPage(f.users[0].ID, nil, 100)
+	if err != nil || more || len(items) != 6 {
+		t.Fatalf("shared page = %+v, %v, %v", items, more, err)
 	}
 }
 
